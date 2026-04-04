@@ -1,0 +1,2625 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>S.E.A. Dashboard</title>
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0f172a; color: white; overscroll-behavior: none; }
+    .chat-messages::-webkit-scrollbar { width: 4px; }
+    .chat-messages::-webkit-scrollbar-thumb { background: #475569; border-radius: 2px; }
+    .page-content { padding-bottom: 110px; }
+    input, textarea, select { font-size: 16px !important; }
+    @keyframes popIn { 0% { transform: scale(0.8); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
+    @keyframes slideUp { 0% { transform: translateY(20px); opacity: 0; } 100% { transform: translateY(0); opacity: 1; } }
+    @keyframes pulse-ring { 0% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.05); opacity: 0.8; } 100% { transform: scale(1); opacity: 1; } }
+    @keyframes confetti-fall { 0% { transform: translateY(-10px) rotate(0deg); opacity: 1; } 100% { transform: translateY(100vh) rotate(720deg); opacity: 0; } }
+    .pop-in { animation: popIn 0.3s ease-out; }
+    .slide-up { animation: slideUp 0.3s ease-out; }
+    .ring-pulse { animation: pulse-ring 2s ease-in-out infinite; }
+    .confetti-piece { position: fixed; top: -20px; width: 10px; height: 10px; animation: confetti-fall 3s ease-in forwards; z-index: 9999; pointer-events: none; border-radius: 2px; }
+    @media (max-width: 768px) {
+      .coach-panel { position: fixed; bottom: 0; left: 0; right: 0; max-height: 85vh; max-height: 85dvh; border-top-left-radius: 1.5rem; border-top-right-radius: 1.5rem; z-index: 60; padding-bottom: env(safe-area-inset-bottom, 0px); transition: bottom 0.15s ease, max-height 0.15s ease; }
+      .coach-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 55; }
+      .coach-input-bar { padding-bottom: max(1rem, env(safe-area-inset-bottom, 1rem)); }
+    }
+    @media (min-width: 769px) {
+      .coach-panel { position: fixed; right: 0; top: 0; height: 100vh; width: 400px; border-left: 1px solid #334155; z-index: 60; }
+    }
+    @media print {
+      /* Hide all chrome */
+      .no-print, .no-print * { display: none !important; }
+
+      /* Light mode for paper */
+      body { background: white !important; color: #0f172a !important; margin: 0; padding: 0; }
+      * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+
+      /* Remove sticky/fixed positioning */
+      .sticky, [style*="position: fixed"], [style*="position:fixed"] { position: static !important; }
+
+      /* Content area — full width, no bottom padding */
+      .page-content { padding-bottom: 0 !important; }
+      .max-w-2xl { max-width: 100% !important; margin: 0 !important; padding: 0 8px !important; }
+
+      /* Print header */
+      .print-header { display: block !important; }
+
+      /* Cards readable on white */
+      .bg-slate-800\/60, [class*="bg-slate-8"], [class*="bg-slate-7"] {
+        background: #f8fafc !important;
+        border-color: #e2e8f0 !important;
+      }
+
+      /* Text colors on white */
+      .text-white { color: #0f172a !important; }
+      .text-slate-400 { color: #64748b !important; }
+      .text-slate-300 { color: #475569 !important; }
+      .text-slate-500 { color: #94a3b8 !important; }
+
+      /* Inputs readable */
+      input, textarea { 
+        background: #f1f5f9 !important; 
+        border: 1px solid #cbd5e1 !important; 
+        color: #0f172a !important;
+        -webkit-text-fill-color: #0f172a !important;
+      }
+
+      /* Page breaks */
+      .print-break { page-break-before: always; }
+
+      /* Keep colors on badges/scores */
+      [style*="color: #"] { }
+    }
+  </style>
+</head>
+<body>
+<div id="root"></div>
+<div class="print-header" style="display:none; padding: 16px 8px 8px; border-bottom: 2px solid #e2e8f0; margin-bottom: 16px;">
+  <div style="display:flex; align-items:center; justify-content:space-between;">
+    <div>
+      <h1 style="font-size:20px; font-weight:900; color:#0f172a; margin:0;">S.E.A. Dashboard</h1>
+      <p style="font-size:11px; color:#64748b; margin:2px 0 0;">Getting Results Inc. · Printed <span id="print-date"></span></p>
+    </div>
+    <div style="font-size:11px; color:#64748b; text-align:right;">
+      <p style="margin:0;">Strategic · Executable · Accountable</p>
+    </div>
+  </div>
+</div>
+<script>document.getElementById('print-date').textContent = new Date().toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'});</script>
+<script type="text/babel">
+  const { useState, useEffect, useRef, useCallback } = React;
+
+  // ── Icons ──────────────────────────────────────────────────────────────────
+  const Icon = ({ d, size = 22, stroke = 2, fill = "none" }) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill={fill} stroke="currentColor" strokeWidth={stroke} strokeLinecap="round" strokeLinejoin="round">
+      {Array.isArray(d) ? d.map((p, i) => <path key={i} d={p}/>) : <path d={d}/>}
+    </svg>
+  );
+  const SunIcon    = () => <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>;
+  const CalIcon    = () => <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>;
+  const StarIcon   = () => <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>;
+  const MenuIcon   = () => <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>;
+  const BotIcon    = () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="11" width="18" height="10" rx="2"/><circle cx="12" cy="5" r="2"/><path d="M12 7v4"/><line x1="8" y1="15" x2="8" y2="15"/><line x1="12" y1="15" x2="12" y2="15"/><line x1="16" y1="15" x2="16" y2="15"/></svg>;
+  const SendIcon   = () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>;
+  const XIcon      = () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>;
+  const SetIcon    = () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/></svg>;
+  const ChevRight  = () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="9 18 15 12 9 6"/></svg>;
+  const ChevLeft   = () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="15 18 9 12 15 6"/></svg>;
+  const CheckIcon  = () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><polyline points="20 6 9 17 4 12"/></svg>;
+  const FireIcon   = () => <span style={{fontSize:'28px'}}>🔥</span>;
+  const TrophyIcon = () => <span style={{fontSize:'24px'}}>🏆</span>;
+  const PrintIcon  = () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>;
+
+  // ── Confetti ───────────────────────────────────────────────────────────────
+  const Confetti = ({ active }) => {
+    if (!active) return null;
+    const colors = ['#f43f5e','#f59e0b','#10b981','#3b82f6','#a855f7','#ec4899'];
+    return (
+      <div style={{pointerEvents:'none',position:'fixed',inset:0,zIndex:9999,overflow:'hidden'}}>
+        {Array(40).fill(null).map((_,i) => (
+          <div key={i} className="confetti-piece" style={{
+            left: `${Math.random()*100}%`,
+            backgroundColor: colors[Math.floor(Math.random()*colors.length)],
+            animationDelay: `${Math.random()*2}s`,
+            animationDuration: `${2+Math.random()*2}s`,
+            transform: `rotate(${Math.random()*360}deg)`,
+            width: `${6+Math.random()*8}px`,
+            height: `${6+Math.random()*8}px`,
+          }}/>
+        ))}
+      </div>
+    );
+  };
+
+  // ── Streak Ring ────────────────────────────────────────────────────────────
+  const StreakRing = ({ name, days, color, size = 64 }) => {
+    const done = (days || []).filter(Boolean).length;
+    const total = 7;
+    const pct = done / total;
+    const r = (size / 2) - 6;
+    const circ = 2 * Math.PI * r;
+    const dash = circ * pct;
+    return (
+      <div className="flex flex-col items-center gap-1">
+        <div className="relative" style={{width:size,height:size}}>
+          <svg width={size} height={size} style={{transform:'rotate(-90deg)'}}>
+            <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="#1e293b" strokeWidth="5"/>
+            <circle cx={size/2} cy={size/2} r={r} fill="none" stroke={color}
+              strokeWidth="5" strokeDasharray={`${dash} ${circ}`}
+              strokeLinecap="round" style={{transition:'stroke-dasharray 0.5s ease'}}/>
+          </svg>
+          <div className="absolute inset-0 flex items-center justify-center">
+            <span className="text-sm font-bold text-white">{done}/7</span>
+          </div>
+        </div>
+        <span className="text-xs text-slate-400 text-center" style={{maxWidth:size,wordBreak:'break-word'}}>{name}</span>
+      </div>
+    );
+  };
+
+  // ── Star Rating ────────────────────────────────────────────────────────────
+  const StarRating = ({ score, size = 32 }) => {
+    const stars = Math.round(score / 20);
+    return (
+      <div className="flex gap-1">
+        {[1,2,3,4,5].map(s => (
+          <svg key={s} width={size} height={size} viewBox="0 0 24 24"
+            fill={s <= stars ? '#f59e0b' : 'none'}
+            stroke={s <= stars ? '#f59e0b' : '#475569'} strokeWidth="2">
+            <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+          </svg>
+        ))}
+      </div>
+    );
+  };
+
+  // ── Wheel Radar (mini) ─────────────────────────────────────────────────────
+  const MiniRadar = ({ scores, size = 180 }) => {
+    const cx = size/2, cy = size/2, maxR = size*0.38;
+    const toRad = d => d*Math.PI/180;
+    const cats = [
+      {key:'family',color:'#f43f5e',angle:-90},{key:'fun',color:'#f59e0b',angle:-18},
+      {key:'fitness',color:'#10b981',angle:54},{key:'finance',color:'#3b82f6',angle:126},
+      {key:'faith',color:'#a855f7',angle:198}
+    ];
+    const pt = (angle,val) => ({ x: cx+(val/10)*maxR*Math.cos(toRad(angle)), y: cy+(val/10)*maxR*Math.sin(toRad(angle)) });
+    const poly = pts => pts.map(p=>`${p.x},${p.y}`).join(' ');
+    const grid = v => cats.map(c=>pt(c.angle,v));
+    const scorePts = cats.map(c=>pt(c.angle,scores[c.key]||5));
+    return (
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+        {[2,4,6,8,10].map(v=><polygon key={v} points={poly(grid(v))} fill="none" stroke="#1e293b" strokeWidth="1"/>)}
+        {cats.map(c=>{const e=pt(c.angle,10);return<line key={c.key} x1={cx} y1={cy} x2={e.x} y2={e.y} stroke="#1e293b" strokeWidth="1"/>;} )}
+        <polygon points={poly(scorePts)} fill="rgba(99,102,241,0.2)" stroke="#6366f1" strokeWidth="2"/>
+        {scorePts.map((p,i)=><circle key={i} cx={p.x} cy={p.y} r="4" fill={cats[i].color} stroke="#0f172a" strokeWidth="1.5"/>)}
+        {cats.map(c=>{const lp=pt(c.angle,12.5);return<text key={c.key} x={lp.x} y={lp.y+4} textAnchor={lp.x<cx-5?'end':lp.x>cx+5?'start':'middle'} fill={c.color} fontSize="10" fontWeight="600">{c.key.charAt(0).toUpperCase()+c.key.slice(1)}</text>;})}
+      </svg>
+    );
+  };
+
+  // ── SCORING ENGINE ─────────────────────────────────────────────────────────
+  const calcSEAScore = (data, weekIdx) => {
+    const week = data.weeks[weekIdx];
+    // 1. Habit completion (30pts)
+    const acts = (week.aActivities||[]).filter(a=>a.name&&a.name.trim());
+    const habitPct = acts.length > 0
+      ? acts.reduce((s,a)=>s+(a.days||[]).filter(Boolean).length,0)/(acts.length*7)
+      : 0;
+    const habitScore = habitPct * 30;
+    // 2. Anvil streak (25pts)
+    const log = data.anvilProject?.log || [];
+    let streak = 0;
+    if (log.length > 0) {
+      const today = new Date(); today.setHours(0,0,0,0);
+      const sorted = log.map(e=>{const d=new Date(e.date);d.setHours(0,0,0,0);return d;}).sort((a,b)=>b-a);
+      const unique = [...new Set(sorted.map(d=>d.toDateString()))].map(s=>new Date(s));
+      for (let i=0;i<unique.length;i++){const exp=new Date(today);exp.setDate(today.getDate()-i);if(unique[i].toDateString()===exp.toDateString())streak++;else break;}
+    }
+    const anvilScore = Math.min(streak/30,1)*25;
+    // 3. Wheel avg (20pts)
+    const w = week.wheelOfJohn||{family:5,fun:5,fitness:5,finance:5,faith:5};
+    const wheelAvg = Object.values(w).reduce((a,b)=>a+(b||5),0)/5;
+    const wheelScore = (wheelAvg/10)*20;
+    // 4. Weekly ritual (15pts)
+    const ritualDone = week.wins.some(x=>x.trim()) && week.focus && week.focus.trim() && week.goalPriorities.some(x=>x.trim());
+    const ritualScore = ritualDone ? 15 : 0;
+    // 5. Goal progress (10pts)
+    const goals = data.goals.filter(g=>g.title&&g.title.trim());
+    const goalAvg = goals.length > 0 ? goals.reduce((s,g)=>s+(g.completion||0),0)/goals.length : 0;
+    const goalScore = (goalAvg/100)*10;
+    const total = Math.round(habitScore+anvilScore+wheelScore+ritualScore+goalScore);
+    return { total, stars: total>=80?5:total>=60?4:total>=40?3:total>=20?2:1, habitPct:Math.round(habitPct*100), anvilStreak:streak, wheelAvg:wheelAvg.toFixed(1), ritualDone, goalAvg:Math.round(goalAvg) };
+  };
+
+  // ── AI COACH ──────────────────────────────────────────────────────────────
+  const AICoach = ({ isOpen, onClose, plannerData, currentContext, onUnreadChange, onProactiveMessage, personality }) => {
+    const [messages, setMessages] = useState([]);
+    const [input, setInput] = useState('');
+    const [loading, setLoading] = useState(false);
+    const [apiKey, setApiKey] = useState('');
+    const [showSettings, setShowSettings] = useState(false);
+    const [unread, setUnread] = useState(0);
+    const endRef = useRef(null);
+
+    const setupCheckDone = useRef(false);
+    const setupCheckTimer = useRef(null);
+    const plannerDataRef = useRef(plannerData);
+
+    // Keep ref current so the delayed check always reads latest data
+    useEffect(() => { plannerDataRef.current = plannerData; }, [plannerData]);
+
+    useEffect(() => {
+      const k = localStorage.getItem('claude-api-key');
+      if (k) setApiKey(k);
+      const saved = localStorage.getItem('ai-coach-messages');
+      if (saved) { setMessages(JSON.parse(saved)); setupCheckDone.current = true; }
+      checkAccountabilityTriggers();
+    }, []);
+
+    // Debounced setup check — waits for plannerData to settle before evaluating
+    useEffect(() => {
+      if (setupCheckDone.current) return;
+      const saved = localStorage.getItem('ai-coach-messages');
+      if (saved) { setupCheckDone.current = true; return; }
+      if (setupCheckTimer.current) clearTimeout(setupCheckTimer.current);
+      setupCheckTimer.current = setTimeout(() => {
+        if (setupCheckDone.current) return;
+        setupCheckDone.current = true;
+        // Use ref so we always read the latest plannerData, not a stale closure
+        const d = plannerDataRef.current;
+        const lastCheck = localStorage.getItem('last-trigger-check');
+        const now = new Date().toISOString();
+        if (lastCheck && new Date(now).getDate() === new Date(lastCheck).getDate()) return;
+        const t = [];
+        if (!d.slightEdge?.trim()) t.push({ role:'assistant', content:"Your Slight Edges aren't defined yet — these are the daily habits that compound and give you an edge over time. Things like working out, reading, journaling. What are yours? Head to More → Setup to add them." });
+        if (!d.goals?.some(g=>g.title?.trim())) t.push({ role:'assistant', content:"Your goals aren't set yet — up to 4 goals for this 120-day period. Specific enough that someone else could tell if you hit them. Ready to define them?" });
+        if (!d.vision120Day?.trim()) t.push({ role:'assistant', content:"Your 120-Day Vision is blank. This is who you need to BE in the next 120 days. Want help creating it?" });
+        if (!d.anvilProject?.project?.trim()) t.push({ role:'assistant', content:"Your Anvil isn't set yet. What's the one activity that, done consistently, would change everything? Tap More → Anvil to set it up." });
+        const weeksWithData = d.weeks?.filter(w=>w.wins?.some(x=>x.trim())||(w.focus?.trim())).length||0;
+        if (weeksWithData === 0 && d.slightEdge?.trim()) t.push({ role:'assistant', content:"Foundation is set but no weekly planning yet. The weekly ritual is where S.E.A. comes alive. Head to the Week tab to start!" });
+        if (t.length > 0) { addTriggers(t); localStorage.setItem('last-trigger-check', now); }
+      }, 800);
+      return () => clearTimeout(setupCheckTimer.current);
+    }, [plannerData]);
+
+    useEffect(() => {
+      if (isOpen && currentContext?.test && apiKey) {
+        const testMsg = { role:'user', content:"Send me a short intro message as my coach — let me feel your style." };
+        setMessages(prev=>{
+          const already = prev.some(m=>m.content===testMsg.content);
+          if(already) return prev;
+          return [...prev, testMsg];
+        });
+        setTimeout(async ()=>{
+          setLoading(true);
+          try {
+            const res = await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json','x-api-key':apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:200,system:buildSystemPrompt(),messages:[{role:'user',content:'Send me a short intro message as my coach — let me feel your style.'}]})});
+            if(!res.ok) throw new Error(await res.text());
+            const d=await res.json();
+            if(d.content?.[0]) setMessages(prev=>[...prev,{role:'assistant',content:d.content[0].text}]);
+          } catch(e){console.log('Test error',e);}
+          finally{setLoading(false);}
+        },300);
+      }
+    }, [isOpen, currentContext]);
+
+    useEffect(() => {
+      if (messages.length > 0) localStorage.setItem('ai-coach-messages', JSON.stringify(messages));
+      endRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }, [messages]);
+
+    useEffect(() => { if (isOpen) { setUnread(0); if (onUnreadChange) onUnreadChange(0); } }, [isOpen]);
+    useEffect(() => { if (onUnreadChange) onUnreadChange(unread); }, [unread]);
+
+    // iOS keyboard fix — shift panel up when keyboard appears
+    useEffect(() => {
+      if (!isOpen || !window.visualViewport) return;
+      const panel = document.querySelector('.coach-panel');
+      const handleViewportResize = () => {
+        if (!panel) return;
+        const keyboardHeight = Math.max(0, window.innerHeight - window.visualViewport.height - window.visualViewport.offsetTop);
+        if (window.innerWidth <= 768) {
+          panel.style.bottom = keyboardHeight > 50 ? `${keyboardHeight}px` : '0px';
+          panel.style.maxHeight = `${window.visualViewport.height * 0.92}px`;
+        }
+      };
+      window.visualViewport.addEventListener('resize', handleViewportResize);
+      window.visualViewport.addEventListener('scroll', handleViewportResize);
+      return () => {
+        window.visualViewport.removeEventListener('resize', handleViewportResize);
+        window.visualViewport.removeEventListener('scroll', handleViewportResize);
+        if (panel) { panel.style.bottom = ''; panel.style.maxHeight = ''; }
+      };
+    }, [isOpen]);
+
+    const addTriggers = (triggers) => {
+      if (!triggers.length) return;
+      setMessages(prev => [...prev, ...triggers]);
+      setUnread(prev => prev + triggers.length);
+    };
+
+    const checkSetupTriggers = () => {
+      const lastCheck = localStorage.getItem('last-trigger-check');
+      const now = new Date().toISOString();
+      if (lastCheck && new Date(now).getDate() === new Date(lastCheck).getDate()) return;
+      const t = [];
+      if (!plannerData.slightEdge?.trim()) t.push({ role:'assistant', content:"Your Slight Edges aren't defined yet — these are the daily habits that compound and give you an edge over time. Things like working out, reading, journaling. What are yours? Head to More → Setup to add them." });
+      if (!plannerData.goals.some(g=>g.title?.trim())) t.push({ role:'assistant', content:"Your goals aren't set yet — up to 4 goals for this 120-day period. Specific enough that someone else could tell if you hit them. Ready to define them?" });
+      if (!plannerData.vision120Day?.trim()) t.push({ role:'assistant', content:"Your 120-Day Vision is blank. This is who you need to BE in the next 120 days. Want help creating it?" });
+      if (!plannerData.anvilProject?.project?.trim()) t.push({ role:'assistant', content:"Your Anvil isn't set yet. What's the one activity that, done consistently, would change everything? Tap More → Anvil to set it up." });
+      const weeksWithData = plannerData.weeks.filter(w=>w.wins.some(x=>x.trim())||(w.focus?.trim())).length;
+      if (weeksWithData === 0 && plannerData.slightEdge?.trim()) t.push({ role:'assistant', content:"Foundation is set but no weekly planning yet. The weekly ritual is where S.E.A. comes alive. Head to the Week tab to start!" });
+      if (t.length > 0) { addTriggers(t); localStorage.setItem('last-trigger-check', now); }
+    };
+
+    const checkAccountabilityTriggers = () => {
+      const today = new Date();
+      const dow = today.getDay();
+      const hour = today.getHours();
+      const t = [];
+      const mKey = 'morning-' + today.toDateString();
+      if (hour >= 5 && hour < 11 && !localStorage.getItem(mKey)) {
+        const g = plannerData.goals.filter(g=>g.title?.trim());
+        if (g.length > 0) {
+          t.push({ role:'assistant', content:`Good morning! What is the ONE thing you do today that moves the needle on "${g[0].title}"? Name the specific action.`, _type:'morning', _label:'Morning Check-In', _emoji:'🌅' });
+          localStorage.setItem(mKey, 'true');
+        }
+      }
+      const mdKey = 'midday-' + today.toDateString();
+      if (hour >= 11 && hour < 14 && !localStorage.getItem(mdKey)) {
+        const anvil = plannerData.anvilProject?.project || 'your Anvil';
+        const g = plannerData.goals.filter(g=>g.title?.trim());
+        const goalText = g.length > 0 ? ` on "${g[0].title}"` : '';
+        t.push({ role:'assistant', content:`Midday check — how's your energy and focus right now? Have you made progress${goalText} yet today? If not, what's one thing you can knock out in the next 90 minutes?`, _type:'midday', _label:'Midday Check-In', _emoji:'☀️' });
+        localStorage.setItem(mdKey, 'true');
+      }
+      const eKey = 'evening-' + today.toDateString();
+      if (hour >= 17 && hour < 22 && !localStorage.getItem(eKey)) {
+        const anvil = plannerData.anvilProject?.project || 'your Anvil';
+        t.push({ role:'assistant', content:`End of day — did you work on ${anvil} today? Scale of 1-10, how intentional was today? What's one thing you'd do differently tomorrow?`, _type:'evening', _label:'Evening Check-In', _emoji:'🌙' });
+        localStorage.setItem(eKey, 'true');
+      }
+      const wKey = 'weekly-plan-' + today.toDateString();
+      if (dow === 0 && hour >= 7 && hour < 14 && !localStorage.getItem(wKey)) {
+        t.push({ role:'assistant', content:"Sunday morning — have you planned your week yet? 15 minutes in the Week tab now saves you hours of drift all week. The week is waiting.", _type:'sunday', _label:'Sunday Planning', _emoji:'📋' });
+        localStorage.setItem(wKey, 'true');
+      }
+      const weeksTracked = plannerData.weeks.filter(w=>w.wins.some(x=>x.trim())||(w.focus?.trim())).length;
+      const recent = plannerData.weeks.slice(0,Math.max(weeksTracked,1)).slice(-3);
+      if (recent.length >= 2) {
+        const issues = {};
+        recent.forEach(w=>(w.aActivities||[]).forEach(a=>{if(!a.name?.trim())return;const d=(a.days||[]).filter(Boolean).length;if(d<3)issues[a.name]=(issues[a.name]||0)+1;}));
+        const struggling = Object.entries(issues).filter(([,v])=>v>=2).map(([k])=>k);
+        const pKey = 'pattern-' + today.toDateString();
+        if (struggling.length > 0 && !localStorage.getItem(pKey)) {
+          t.push({ role:'assistant', content:`Pattern alert — "${struggling[0]}" has been below 3 days for multiple weeks. Is the habit wrong, the cadence wrong, or are you just not executing? What's really going on?`, _type:'pattern', _label:'Pattern Alert', _emoji:'⚠️' });
+          localStorage.setItem(pKey, 'true');
+        }
+      }
+      if (t.length > 0) {
+        addTriggers(t);
+        if (onProactiveMessage) setTimeout(()=>onProactiveMessage(t[0]), 1500);
+      }
+    };
+
+    const buildSystemPrompt = () => {
+      const p = personality || {style:2,tone:2,approach:2,energy:2};
+      const styleLabel = p.style<=1?'a hands-on coach who pushes for action':p.style>=3?'a strategic advisor who informs and guides':'a coaching advisor who balances pushing with guidance';
+      const toneLabel = p.tone<=1?'deeply empathetic and emotionally warm — acknowledge feelings first':p.tone>=3?'direct and no-nonsense — skip the fluff, get to the point':'warm but direct — brief acknowledgment then straight to substance';
+      const approachLabel = p.approach<=1?'supportive and accepting — meet them where they are, celebrate progress':'high-standards and challenging — push hard, expect more, call out excuses';
+      const energyLabel = p.energy<=1?'calm and measured — steady, thoughtful, no hype':p.energy>=3?'fired up and intense — high energy, urgent, motivational':'steady with clear urgency — focused energy, no wasted words';
+      const personalitySummary = `COACH PERSONALITY (user-configured):
+- Style: Act as ${styleLabel}
+- Tone: Be ${toneLabel}
+- Approach: Be ${approachLabel}
+- Energy: Be ${energyLabel}`;
+
+      // Build rich session memory so coach never repeats generic setup questions
+      const weeksWithData = plannerData.weeks.filter(w=>w.wins.some(x=>x.trim())||w.focus?.trim());
+      const latestWeek = weeksWithData.length > 0 ? weeksWithData[weeksWithData.length-1] : null;
+      const recentWins = latestWeek?.wins?.filter(x=>x.trim()).join(', ') || 'None logged';
+      const recentFocus = latestWeek?.focus || 'Not set';
+      const anvilStreak = (()=>{
+        const log = plannerData.anvilProject?.log||[];
+        if(!log.length) return 0;
+        const now=new Date();now.setHours(0,0,0,0);
+        const unique=[...new Set(log.map(e=>{const d=new Date(e.date);d.setHours(0,0,0,0);return d.toDateString()}))].map(s=>new Date(s)).sort((a,b)=>b-a);
+        let streak=0;
+        for(let i=0;i<unique.length;i++){const exp=new Date(now);exp.setDate(now.getDate()-i);if(unique[i].toDateString()===exp.toDateString())streak++;else break;}
+        return streak;
+      })();
+      const habitSummary = (()=>{
+        const acts=(latestWeek?.aActivities||[]).filter(a=>a.name?.trim());
+        if(!acts.length) return 'No habits tracked';
+        return acts.map(a=>`${a.name} (${(a.days||[]).filter(Boolean).length}/7 days)`).join(', ');
+      })();
+      const goalSummary = plannerData.goals.filter(g=>g.title?.trim()).map((g,i)=>`${i+1}. ${g.title} (${g.completion||0}%)`).join(', ') || 'No goals set';
+      const latestWheel = (()=>{
+        const w=[...plannerData.weeks].reverse().find(wk=>wk.wheelOfJohn&&Object.values(wk.wheelOfJohn).some(v=>v!==5));
+        return w?Object.entries(w.wheelOfJohn).map(([k,v])=>`${k}:${v}`).join(', '):'Not scored';
+      })();
+      const sessionMemory = `
+SESSION MEMORY (use this to avoid repeating questions you've already asked):
+- Weeks planned: ${weeksWithData.length} of 17
+- Latest weekly focus: ${recentFocus}
+- Latest wins logged: ${recentWins}
+- Current Anvil streak: ${anvilStreak} days
+- Latest habits: ${habitSummary}
+- Slight Edge habits: ${plannerData.slightEdge||'Not defined'}
+- Year Theme: ${plannerData.yearTheme||'Not set'}
+- 120-Day Vision: ${plannerData.vision120Day||'Not defined'}
+- Goals: ${goalSummary}
+- Wheel of Life: ${latestWheel}
+- Anvil project: ${plannerData.anvilProject?.project||'Not set'} | Cadence: ${plannerData.anvilProject?.cadence||'Not set'} | Total sessions: ${plannerData.anvilProject?.log?.length||0}
+- Current context: ${currentContext?JSON.stringify(currentContext):'General'}
+
+IMPORTANT: Do NOT ask the user to set up things they have already set up. Do NOT ask generic onboarding questions if the data above shows they have completed setup. Instead reference what you know about them specifically.`;
+
+      return `You are the AI coaching assistant inside the S.E.A. Dashboard for a financial advisor. Results-focused.
+
+PHILOSOPHY: "Structure sets you free" | "Live by design, not default" | "Strategy without execution is hallucination"
+S.E.A.: Strategic (12X thinking) | Executable (next action NOW) | Accountable (weekly scorecards)
+FIVE CATEGORIES: Family | Fun | Fitness | Finance | Faith
+PRIORITY TREE: You → Spouse → Kids → Staff → Clients → Community
+
+${personalitySummary}
+${sessionMemory}
+
+ACCOUNTABILITY: Call out avoidance. Name slipping habits. Follow up on commitments. Never let them off the hook.
+RESPONSE: One powerful question per response. 2-4 sentences max. Match the personality settings above precisely.
+DONT: Give financial advice. Make decisions for them. Be a cheerleader without substance. Ask questions you already know the answer to from SESSION MEMORY.`;
+    };
+
+    // Trim messages sent to API to last 12 to avoid token limits
+    // Full history still shows on screen — only trimmed on the wire
+    const buildApiMessages = (allMessages, newMsg) => {
+      const combined = [...allMessages, newMsg].filter(m=>m.role==='user'||m.role==='assistant');
+      const trimmed = combined.slice(-12);
+      // Ensure first message is always from user (API requirement)
+      const firstUserIdx = trimmed.findIndex(m=>m.role==='user');
+      const valid = firstUserIdx >= 0 ? trimmed.slice(firstUserIdx) : trimmed;
+      return valid.map(({role,content})=>({role,content}));
+    };
+
+    const send = async () => {
+      if (!input.trim() || !apiKey) { if (!apiKey) alert('Add your API key in settings (⚙️)'); return; }
+      const userMsg = { role:'user', content:input };
+      setMessages(prev=>[...prev, userMsg]);
+      setInput(''); setLoading(true);
+      try {
+        const res = await fetch('https://api.anthropic.com/v1/messages', {
+          method:'POST',
+          headers:{'Content-Type':'application/json','x-api-key':apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+          body: JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:1024,system:buildSystemPrompt(),messages:buildApiMessages(messages,userMsg)})
+        });
+        if (!res.ok) throw new Error(`${res.status} - ${await res.text()}`);
+        const d = await res.json();
+        if (d.content?.[0]) setMessages(prev=>[...prev,{role:'assistant',content:d.content[0].text}]);
+      } catch(e) { alert('Coach error: ' + e.message); }
+      finally { setLoading(false); }
+    };
+
+    if (!isOpen) return null;
+    return (
+      <>
+        <div className="coach-overlay md:hidden" onClick={onClose}/>
+        <div className="coach-panel bg-slate-900 flex flex-col shadow-2xl">
+          <div className="bg-gradient-to-r from-blue-600 to-purple-600 p-4 flex items-center justify-between" style={{borderRadius:'1.5rem 1.5rem 0 0'}}>
+            <div className="flex items-center gap-2"><BotIcon/><span className="font-bold text-white">AI Coach</span></div>
+            <div className="flex items-center gap-2">
+              <button onClick={()=>setShowSettings(!showSettings)} className="p-1.5 hover:bg-white/20 rounded-lg"><SetIcon/></button>
+              <button onClick={()=>{if(confirm('Clear conversation?')){setMessages([]);localStorage.removeItem('ai-coach-messages');}}} className="text-xs text-white/70 hover:text-white px-2 py-1 hover:bg-white/20 rounded">Clear</button>
+              <button onClick={onClose} className="p-1.5 hover:bg-white/20 rounded-lg"><XIcon/></button>
+            </div>
+          </div>
+          {showSettings && (
+            <div className="bg-slate-800 p-4 border-b border-slate-700">
+              <label className="text-xs text-slate-400 block mb-1">Claude API Key</label>
+              <input type="password" value={apiKey} onChange={e=>setApiKey(e.target.value)} placeholder="sk-ant-..." className="w-full bg-slate-700 border border-slate-600 rounded-lg p-2 text-sm text-white mb-2"/>
+              <button onClick={()=>{localStorage.setItem('claude-api-key',apiKey);setShowSettings(false);}} className="w-full bg-blue-600 text-white py-2 rounded-lg text-sm font-semibold">Save</button>
+              <p className="text-xs text-slate-500 mt-2">Get key at console.anthropic.com</p>
+            </div>
+          )}
+          <div className="flex-1 overflow-y-auto p-4 space-y-3 chat-messages">
+            {messages.length === 0 && <div className="text-center text-slate-500 mt-12"><div className="text-4xl mb-3">🤖</div><p className="text-sm">Your accountability coach is ready.<br/>Ask anything about your S.E.A. plan.</p></div>}
+            {messages.map((m,i)=>(
+              <div key={i} className={`flex ${m.role==='user'?'justify-end':'justify-start'}`}>
+                <div className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${m.role==='user'?'bg-blue-600 text-white':'bg-slate-800 text-slate-200'}`}>{m.content}</div>
+              </div>
+            ))}
+            {loading && <div className="flex justify-start"><div className="bg-slate-800 text-slate-400 rounded-2xl px-4 py-3 text-sm">Thinking...</div></div>}
+            <div ref={endRef}/>
+          </div>
+          <div className="p-4 border-t border-slate-800 coach-input-bar">
+            <div className="flex gap-2">
+              <input value={input} onChange={e=>setInput(e.target.value)} onKeyPress={e=>e.key==='Enter'&&send()} onFocus={()=>setTimeout(()=>endRef.current?.scrollIntoView({behavior:'smooth'}),400)} placeholder="Ask your coach..." disabled={loading} inputMode="text" className="flex-1 bg-slate-800 border border-slate-700 rounded-xl p-3 text-white placeholder-slate-500 text-sm focus:border-blue-500 focus:outline-none"/>
+              <button onClick={send} disabled={loading||!input.trim()} className="bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white p-3 rounded-xl"><SendIcon/></button>
+            </div>
+          </div>
+        </div>
+      </>
+    );
+  };
+
+  // ── ONBOARDING ─────────────────────────────────────────────────────────────
+  const OnboardingFlow = ({ onComplete, initialData }) => {
+    const [step, setStep] = useState(0);
+    const [showAnvilInfo, setShowAnvilInfo] = useState(false);
+    const [showSlightEdgeInfo, setShowSlightEdgeInfo] = useState(false);
+    const [showStartDateInfo, setShowStartDateInfo] = useState(false);
+    const [form, setForm] = useState({
+      slightEdge: initialData.slightEdge||'', yearTheme: initialData.yearTheme||'',
+      wheelOfJohn: initialData.wheelOfJohn||{family:5,fun:5,fitness:5,finance:5,faith:5},
+      vision120Day: initialData.vision120Day||'',
+      goals: initialData.goals||[{title:'',impact:'',measurement:''},{title:'',impact:'',measurement:''},{title:'',impact:'',measurement:''},{title:'',impact:'',measurement:''}],
+      anvil: initialData.anvil||{project:'',cadence:'',why:''},
+      personality: initialData.personality||{style:2,tone:2,approach:2,energy:2},
+      startDate: initialData.startDate||'',
+      apiKey: initialData.apiKey||''
+    });
+    const STEPS = [
+      {id:'welcome',isWelcome:true},
+      {id:'slightEdge',title:'Your Slight Edge',subtitle:'What habits compound your edge?',desc:"Your Slight Edges are the consistent daily habits that compound over time and quietly separate you from everyone else. Think: what do you do regularly that makes you better? Workout, read, meditate, practice — these are your edges.",prompt:'My Slight Edges are...',placeholder:'e.g. Daily workout, 30 min reading, journaling, practicing guitar, cold outreach calls...',field:'slightEdge',type:'textarea',hasInfo:true},
+      {id:'yearTheme',title:'Year Theme',subtitle:'One word or phrase for this year',desc:"Your compass. Every decision this year points back to it. Not a goal — an identity.",prompt:'My year theme is...',placeholder:'e.g. The Year of Execution, Discipline, Breakthrough...',field:'yearTheme',type:'input'},
+      {id:'wheel',title:'Wheel of John',subtitle:'Where are you right now?',desc:'Score each life category honestly — not where you want to be, where you ARE. This baseline shapes your vision and goals.',type:'wheel'},
+      {id:'vision',title:'120-Day Vision',subtitle:'Who will you BE in 120 days?',desc:"Not what you'll do — who you'll become. Describe that version of yourself.",prompt:'In 120 days, I am someone who...',placeholder:'e.g. I am someone who has built systems that run without me, who shows up fully present for my family...',field:'vision120Day',type:'textarea'},
+      {id:'goals',title:'Your Four Goals',subtitle:'Up to 4 goals for this 120-day period',desc:'Set up to 4 goals — specific enough that someone else could tell if you hit them. Quality over quantity.',type:'goals'},
+      {id:'anvil',title:'Your Anvil',subtitle:'The one activity that changes everything',type:'anvil'},
+      {id:'personality',title:'Your Coach',subtitle:'Set up your coaching style',type:'personality'},
+      {id:'startDate',title:'Your 120-Day Start Date',subtitle:'When does your journey begin?',type:'startDate',hasInfo:true},
+      {id:'apiKey',title:'Activate Your AI Coach',subtitle:'Connect Claude to power your coaching',type:'apiKey'},
+      {id:'complete',isComplete:true}
+    ];
+    const cur = STEPS[step];
+    const progress = (step/(STEPS.length-1))*100;
+    const canNext = () => {
+      if (cur.isWelcome||cur.isComplete) return true;
+      if (cur.field) return form[cur.field].trim().length>0;
+      if (cur.type==='goals') return form.goals.some(g=>g.title.trim());
+      if (cur.type==='anvil') return form.anvil.project.trim().length>0;
+      return true;
+    };
+    const CATS = [{key:'family',label:'Family',color:'#f43f5e'},{key:'fun',label:'Fun',color:'#f59e0b'},{key:'fitness',label:'Fitness',color:'#10b981'},{key:'finance',label:'Finance',color:'#3b82f6'},{key:'faith',label:'Faith',color:'#a855f7'}];
+    return (
+      <div className="min-h-screen flex flex-col" style={{background:'linear-gradient(135deg,#0f172a 0%,#1e1b4b 100%)'}}>
+        {!cur.isWelcome && !cur.isComplete && <div className="h-1 bg-slate-800"><div className="h-full bg-gradient-to-r from-blue-500 to-purple-500 transition-all duration-500" style={{width:`${progress}%`}}/></div>}
+        <div className="flex-1 flex items-center justify-center px-5 py-8">
+          <div className="w-full max-w-lg">
+            {cur.isWelcome && (
+              <div className="text-center slide-up">
+                <div className="text-6xl mb-6">🌊</div>
+                <h1 className="text-4xl font-bold mb-2" style={{background:'linear-gradient(135deg,#60a5fa,#a78bfa)',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent'}}>S.E.A. Dashboard</h1>
+                <p className="text-slate-400 mb-8">Live By Design, Not By Default</p>
+                <div className="bg-slate-800/60 rounded-2xl p-6 border border-slate-700 mb-6 text-left space-y-3">
+                  <p className="text-white font-semibold">"Structure sets you free."</p>
+                  <p className="text-slate-400 text-sm">This planner is built on the S.E.A. Framework — Strategic, Executable, Accountable. 5 minutes to set up. Changes how you operate.</p>
+                  <p className="text-slate-300 text-sm font-medium">Let's build your foundation.</p>
+                </div>
+                <button onClick={()=>setStep(1)} className="w-full py-4 rounded-2xl font-bold text-lg text-white transition-all" style={{background:'linear-gradient(135deg,#3b82f6,#8b5cf6)'}}>Get Started →</button>
+                <button onClick={()=>onComplete(form)} className="w-full mt-3 py-2 text-slate-500 hover:text-slate-400 text-sm">Skip setup</button>
+              </div>
+            )}
+            {cur.isComplete && (
+              <div className="text-center slide-up">
+                <div className="text-6xl mb-4">🎯</div>
+                <h2 className="text-3xl font-bold text-white mb-3">Foundation Set.</h2>
+                <p className="text-slate-400 mb-6">Here is what to do next:</p>
+                <div className="bg-slate-800/60 rounded-2xl p-5 border border-slate-700 mb-6 text-left space-y-3">
+                  {[['📅','Plan your week every Sunday in the Week tab'],['☀️','Open Today every morning to set your top 3'],['🔥','Log your Anvil daily — protect the streak'],['🤖','The AI Coach knows your goals — ask it anything'],['⭐','Check your S.E.A. Score in the Score tab']].map(([icon,text],i)=>(
+                    <div key={i} className="flex items-start gap-3"><span className="text-xl">{icon}</span><p className="text-sm text-slate-300">{text}</p></div>
+                  ))}
+                </div>
+                <button onClick={()=>onComplete(form)} className="w-full py-4 rounded-2xl font-bold text-lg text-white" style={{background:'linear-gradient(135deg,#3b82f6,#8b5cf6)'}}>Open My Planner →</button>
+              </div>
+            )}
+            {!cur.isWelcome && !cur.isComplete && (
+              <div className="slide-up">
+                <div className="flex justify-between items-center mb-4">
+                  <span className="text-xs text-slate-500">Step {step} of {STEPS.length-2}</span>
+                  <button onClick={()=>onComplete(form)} className="text-xs text-slate-600 hover:text-slate-400">Skip</button>
+                </div>
+                <div className="bg-slate-800/60 rounded-2xl p-6 border border-slate-700">
+                  <div className="flex items-start justify-between mb-1">
+                    <h2 className="text-2xl font-bold text-white">{cur.title}</h2>
+                    {cur.hasInfo && (
+                      <button onClick={()=>setShowSlightEdgeInfo(true)} className="flex-shrink-0 ml-3 w-8 h-8 rounded-full border border-blue-500/50 text-blue-400 hover:bg-blue-500/20 transition-all flex items-center justify-center font-bold text-sm">i</button>
+                    )}
+                  </div>
+                  {cur.subtitle && <p className="text-slate-400 text-sm mb-4">{cur.subtitle}</p>}
+                  {cur.desc && <p className="text-slate-300 text-sm leading-relaxed mb-5 p-4 rounded-xl" style={{background:'rgba(59,130,246,0.1)',borderLeft:'3px solid #3b82f6'}}>{cur.desc}</p>}
+                  {cur.type==='input' && <div>{cur.prompt&&<label className="text-xs text-slate-500 block mb-2">{cur.prompt}</label>}<input type="text" value={form[cur.field]} onChange={e=>setForm(p=>({...p,[cur.field]:e.target.value}))} onKeyPress={e=>e.key==='Enter'&&canNext()&&setStep(s=>s+1)} placeholder={cur.placeholder} className="w-full bg-slate-700 border border-slate-600 rounded-xl p-4 text-white placeholder-slate-500 focus:border-blue-500 focus:outline-none text-lg"/></div>}
+                  {cur.type==='textarea' && <div>{cur.prompt&&<label className="text-xs text-slate-500 block mb-2">{cur.prompt}</label>}<textarea value={form[cur.field]} onChange={e=>setForm(p=>({...p,[cur.field]:e.target.value}))} placeholder={cur.placeholder} rows={4} className="w-full bg-slate-700 border border-slate-600 rounded-xl p-4 text-white placeholder-slate-500 focus:border-blue-500 focus:outline-none resize-none"/></div>}
+                  {cur.type==='personality' && (()=>{
+                    const p = form.personality;
+                    const DIMS = [
+                      {key:'style',  label:'Style',    left:'Coach',      right:'Advisor',     leftDesc:'Push & drive',         rightDesc:'Inform & guide',   color:'#3b82f6'},
+                      {key:'tone',   label:'Tone',     left:'Empathetic', right:'Direct',      leftDesc:'Warmth first',         rightDesc:'No fluff',         color:'#a855f7'},
+                      {key:'approach',label:'Approach',left:'Accepting',  right:'Challenging', leftDesc:'Meet you where you are',rightDesc:'Push harder',      color:'#10b981'},
+                      {key:'energy', label:'Energy',   left:'Calm',       right:'Fired Up',    leftDesc:'Steady & measured',    rightDesc:'Intense & urgent', color:'#f59e0b'},
+                    ];
+                    const summaryWords = [
+                      p.style<=1?'Coach-Style':p.style>=3?'Advisor-Style':'Blended',
+                      p.tone<=1?'Empathetic':p.tone>=3?'Direct':'Balanced',
+                      p.approach<=1?'Accepting':p.approach>=3?'Challenging':'Supportive',
+                      p.energy<=1?'Calm':p.energy>=3?'Fired Up':'Focused',
+                    ];
+                    return (
+                      <div>
+                        <p className="text-xs text-slate-400 mb-5">Your coach will feel like: <span className="text-purple-300 font-semibold">{summaryWords.join(', ')}</span></p>
+                        <div className="space-y-5">
+                          {DIMS.map(d=>(
+                            <div key={d.key}>
+                              <span className="text-xs font-bold text-slate-300 block mb-2">{d.label}</span>
+                              <div className="flex items-center gap-3">
+                                <div className="text-right w-20 flex-shrink-0">
+                                  <p className="text-xs font-semibold text-white">{d.left}</p>
+                                  <p className="text-xs text-slate-500">{d.leftDesc}</p>
+                                </div>
+                                <input type="range" min="0" max="4" step="1" value={p[d.key]}
+                                  onChange={e=>setForm(prev=>({...prev,personality:{...prev.personality,[d.key]:parseInt(e.target.value)}}))}
+                                  className="flex-1 h-2 rounded-full appearance-none cursor-pointer"
+                                  style={{accentColor:d.color}}/>
+                                <div className="w-20 flex-shrink-0">
+                                  <p className="text-xs font-semibold text-white">{d.right}</p>
+                                  <p className="text-xs text-slate-500">{d.rightDesc}</p>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                        <p className="text-xs text-slate-500 mt-4 text-center">You can always adjust this later in More → Setup</p>
+                      </div>
+                    );
+                  })()}
+                  {cur.type==='startDate' && (()=>{
+                    const [y,m,d] = form.startDate ? form.startDate.split('-').map(Number) : [null,null,null];
+                    const preview = form.startDate ? (()=>{
+                      const s = new Date(y,m-1,d);
+                      const dow = s.getDay();
+                      if(dow!==1){const adj=dow===0?1:8-dow;s.setDate(s.getDate()+adj);}
+                      const e = new Date(s); e.setDate(s.getDate()+119);
+                      return {start:s,end:e,adjusted:dow!==1};
+                    })() : null;
+                    return (
+                      <div className="space-y-4">
+                        <p className="text-slate-300 text-sm">This anchors every week number, date label and calendar view across the entire planner. Choose wisely — it sets the clock on your 120-day journey.</p>
+                        <div>
+                          <label className="text-xs text-slate-500 block mb-2">Start Date</label>
+                          <input type="date" value={form.startDate} onChange={e=>setForm(p=>({...p,startDate:e.target.value}))} className="w-full bg-slate-700 border border-slate-600 rounded-xl p-4 text-white text-base focus:border-blue-500 focus:outline-none"/>
+                        </div>
+                        {preview && (
+                          <div className="p-4 rounded-2xl space-y-1" style={{background:'rgba(59,130,246,0.1)',border:'1px solid rgba(59,130,246,0.3)'}}>
+                            <p className="text-xs text-blue-300 font-bold uppercase tracking-wide mb-2">Your 120-Day Window</p>
+                            <p className="text-sm text-white">Starts: <span className="font-semibold">{preview.start.toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'})}</span></p>
+                            <p className="text-sm text-white">Ends: <span className="font-semibold">{preview.end.toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'})}</span></p>
+                            {preview.adjusted && <p className="text-xs text-yellow-400 mt-1">⚠️ Adjusted to the nearest Monday</p>}
+                          </div>
+                        )}
+                        <p className="text-xs text-slate-500 text-center">You can change this anytime in More → Setup</p>
+                      </div>
+                    );
+                  })()}
+                  {cur.type==='apiKey' && (
+                    <div className="space-y-4">
+                      <div className="p-4 rounded-2xl" style={{background:'rgba(99,102,241,0.1)',border:'1px solid rgba(99,102,241,0.3)'}}>
+                        <p className="text-sm text-slate-200 leading-relaxed">Your AI Coach is powered by Claude — it knows your goals, tracks your patterns, and checks in with you daily. To activate it you need a Claude API key.</p>
+                      </div>
+                      <div className="space-y-3 text-sm text-slate-300">
+                        <div className="flex items-start gap-3">
+                          <span className="w-6 h-6 rounded-full bg-indigo-500/20 text-indigo-400 font-bold text-xs flex items-center justify-center flex-shrink-0 mt-0.5">1</span>
+                          <p>Go to <span className="text-indigo-400 font-semibold">console.anthropic.com</span> and sign up for a free account</p>
+                        </div>
+                        <div className="flex items-start gap-3">
+                          <span className="w-6 h-6 rounded-full bg-indigo-500/20 text-indigo-400 font-bold text-xs flex items-center justify-center flex-shrink-0 mt-0.5">2</span>
+                          <p>Click <span className="text-white font-semibold">API Keys</span> in the left sidebar → <span className="text-white font-semibold">Create Key</span></p>
+                        </div>
+                        <div className="flex items-start gap-3">
+                          <span className="w-6 h-6 rounded-full bg-indigo-500/20 text-indigo-400 font-bold text-xs flex items-center justify-center flex-shrink-0 mt-0.5">3</span>
+                          <p>Copy your key and paste it below — it starts with <span className="text-white font-mono text-xs">sk-ant-</span></p>
+                        </div>
+                      </div>
+                      <div>
+                        <label className="text-xs text-slate-500 block mb-2">Claude API Key</label>
+                        <input type="password" value={form.apiKey} onChange={e=>setForm(p=>({...p,apiKey:e.target.value}))} placeholder="sk-ant-..." className="w-full bg-slate-700 border border-slate-600 rounded-xl p-4 text-white placeholder-slate-500 text-sm focus:border-indigo-500 focus:outline-none font-mono"/>
+                      </div>
+                      {form.apiKey && form.apiKey.startsWith('sk-ant-') && (
+                        <div className="flex items-center gap-2 p-3 rounded-xl" style={{background:'rgba(16,185,129,0.1)',border:'1px solid rgba(16,185,129,0.3)'}}>
+                          <span className="text-green-400">✓</span>
+                          <p className="text-xs text-green-400 font-semibold">Valid key format detected — your coach is ready!</p>
+                        </div>
+                      )}
+                      <p className="text-xs text-slate-500 text-center">You can skip this and add it later in More → Setup. Your key is stored only on your device.</p>
+                    </div>
+                  )}
+                  {cur.type==='wheel' && (
+                    <div className="space-y-4">
+                      {CATS.map(cat=>{
+                        const val=form.wheelOfJohn[cat.key];
+                        const sc=val<=4?'#f87171':val<=6?'#fbbf24':'#34d399';
+                        return(
+                          <div key={cat.key}>
+                            <div className="flex justify-between mb-1"><span className="text-sm font-semibold" style={{color:cat.color}}>{cat.label}</span><span className="text-lg font-bold" style={{color:sc}}>{val}</span></div>
+                            <input type="range" min="1" max="10" value={val} onChange={e=>setForm(p=>({...p,wheelOfJohn:{...p.wheelOfJohn,[cat.key]:parseInt(e.target.value)}}))} className="w-full h-2 rounded-lg appearance-none cursor-pointer" style={{accentColor:cat.color}}/>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                  {cur.type==='goals' && (
+                    <div className="space-y-3">
+                      {form.goals.map((g,i)=>(
+                        <div key={i} className="bg-slate-700/50 rounded-xl p-4 border border-slate-600">
+                          <label className="text-xs font-bold text-slate-500 block mb-2">GOAL {i+1}</label>
+                          <input type="text" value={g.title} onChange={e=>{const gs=[...form.goals];gs[i]={...gs[i],title:e.target.value};setForm(p=>({...p,goals:gs}));}} placeholder="Goal title" className="w-full bg-slate-600/50 border border-slate-500 rounded-lg p-2 text-white placeholder-slate-500 focus:border-blue-500 focus:outline-none mb-2 text-sm"/>
+                          <input type="text" value={g.measurement} onChange={e=>{const gs=[...form.goals];gs[i]={...gs[i],measurement:e.target.value};setForm(p=>({...p,goals:gs}));}} placeholder="How will you measure success?" className="w-full bg-slate-600/50 border border-slate-500 rounded-lg p-2 text-white placeholder-slate-500 focus:border-blue-500 focus:outline-none text-sm"/>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {cur.type==='anvil' && (
+                    <div className="space-y-4">
+                      {/* Info button row */}
+                      <div className="flex items-center justify-between">
+                        <p className="text-slate-300 text-sm">What is the ONE activity that, done consistently, would change everything for your business?</p>
+                        <button onClick={()=>setShowAnvilInfo(true)} className="flex-shrink-0 ml-3 w-8 h-8 rounded-full border border-blue-500/50 text-blue-400 hover:bg-blue-500/20 transition-all flex items-center justify-center font-bold text-sm">i</button>
+                      </div>
+                      <div>
+                        <label className="text-xs text-slate-500 block mb-2">My Anvil is...</label>
+                        <input type="text" value={form.anvil.project} onChange={e=>setForm(p=>({...p,anvil:{...p.anvil,project:e.target.value}}))} placeholder="e.g. Prospecting calls, client reviews, content creation..." className="w-full bg-slate-700 border border-slate-600 rounded-xl p-4 text-white placeholder-slate-500 focus:border-orange-500 focus:outline-none text-base"/>
+                      </div>
+                      <div>
+                        <label className="text-xs text-slate-500 block mb-2">Why is this your Anvil?</label>
+                        <textarea value={form.anvil.why} onChange={e=>setForm(p=>({...p,anvil:{...p.anvil,why:e.target.value}}))} placeholder="What makes this the highest-leverage activity?" rows={2} className="w-full bg-slate-700 border border-slate-600 rounded-xl p-3 text-white placeholder-slate-500 focus:border-orange-500 focus:outline-none resize-none text-sm"/>
+                      </div>
+                      <div>
+                        <label className="text-xs text-slate-500 block mb-2">Cadence</label>
+                        <input type="text" value={form.anvil.cadence} onChange={e=>setForm(p=>({...p,anvil:{...p.anvil,cadence:e.target.value}}))} placeholder="Daily, 5x/week, every weekday..." className="w-full bg-slate-700 border border-slate-600 rounded-xl p-3 text-white placeholder-slate-500 focus:border-orange-500 focus:outline-none text-sm"/>
+                      </div>
+                    </div>
+                  )}
+                </div>
+                <div className="flex gap-3 mt-4">
+                  {step>1&&<button onClick={()=>setStep(s=>s-1)} className="px-5 py-3 bg-slate-800 hover:bg-slate-700 text-white rounded-xl transition-colors"><ChevLeft/></button>}
+                  <button onClick={()=>step===STEPS.length-2?setStep(s=>s+1):setStep(s=>s+1)} disabled={!canNext()} className="flex-1 py-3 rounded-xl font-bold text-white disabled:opacity-40 transition-all" style={{background:'linear-gradient(135deg,#3b82f6,#8b5cf6)'}}>
+                    {step===STEPS.length-2?'Complete Setup →':'Next →'}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Start Date Info Modal */}
+        {showStartDateInfo && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center px-5" style={{backgroundColor:'rgba(0,0,0,0.85)',backdropFilter:'blur(6px)'}}>
+            <div className="bg-slate-900 rounded-3xl p-6 max-w-sm w-full border border-green-500/30 pop-in">
+              <div className="text-center mb-5">
+                <span className="text-5xl">📅</span>
+                <h3 className="text-xl font-black text-white mt-3 mb-1">Choosing Your Start Date</h3>
+                <p className="text-xs text-green-400 font-bold uppercase tracking-widest">120-Day Journey</p>
+              </div>
+              <div className="space-y-4 text-sm text-slate-300 leading-relaxed">
+                <p>Your start date sets the clock on everything — week numbers, calendar dates, the Anvil scoreboard, and how your S.E.A. Score is tracked over 17 weeks.</p>
+                <div className="p-4 rounded-2xl space-y-2" style={{background:'rgba(16,185,129,0.1)',border:'1px solid rgba(16,185,129,0.3)'}}>
+                  <p className="text-green-300 font-bold text-xs uppercase tracking-wide mb-2">Things to consider:</p>
+                  {[
+                    'Always pick a Monday — the planner auto-adjusts if you pick another day',
+                    'Start this coming Monday if you want to begin immediately',
+                    'Choose a meaningful date — a new quarter, new month, or personal milestone',
+                    'Give yourself 1-2 days to fully set up before the clock starts',
+                    'The 120 days covers exactly 17 weeks — plan for a full cycle'
+                  ].map((tip,i)=>(
+                    <div key={i} className="flex items-start gap-2">
+                      <span className="text-green-400 mt-0.5 flex-shrink-0">›</span>
+                      <span className="text-slate-300 text-xs">{tip}</span>
+                    </div>
+                  ))}
+                </div>
+                <p className="text-slate-400 text-xs">You can always update this in More → Setup. Changing it later will shift all week labels and date anchors forward or backward.</p>
+              </div>
+              <button onClick={()=>setShowStartDateInfo(false)} className="w-full mt-5 py-3 rounded-2xl font-bold text-white text-sm" style={{background:'linear-gradient(135deg,#10b981,#059669)'}}>
+                Got it — Set My Start Date 📅
+              </button>
+            </div>
+          </div>
+        )}
+        {/* Slight Edge Info Modal */}
+        {showSlightEdgeInfo && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center px-5" style={{backgroundColor:'rgba(0,0,0,0.85)',backdropFilter:'blur(6px)'}}>
+            <div className="bg-slate-900 rounded-3xl p-6 max-w-sm w-full border border-blue-500/30 pop-in">
+              <div className="text-center mb-5">
+                <span className="text-5xl">⚡</span>
+                <h3 className="text-xl font-black text-white mt-3 mb-1">What is a Slight Edge?</h3>
+                <p className="text-xs text-blue-400 font-bold uppercase tracking-widest">The S.E.A. Framework</p>
+              </div>
+              <div className="space-y-4 text-sm text-slate-300 leading-relaxed">
+                <p>The Slight Edge is the philosophy that small, consistent actions — done every day — compound into massive results over time. It is not one big breakthrough. It is the daily habits nobody sees that create the outcomes everyone wants.</p>
+                <p>Your <span className="text-white font-bold">Slight Edges</span> are the specific habits you do consistently that quietly give you an edge over everyone who does not.</p>
+                <div className="p-4 rounded-2xl space-y-2" style={{background:'rgba(59,130,246,0.1)',border:'1px solid rgba(59,130,246,0.3)'}}>
+                  <p className="text-blue-300 font-bold text-xs uppercase tracking-wide mb-2">Examples of Slight Edges:</p>
+                  {['Daily workout — physical and mental sharpness','30 min of reading — compounding knowledge','Journaling — clarity and self-awareness','Practicing an instrument — discipline and focus','Cold outreach — consistent pipeline building','Meditation — presence and decision quality'].map((ex,i)=>(
+                    <div key={i} className="flex items-start gap-2">
+                      <span className="text-blue-400 mt-0.5">›</span>
+                      <span className="text-slate-300 text-xs">{ex}</span>
+                    </div>
+                  ))}
+                </div>
+                <p className="text-slate-400 text-xs">These are not tasks on a to-do list. They are <span className="text-white font-semibold">identity-level commitments</span> — the things you do because of who you are, not what you have to get done.</p>
+              </div>
+              <button onClick={()=>setShowSlightEdgeInfo(false)} className="w-full mt-5 py-3 rounded-2xl font-bold text-white text-sm" style={{background:'linear-gradient(135deg,#3b82f6,#8b5cf6)'}}>
+                Got it — Define My Edge ⚡
+              </button>
+            </div>
+          </div>
+        )}
+        {showAnvilInfo && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center px-5" style={{backgroundColor:'rgba(0,0,0,0.85)',backdropFilter:'blur(6px)'}}>
+            <div className="bg-slate-900 rounded-3xl p-6 max-w-sm w-full border border-orange-500/30 pop-in">
+              <div className="text-center mb-5">
+                <span className="text-5xl">🔨</span>
+                <h3 className="text-xl font-black text-white mt-3 mb-1">What is an Anvil?</h3>
+                <p className="text-xs text-orange-400 font-bold uppercase tracking-widest">The S.E.A. Framework</p>
+              </div>
+              <div className="space-y-4 text-sm text-slate-300 leading-relaxed">
+                <p>A blacksmith shapes metal by striking the same spot on an anvil — over and over, with precision. That repetition is what creates something extraordinary.</p>
+                <p>Your <span className="text-white font-bold">Anvil</span> is the single highest-leverage activity in your business. The one thing that, when done consistently, compounds and creates results everything else depends on.</p>
+                <div className="p-4 rounded-2xl space-y-2" style={{background:'rgba(249,115,22,0.1)',border:'1px solid rgba(249,115,22,0.3)'}}>
+                  <p className="text-orange-300 font-bold text-xs uppercase tracking-wide mb-2">For a financial advisor, your Anvil might be:</p>
+                  {['Prospecting calls — new conversations every day','Client review meetings — deepening relationships','Content creation — building your brand and authority','Referral outreach — asking consistently'].map((ex,i)=>(
+                    <div key={i} className="flex items-start gap-2">
+                      <span className="text-orange-400 mt-0.5">›</span>
+                      <span className="text-slate-300 text-xs">{ex}</span>
+                    </div>
+                  ))}
+                </div>
+                <p className="text-slate-400 text-xs">The Anvil is not your hardest task. It is your <span className="text-white font-semibold">most important repeated action</span>. You protect it, track it, and never miss it.</p>
+              </div>
+              <button onClick={()=>setShowAnvilInfo(false)} className="w-full mt-5 py-3 rounded-2xl font-bold text-white text-sm" style={{background:'linear-gradient(135deg,#f97316,#ef4444)'}}>
+                Got it — Set My Anvil 🔨
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  // ── TODAY VIEW ─────────────────────────────────────────────────────────────
+  const TodayView = ({ data, updateField, weekNum, dayIdx, setDayIdx, openCoach, score, onPrint }) => {
+    const dayNames = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+    const dayFull  = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
+    const day = data.dailyPlans[weekNum-1][dayIdx];
+    const updateDay = (f,v) => { const p=JSON.parse(JSON.stringify(data.dailyPlans)); p[weekNum-1][dayIdx][f]=v; updateField('dailyPlans',p); };
+
+    // Always compute dates relative to the actual current day — never derive from startDate
+    const getRealDate = (di) => {
+      const now = new Date(); now.setHours(0,0,0,0);
+      const todayDi = now.getDay()===0?6:now.getDay()-1; // Mon=0 … Sun=6
+      const result = new Date(now);
+      result.setDate(now.getDate() + (di - todayDi));
+      return result;
+    };
+    const todayRealDate = getRealDate(dayIdx);
+    const todayStr = todayRealDate.toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'});
+    const hour = new Date().getHours();
+    const greeting = hour<12?'Good morning':hour<17?'Good afternoon':'Good evening';
+
+    const anvilLog = data.anvilProject?.log||[];
+    let anvilStreak=0;
+    if(anvilLog.length>0){const now=new Date();now.setHours(0,0,0,0);const sorted=anvilLog.map(e=>{const d=new Date(e.date);d.setHours(0,0,0,0);return d;}).sort((a,b)=>b-a);const unique=[...new Set(sorted.map(d=>d.toDateString()))].map(s=>new Date(s));for(let i=0;i<unique.length;i++){const exp=new Date(now);exp.setDate(now.getDate()-i);if(unique[i].toDateString()===exp.toDateString())anvilStreak++;else break;}}
+
+    return (
+      <div className="page-content px-4 py-5 space-y-5">
+        {/* Header */}
+        <div className="flex items-start justify-between">
+          <div>
+            <p className="text-slate-400 text-sm">{greeting}</p>
+            <h1 className="text-2xl font-bold text-white">{todayStr}</h1>
+          </div>
+          <div className="flex items-center gap-2">
+            <button onClick={onPrint} className="no-print p-2.5 rounded-xl bg-slate-800/60 border border-slate-700 hover:border-slate-500 text-slate-400 hover:text-white transition-all" title="Print Today"><PrintIcon/></button>
+            <button onClick={()=>openCoach({section:'daily',day:dayFull[dayIdx]})} className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium" style={{background:'linear-gradient(135deg,#3b82f6,#8b5cf6)'}}>
+              <BotIcon/><span>Coach</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Day selector */}
+        <div className="flex gap-2 overflow-x-auto pb-1">
+          {dayNames.map((d,i)=>{
+            const dt=getRealDate(i);
+            return(
+              <button key={i} onClick={()=>setDayIdx(i)} className={`flex-shrink-0 flex flex-col items-center px-3 py-2 rounded-xl transition-all ${dayIdx===i?'text-white':'bg-slate-800/60 text-slate-400 hover:bg-slate-700/60'}`} style={dayIdx===i?{background:'linear-gradient(135deg,#3b82f6,#8b5cf6)'}:{}}>
+                <span className="text-xs font-medium">{d}</span>
+                {dt&&<span className="text-xs opacity-70">{dt.getDate()}</span>}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Agreement of the Day */}
+        {(()=>{
+          const AGREEMENTS = [
+            {num:1, text:'Be Impeccable With Your Word', icon:'🗣️', color:'#3b82f6', desc:'Your word is your bond. Say what you mean, mean what you say. No gossip, no excuses, no broken promises.'},
+            {num:2, text:'Be Responsible for All Your Outcomes', icon:'🎯', color:'#10b981', desc:'Own everything. Your results, your relationships, your circumstances. No blame, no victims — only accountability.'},
+            {num:3, text:'Be Coachable', icon:'🧠', color:'#a855f7', desc:'Stay open. The best are always learning. Ego stops growth. Humility accelerates it.'},
+            {num:4, text:'Leave a Place Better Than You Found It', icon:'✨', color:'#f59e0b', desc:'Every room, every relationship, every situation. Add value wherever you go. Always leave things better.'},
+            {num:5, text:"Don't Leave Any Duties Unattended", icon:'✅', color:'#f43f5e', desc:'Finish what you start. Follow through. The gap between who you are and who you want to be is closed by execution.'},
+          ];
+          const todayIdx = new Date().getDay();
+          const a = AGREEMENTS[todayIdx % 5];
+          const [showAll, setShowAll] = React.useState(false);
+          return (
+            <>
+              <button onClick={()=>setShowAll(true)} className="w-full rounded-2xl px-4 py-3 flex items-center gap-3 text-left transition-all active:scale-98" style={{background:`linear-gradient(135deg,${a.color}18,${a.color}08)`,border:`1px solid ${a.color}30`}}>
+                <span className="text-2xl flex-shrink-0">{a.icon}</span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-bold uppercase tracking-wide mb-0.5" style={{color:a.color}}>Agreement {a.num} · Today</p>
+                  <p className="text-sm font-semibold text-white leading-snug">{a.text}</p>
+                </div>
+                <span className="text-xs font-bold px-2.5 py-1 rounded-full flex-shrink-0 text-white" style={{background:a.color}}>All 5 →</span>
+              </button>
+              {showAll && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center px-5" style={{backgroundColor:'rgba(0,0,0,0.85)',backdropFilter:'blur(6px)'}} onClick={()=>setShowAll(false)}>
+                  <div className="bg-slate-900 rounded-3xl p-6 max-w-sm w-full border border-slate-700 pop-in" onClick={e=>e.stopPropagation()}>
+                    <h3 className="text-lg font-black text-white mb-5 text-center">The Five Agreements</h3>
+                    <div className="space-y-3">
+                      {AGREEMENTS.map(ag=>(
+                        <div key={ag.num} className="rounded-2xl p-4 flex items-start gap-3" style={{background:`${ag.color}12`,border:`1px solid ${ag.color}30`}}>
+                          <span className="text-xl flex-shrink-0 mt-0.5">{ag.icon}</span>
+                          <div>
+                            <p className="text-xs font-bold uppercase tracking-wide mb-0.5" style={{color:ag.color}}>Agreement {ag.num}</p>
+                            <p className="text-sm font-semibold text-white mb-1">{ag.text}</p>
+                            <p className="text-xs text-slate-400 leading-relaxed">{ag.desc}</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    <button onClick={()=>setShowAll(false)} className="w-full mt-5 py-3 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-2xl text-sm font-semibold transition-colors">
+                      Close
+                    </button>
+                  </div>
+                </div>
+              )}
+            </>
+          );
+        })()}
+
+        {/* Score + Anvil streak */}
+        <div className="grid grid-cols-2 gap-3">
+          <div className="bg-slate-800/60 rounded-2xl p-4 border border-slate-700 flex flex-col items-center">
+            <p className="text-xs text-slate-400 mb-2">S.E.A. Score</p>
+            <StarRating score={score.total} size={24}/>
+            <p className="text-2xl font-bold text-white mt-1">{score.total}</p>
+          </div>
+          <div className="bg-slate-800/60 rounded-2xl p-4 border border-slate-700 flex flex-col items-center">
+            <p className="text-xs text-slate-400 mb-1">Anvil Streak</p>
+            <div className="flex items-center gap-1"><span className="text-3xl">🔥</span></div>
+            <p className="text-3xl font-bold text-white">{anvilStreak}</p>
+            <p className="text-xs text-slate-500">days</p>
+          </div>
+        </div>
+
+        {/* Gratitude */}
+        <div className="bg-slate-800/60 rounded-2xl p-5 border border-slate-700">
+          <h3 className="text-sm font-bold text-green-400 uppercase tracking-wide mb-3">Grateful For</h3>
+          <div className="space-y-2">
+            {[0,1,2].map(i=>(
+              <div key={i} className="flex items-center gap-3">
+                <span className="text-green-400 text-sm">✦</span>
+                <input value={day.grateful[i]||''} onChange={e=>{const g=[...day.grateful];g[i]=e.target.value;updateDay('grateful',g);}} placeholder={`Gratitude ${i+1}`} className="flex-1 bg-slate-700/50 border border-slate-600/50 rounded-xl p-3 text-white placeholder-slate-500 text-sm focus:border-green-500 focus:outline-none"/>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Daily Reflection Prompt */}
+        {(()=>{
+          const PROMPTS = [
+            "What would make today a 10 out of 10?",
+            "What is the one conversation you've been avoiding that you need to have?",
+            "Where are you tolerating mediocrity in your life or business right now?",
+            "What habit, if done consistently for 90 days, would change everything?",
+            "Who in your life deserves more of your attention and presence?",
+            "What are you most afraid of failing at — and why haven't you started?",
+            "If you could only work 4 hours today, what would you absolutely have to get done?",
+            "What does the best version of you do today that the average version skips?",
+            "Where are you spending time that isn't aligned with your goals?",
+            "What commitment have you made to yourself that you've been breaking?",
+            "What would you do differently if you knew you couldn't fail?",
+            "Who do you need to become to achieve your 120-day vision?",
+            "What's one thing you can do today to strengthen your most important relationship?",
+            "Where is drift showing up in your life right now?",
+            "What does winning this week actually look like?",
+            "What are you grateful for that you rarely stop to acknowledge?",
+            "What's the hardest thing you need to do today — and why are you avoiding it?",
+            "How would your future self evaluate the choices you're making right now?",
+            "What belief is holding you back that you know isn't true?",
+            "What would you need to let go of to move forward?",
+          ];
+          const dayOfYear = Math.floor((new Date() - new Date(new Date().getFullYear(),0,0)) / 86400000);
+          const prompt = PROMPTS[dayOfYear % PROMPTS.length];
+          return (
+            <div className="rounded-2xl px-4 py-4 space-y-3" style={{background:'rgba(139,92,246,0.08)',border:'1px solid rgba(139,92,246,0.25)'}}>
+              <div>
+                <p className="text-xs font-bold text-purple-400 uppercase tracking-wide mb-2">💭 Today's Reflection</p>
+                <p className="text-sm text-slate-200 leading-relaxed font-medium">{prompt}</p>
+              </div>
+              <textarea
+                value={day.reflection||''}
+                onChange={e=>updateDay('reflection',e.target.value)}
+                placeholder="Write your thoughts here..."
+                rows={3}
+                className="w-full bg-slate-800/60 border border-purple-500/20 rounded-xl p-3 text-white placeholder-slate-500 text-sm resize-none focus:border-purple-500 focus:outline-none"
+              />
+              {day.reflection?.trim() && (
+                <p className="text-xs text-purple-400/60 text-right">✓ Saved</p>
+              )}
+            </div>
+          );
+        })()}
+
+        {/* Top 3 Priorities */}
+        <div className="bg-slate-800/60 rounded-2xl p-5 border border-slate-700">
+          <h3 className="text-sm font-bold text-blue-400 uppercase tracking-wide mb-3">Top 3 Priorities Today</h3>
+          <div className="space-y-2">
+            {[0,1,2].map(i=>(
+              <div key={i} className="flex items-center gap-3">
+                <span className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0" style={{background:'rgba(59,130,246,0.2)',color:'#60a5fa'}}>{i+1}</span>
+                <input value={day.aActivities[i]||''} onChange={e=>{const a=[...day.aActivities];a[i]=e.target.value;updateDay('aActivities',a);}} placeholder={`Priority ${i+1}`} className="flex-1 bg-slate-700/50 border border-slate-600/50 rounded-xl p-3 text-white placeholder-slate-500 text-sm focus:border-blue-500 focus:outline-none"/>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Daily Task List */}
+        <div className="bg-slate-800/60 rounded-2xl p-5 border border-slate-700">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-sm font-bold text-indigo-400 uppercase tracking-wide">✓ Tasks Today</h3>
+            <button onClick={()=>{const t=[...(day.tasks||[])];t.push({text:'',done:false,reminder:''});updateDay('tasks',t);}} className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-indigo-400 border border-indigo-500/30 hover:bg-indigo-500/10 transition-all">
+              + Add Task
+            </button>
+          </div>
+          <div className="space-y-3">
+            {(day.tasks||[{text:'',done:false,reminder:''},{text:'',done:false,reminder:''},{text:'',done:false,reminder:''}]).map((task,ti)=>(
+              <div key={ti} className="space-y-1.5">
+                <div className="flex items-center gap-2">
+                  {/* Checkbox */}
+                  <button onClick={()=>{const t=JSON.parse(JSON.stringify(day.tasks||[]));t[ti]={...t[ti],done:!t[ti].done};updateDay('tasks',t);}}
+                    className={`w-6 h-6 rounded-lg border-2 flex items-center justify-center flex-shrink-0 transition-all ${task.done?'border-indigo-500 bg-indigo-500':'border-slate-600 bg-transparent'}`}>
+                    {task.done && <span className="text-white text-xs font-black">✓</span>}
+                  </button>
+                  {/* Task text */}
+                  <input value={task.text||''} onChange={e=>{const t=JSON.parse(JSON.stringify(day.tasks||[]));t[ti]={...t[ti],text:e.target.value};updateDay('tasks',t);}}
+                    placeholder={`Task ${ti+1}`}
+                    className={`flex-1 bg-slate-700/50 border border-slate-600/50 rounded-xl p-2.5 text-sm focus:border-indigo-500 focus:outline-none transition-all ${task.done?'line-through text-slate-500':'text-white'}`}/>
+                  {/* Remove */}
+                  <button onClick={()=>{const t=JSON.parse(JSON.stringify(day.tasks||[]));t.splice(ti,1);updateDay('tasks',t);}}
+                    className="w-7 h-7 rounded-lg text-slate-600 hover:text-red-400 hover:bg-red-500/10 flex items-center justify-center transition-all text-lg flex-shrink-0">✕</button>
+                </div>
+                {/* Reminder time */}
+                {task.text?.trim() && (
+                  <div className="flex items-center gap-2 pl-8">
+                    <span className="text-xs text-slate-500">🔔</span>
+                    <input type="time" value={task.reminder||''} onChange={e=>{const t=JSON.parse(JSON.stringify(day.tasks||[]));t[ti]={...t[ti],reminder:e.target.value};updateDay('tasks',t);}}
+                      className="bg-slate-700/30 border border-slate-600/30 rounded-lg px-2 py-1 text-xs text-slate-400 focus:border-indigo-500 focus:outline-none focus:text-white"/>
+                    {task.reminder && <span className="text-xs text-indigo-400">Reminder set for {task.reminder}</span>}
+                  </div>
+                )}
+              </div>
+            ))}
+            {(day.tasks||[]).length === 0 && (
+              <p className="text-center text-slate-500 text-sm py-2">No tasks yet — tap Add Task</p>
+            )}
+          </div>
+          {/* Progress bar */}
+          {(day.tasks||[]).some(t=>t.text?.trim()) && (()=>{
+            const total = (day.tasks||[]).filter(t=>t.text?.trim()).length;
+            const done = (day.tasks||[]).filter(t=>t.text?.trim()&&t.done).length;
+            const pct = total > 0 ? Math.round((done/total)*100) : 0;
+            return (
+              <div className="mt-4 pt-4 border-t border-slate-700">
+                <div className="flex justify-between text-xs mb-1.5">
+                  <span className="text-slate-400">{done} of {total} completed</span>
+                  <span className="font-bold text-indigo-400">{pct}%</span>
+                </div>
+                <div className="h-2 bg-slate-700 rounded-full overflow-hidden">
+                  <div className="h-full rounded-full transition-all" style={{width:`${pct}%`,background:pct===100?'linear-gradient(90deg,#10b981,#059669)':'linear-gradient(90deg,#6366f1,#8b5cf6)'}}/>
+                </div>
+              </div>
+            );
+          })()}
+        </div>
+
+        {/* Notes */}
+        <div className="bg-slate-800/60 rounded-2xl p-5 border border-slate-700">
+          <h3 className="text-sm font-bold text-slate-300 uppercase tracking-wide mb-3">Notes</h3>
+          <textarea value={day.notes||''} onChange={e=>updateDay('notes',e.target.value)} placeholder="Thoughts, ideas, observations..." rows={3} className="w-full bg-slate-700/50 border border-slate-600/50 rounded-xl p-3 text-white placeholder-slate-500 text-sm resize-none focus:border-slate-400 focus:outline-none"/>
+        </div>
+
+        {/* Evening Review */}
+        <div className="bg-slate-800/60 rounded-2xl p-5 border border-slate-700">
+          <h3 className="text-sm font-bold text-orange-400 uppercase tracking-wide mb-4">Evening Review</h3>
+          <div className="space-y-4">
+            <div>
+              <label className="text-xs text-slate-400 block mb-2">Today's Wins</label>
+              {[0,1,2].map(i=>(
+                <div key={i} className="flex items-center gap-3 mb-2">
+                  <span className="text-yellow-400">★</span>
+                  <input value={day.todaysWins?.[i]||''} onChange={e=>{const w=day.todaysWins||['','',''];const nw=[...w];nw[i]=e.target.value;updateDay('todaysWins',nw);}} placeholder={`Win ${i+1}`} className="flex-1 bg-slate-700/50 border border-slate-600/50 rounded-xl p-3 text-white placeholder-slate-500 text-sm focus:border-yellow-500 focus:outline-none"/>
+                </div>
+              ))}
+            </div>
+            {[
+              {field:'hardThings',doneField:'hardThingsCompleted',label:'Hard Thing Done Today',placeholder:'What difficult thing did you tackle?',color:'red'},
+              {field:'stillness',doneField:'stillnessCompleted',label:'Stillness',placeholder:'Meditation, prayer, quiet time...',color:'indigo'},
+              {field:'study',doneField:'studyCompleted',label:'Study',placeholder:'What are you learning?',color:'teal'},
+            ].map(({field,doneField,label,placeholder,color})=>(
+              <div key={field}>
+                <label className="text-xs text-slate-400 block mb-2">{label}</label>
+                <div className="flex items-center gap-3">
+                  <input value={day[field]||''} onChange={e=>updateDay(field,e.target.value)} placeholder={placeholder} className={`flex-1 bg-slate-700/50 border border-slate-600/50 rounded-xl p-3 text-white placeholder-slate-500 text-sm focus:border-${color}-500 focus:outline-none`}/>
+                  <button onClick={()=>updateDay(doneField,!day[doneField])} className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 border transition-all ${day[doneField]?'border-green-500 bg-green-500/20 text-green-400':'border-slate-600 bg-slate-700/50 text-slate-500'}`}>
+                    <CheckIcon/>
+                  </button>
+                </div>
+              </div>
+            ))}
+            <div>
+              <h3 className="text-sm font-bold text-purple-400 uppercase tracking-wide mb-2">Tomorrow's Top 3</h3>
+              {[0,1,2].map(i=>(
+                <div key={i} className="flex items-center gap-3 mb-2">
+                  <span className="w-5 h-5 rounded-full bg-blue-500/20 text-blue-400 text-xs flex items-center justify-center font-bold flex-shrink-0">{i+1}</span>
+                  <input value={day.tomorrowPriorities?.[i]||''} onChange={e=>{const t=day.tomorrowPriorities||['','',''];const nt=[...t];nt[i]=e.target.value;updateDay('tomorrowPriorities',nt);}} placeholder={`Tomorrow priority ${i+1}`} className="flex-1 bg-slate-700/50 border border-slate-600/50 rounded-xl p-3 text-white placeholder-slate-500 text-sm focus:border-blue-500 focus:outline-none"/>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // ── WEEK VIEW ──────────────────────────────────────────────────────────────
+  const WeekView = ({ data, updateField, weekNum, setWeekNum, openCoach, onPrint, onMilestone }) => {
+    const [ritualStep, setRitualStep] = useState(0);
+    const [showConfetti, setShowConfetti] = useState(false);
+    const week = data.weeks[weekNum-1];
+    const updateWeek = (f,v) => { const ws=JSON.parse(JSON.stringify(data.weeks)); ws[weekNum-1][f]=v; updateField('weeks',ws); };
+
+    const getWeekDates = () => {
+      if (!data.startDate) return null;
+      const [y,m,d]=data.startDate.split('-').map(Number);
+      const s=new Date(y,m-1,d); const dow=s.getDay(); if(dow!==1){const adj=dow===0?1:8-dow;s.setDate(s.getDate()+adj);}
+      s.setDate(s.getDate()+(weekNum-1)*7);
+      const e=new Date(s);e.setDate(s.getDate()+6);
+      return `${s.toLocaleDateString('en-US',{month:'short',day:'numeric'})} – ${e.toLocaleDateString('en-US',{month:'short',day:'numeric'})}`;
+    };
+
+    const RITUAL_STEPS = ['Wins','Improve','Focus + Wheel','Goals','Priorities'];
+    const isRitualComplete = week.wins.some(x=>x.trim()) && week.focus?.trim() && week.goalPriorities.some(x=>x.trim());
+
+    const completeRitual = () => {
+      setShowConfetti(true);
+      setTimeout(()=>setShowConfetti(false),4000);
+    };
+
+    const CATS = [{key:'family',label:'Family',color:'#f43f5e'},{key:'fun',label:'Fun',color:'#f59e0b'},{key:'fitness',label:'Fitness',color:'#10b981'},{key:'finance',label:'Finance',color:'#3b82f6'},{key:'faith',label:'Faith',color:'#a855f7'}];
+    const wheel = week.wheelOfJohn||{family:5,fun:5,fitness:5,finance:5,faith:5};
+    const prevWheel = weekNum>1?(data.weeks[weekNum-2].wheelOfJohn||null):null;
+
+    return (
+      <div className="page-content px-4 py-5 space-y-5">
+        <Confetti active={showConfetti}/>
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <div>
+            <div className="flex items-center gap-3">
+              <button onClick={()=>setWeekNum(Math.max(1,weekNum-1))} disabled={weekNum===1} className="p-2 bg-slate-800 rounded-xl disabled:opacity-30"><ChevLeft/></button>
+              <div>
+                <h2 className="text-xl font-bold text-white">Week {weekNum} of 17</h2>
+                {getWeekDates()&&<p className="text-xs text-slate-400">{getWeekDates()}</p>}
+              </div>
+              <button onClick={()=>setWeekNum(Math.min(17,weekNum+1))} disabled={weekNum===17} className="p-2 bg-slate-800 rounded-xl disabled:opacity-30"><ChevRight/></button>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <button onClick={onPrint} className="no-print p-2.5 rounded-xl bg-slate-800/60 border border-slate-700 hover:border-slate-500 text-slate-400 hover:text-white transition-all" title="Print Week"><PrintIcon/></button>
+            <button onClick={()=>openCoach({section:'weekly',week:weekNum})} className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium" style={{background:'linear-gradient(135deg,#3b82f6,#8b5cf6)'}}>
+              <BotIcon/><span>Coach</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Ritual Progress */}
+        <div className="bg-slate-800/60 rounded-2xl p-4 border border-slate-700">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-sm font-bold text-white">Weekly Ritual</h3>
+            {isRitualComplete && <span className="text-xs text-green-400 font-bold">✓ Complete!</span>}
+          </div>
+          <div className="flex gap-2 mb-4">
+            {RITUAL_STEPS.map((s,i)=>(
+              <button key={i} onClick={()=>setRitualStep(i)} className={`flex-1 py-2 rounded-xl text-xs font-medium transition-all ${ritualStep===i?'text-white':'text-slate-500 hover:text-slate-300'}`} style={ritualStep===i?{background:'linear-gradient(135deg,#3b82f6,#8b5cf6)'}:{background:'rgba(30,41,59,0.8)'}}>{i+1}</button>
+            ))}
+          </div>
+          <p className="text-xs text-slate-400 text-center">{RITUAL_STEPS[ritualStep]}</p>
+        </div>
+
+        {/* Step 0: Wins */}
+        {ritualStep===0 && (
+          <div className="bg-slate-800/60 rounded-2xl p-5 border border-slate-700 slide-up">
+            <h3 className="text-sm font-bold text-green-400 uppercase tracking-wide mb-3">Last Week's Wins</h3>
+            {[0,1,2].map(i=>(
+              <div key={i} className="flex items-center gap-3 mb-2">
+                <span className="text-green-400">★</span>
+                <input value={week.wins[i]||''} onChange={e=>{const w=[...week.wins];w[i]=e.target.value;updateWeek('wins',w);}} placeholder={`Win ${i+1}`} className="flex-1 bg-slate-700/50 border border-slate-600/50 rounded-xl p-3 text-white placeholder-slate-500 text-sm focus:border-green-500 focus:outline-none"/>
+              </div>
+            ))}
+            <button onClick={()=>setRitualStep(1)} className="w-full mt-3 py-3 rounded-xl font-semibold text-white text-sm" style={{background:'linear-gradient(135deg,#3b82f6,#8b5cf6)'}}>Next →</button>
+          </div>
+        )}
+
+        {/* Step 1: Improve */}
+        {ritualStep===1 && (
+          <div className="bg-slate-800/60 rounded-2xl p-5 border border-slate-700 slide-up">
+            <h3 className="text-sm font-bold text-orange-400 uppercase tracking-wide mb-3">What I Will Improve</h3>
+            <textarea value={week.improvements||''} onChange={e=>updateWeek('improvements',e.target.value)} placeholder="What needs improvement this week?" rows={4} className="w-full bg-slate-700/50 border border-slate-600/50 rounded-xl p-3 text-white placeholder-slate-500 text-sm resize-none focus:border-orange-500 focus:outline-none"/>
+            <div className="flex gap-3 mt-3">
+              <button onClick={()=>setRitualStep(0)} className="px-4 py-3 bg-slate-700 rounded-xl text-white text-sm">← Back</button>
+              <button onClick={()=>setRitualStep(2)} className="flex-1 py-3 rounded-xl font-semibold text-white text-sm" style={{background:'linear-gradient(135deg,#3b82f6,#8b5cf6)'}}>Next →</button>
+            </div>
+          </div>
+        )}
+
+        {/* Step 2: Focus + Wheel */}
+        {ritualStep===2 && (
+          <div className="space-y-4 slide-up">
+            <div className="bg-slate-800/60 rounded-2xl p-5 border border-slate-700">
+              <h3 className="text-sm font-bold text-purple-400 uppercase tracking-wide mb-3">Weekly Focus</h3>
+              <input value={week.focus||''} onChange={e=>updateWeek('focus',e.target.value)} placeholder="Main theme or focus for this week" className="w-full bg-slate-700/50 border border-slate-600/50 rounded-xl p-3 text-white placeholder-slate-500 text-sm focus:border-purple-500 focus:outline-none"/>
+            </div>
+            <div className="bg-slate-800/60 rounded-2xl p-5 border border-slate-700">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-sm font-bold text-indigo-400 uppercase tracking-wide">Wheel of John</h3>
+                <span className="text-xs text-slate-400">Rate each 1–10</span>
+              </div>
+              <div className="flex justify-center mb-4"><MiniRadar scores={wheel} size={180}/></div>
+              <div className="space-y-3">
+                {CATS.map(cat=>{
+                  const val=wheel[cat.key]||5;
+                  const trend=prevWheel?val-(prevWheel[cat.key]||5):null;
+                  const sc=val<=4?'#f87171':val<=6?'#fbbf24':'#34d399';
+                  return(
+                    <div key={cat.key}>
+                      <div className="flex justify-between mb-1">
+                        <span className="text-sm font-semibold" style={{color:cat.color}}>{cat.label}</span>
+                        <div className="flex items-center gap-2">
+                          {trend!==null&&trend!==0&&<span className={`text-xs ${trend>0?'text-green-400':'text-red-400'}`}>{trend>0?`+${trend}`:trend}</span>}
+                          <span className="text-base font-bold" style={{color:sc}}>{val}</span>
+                        </div>
+                      </div>
+                      <input type="range" min="1" max="10" value={val} onChange={e=>updateWeek('wheelOfJohn',{...wheel,[cat.key]:parseInt(e.target.value)})} className="w-full h-2 rounded-lg appearance-none cursor-pointer" style={{accentColor:cat.color}}/>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+            <div className="flex gap-3">
+              <button onClick={()=>setRitualStep(1)} className="px-4 py-3 bg-slate-700 rounded-xl text-white text-sm">← Back</button>
+              <button onClick={()=>setRitualStep(3)} className="flex-1 py-3 rounded-xl font-semibold text-white text-sm" style={{background:'linear-gradient(135deg,#3b82f6,#8b5cf6)'}}>Next →</button>
+            </div>
+          </div>
+        )}
+
+        {/* Step 3: Goal Progress */}
+        {ritualStep===3 && (
+          <div className="bg-slate-800/60 rounded-2xl p-5 border border-slate-700 slide-up">
+            <h3 className="text-sm font-bold text-green-400 uppercase tracking-wide mb-1">Goal Progress</h3>
+            <p className="text-xs text-slate-400 mb-4">Update where you stand on each goal this week</p>
+            <div className="space-y-5">
+              {data.goals.map((g,i)=>{
+                if(!g.title?.trim()) return null;
+                const pct = g.completion||0;
+                const colors=['#f97316','#3b82f6','#10b981','#a855f7'];
+                const col = colors[i];
+                return (
+                  <div key={i}>
+                    <div className="flex justify-between items-center mb-2">
+                      <span className="text-sm font-semibold text-white truncate mr-4">{g.title}</span>
+                      <span className="text-lg font-black flex-shrink-0" style={{color:col}}>{pct}%</span>
+                    </div>
+                    <div className="h-3 bg-slate-700 rounded-full overflow-hidden mb-2">
+                      <div className="h-full rounded-full transition-all" style={{width:`${pct}%`,background:`linear-gradient(90deg,${col},${col}cc)`}}/>
+                    </div>
+                    <input type="range" min="0" max="100" step="5" value={pct}
+                      onChange={e=>{const newPct=parseInt(e.target.value);const gs=JSON.parse(JSON.stringify(data.goals));gs[i]={...gs[i],completion:newPct};updateField('goals',gs);const milestones=[25,50,75,100];if(milestones.includes(newPct)&&newPct>pct&&onMilestone)onMilestone({title:g.title,pct:newPct});}}
+                      className="w-full h-2 rounded-full appearance-none cursor-pointer" style={{accentColor:col}}/>
+                    <div className="flex justify-between text-xs text-slate-500 mt-1">
+                      <span>0%</span><span>50%</span><span>100%</span>
+                    </div>
+                  </div>
+                );
+              }).filter(Boolean)}
+              {!data.goals.some(g=>g.title?.trim()) && (
+                <p className="text-center text-slate-500 text-sm py-4">No goals set yet — add them in More → Vision & Goals</p>
+              )}
+            </div>
+            <div className="flex gap-3 mt-5">
+              <button onClick={()=>setRitualStep(2)} className="px-4 py-3 bg-slate-700 rounded-xl text-white text-sm">← Back</button>
+              <button onClick={()=>setRitualStep(4)} className="flex-1 py-3 rounded-xl font-semibold text-white text-sm" style={{background:'linear-gradient(135deg,#3b82f6,#8b5cf6)'}}>Next →</button>
+            </div>
+          </div>
+        )}
+
+        {/* Step 4: Priorities */}
+        {ritualStep===4 && (
+          <div className="bg-slate-800/60 rounded-2xl p-5 border border-slate-700 slide-up">
+            <h3 className="text-sm font-bold text-blue-400 uppercase tracking-wide mb-3">This Week's Priorities</h3>
+            {[0,1,2,3].map(i=>(
+              <div key={i} className="flex items-center gap-3 mb-2">
+                <span className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0" style={{background:'rgba(59,130,246,0.2)',color:'#60a5fa'}}>{i+1}</span>
+                <input value={week.goalPriorities[i]||''} onChange={e=>{const p=[...week.goalPriorities];p[i]=e.target.value;updateWeek('goalPriorities',p);}} placeholder={`Priority ${i+1}`} className="flex-1 bg-slate-700/50 border border-slate-600/50 rounded-xl p-3 text-white placeholder-slate-500 text-sm focus:border-blue-500 focus:outline-none"/>
+              </div>
+            ))}
+            <div className="flex gap-3 mt-4">
+              <button onClick={()=>setRitualStep(4)} className="px-4 py-3 bg-slate-700 rounded-xl text-white text-sm">← Back</button>
+              <button onClick={()=>{if(!isRitualComplete){alert('Fill in at least Wins, Focus, and one Priority to complete the ritual!');}else{completeRitual();}}} className="flex-1 py-3 rounded-xl font-bold text-white text-sm" style={{background:'linear-gradient(135deg,#10b981,#059669)'}}>
+                {isRitualComplete?'Week Planned ✓':'Complete Ritual'}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Habit Tracker — always visible */}
+        <div className="bg-slate-800/60 rounded-2xl p-5 border border-slate-700">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-sm font-bold text-yellow-400 uppercase tracking-wide">Habit Tracker</h3>
+            <button onClick={()=>{const a=JSON.parse(JSON.stringify(week.aActivities||[]));a.push({name:'',days:[false,false,false,false,false,false,false]});updateWeek('aActivities',a);}} className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-yellow-400 border border-yellow-500/30 hover:bg-yellow-500/10 transition-all">
+              + Add Habit
+            </button>
+          </div>
+          <div className="space-y-5">
+            {(week.aActivities||[]).map((act,ai)=>(
+              <div key={ai} className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <input value={act.name||''} onChange={e=>{const a=JSON.parse(JSON.stringify(week.aActivities||[]));a[ai]={...a[ai],name:e.target.value};updateWeek('aActivities',a);}} placeholder={`Habit ${ai+1}`} className="flex-1 bg-slate-700/50 border border-slate-600/50 rounded-xl p-3 text-white placeholder-slate-500 text-sm focus:border-yellow-500 focus:outline-none"/>
+                  <button onClick={()=>{const a=JSON.parse(JSON.stringify(week.aActivities||[]));a.splice(ai,1);updateWeek('aActivities',a);}} className="flex-shrink-0 w-8 h-8 rounded-lg text-slate-600 hover:text-red-400 hover:bg-red-500/10 transition-all flex items-center justify-center text-lg">✕</button>
+                </div>
+                {act.name && (
+                  <div className="flex justify-around">
+                    {['M','T','W','T','F','S','S'].map((d,di)=>(
+                      <button key={di} onClick={()=>{const a=JSON.parse(JSON.stringify(week.aActivities));const days=[...(a[ai].days||[false,false,false,false,false,false,false])];days[di]=!days[di];a[ai]={...a[ai],days};updateWeek('aActivities',a);}}
+                        className={`w-9 h-9 rounded-full text-xs font-bold transition-all ${(act.days||[])[di]?'text-white scale-110':'bg-slate-700/50 text-slate-500'}`}
+                        style={(act.days||[])[di]?{background:'linear-gradient(135deg,#f59e0b,#f97316)'}:{}}>
+                        {d}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
+            {(week.aActivities||[]).length === 0 && (
+              <p className="text-center text-slate-500 text-sm py-2">No habits yet — tap Add Habit to get started</p>
+            )}
+          </div>
+        </div>
+
+        {/* Messes */}
+        <div className="bg-slate-800/60 rounded-2xl p-5 border border-slate-700">
+          <h3 className="text-sm font-bold text-red-400 uppercase tracking-wide mb-3">Messes to Clean Up</h3>
+          {[0,1,2].map(mi=>{
+            const mess=(week.messes||[])[mi]||{description:'',nextSteps:'',byWhen:'',completed:false};
+            const upd=(f,v)=>{const m=JSON.parse(JSON.stringify(week.messes||[{},{},{}]));m[mi]={...m[mi],[f]:v};updateWeek('messes',m);};
+            return(
+              <div key={mi} className="mb-3 pb-3 border-b border-slate-700 last:border-0">
+                <div className="flex gap-2 mb-2">
+                  <input value={mess.description||''} onChange={e=>upd('description',e.target.value)} placeholder={`Mess ${mi+1}`} className="flex-1 bg-slate-700/50 border border-slate-600/50 rounded-xl p-2 text-white placeholder-slate-500 text-sm focus:outline-none"/>
+                  <button onClick={()=>upd('completed',!mess.completed)} className={`w-10 h-10 rounded-xl flex items-center justify-center border transition-all flex-shrink-0 ${mess.completed?'border-green-500 bg-green-500/20 text-green-400':'border-slate-600 text-slate-500'}`}><CheckIcon/></button>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <input value={mess.nextSteps||''} onChange={e=>upd('nextSteps',e.target.value)} placeholder="Next step" className="bg-slate-700/50 border border-slate-600/50 rounded-lg p-2 text-white placeholder-slate-500 text-xs focus:outline-none"/>
+                  <input type="date" value={mess.byWhen||''} onChange={e=>upd('byWhen',e.target.value)} className="bg-slate-700/50 border border-slate-600/50 rounded-lg p-2 text-white text-xs focus:outline-none"/>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
+
+  // ── ANVIL SCOREBOARD ──────────────────────────────────────────────────────
+  const AnvilScoreboard = ({ anvilData }) => {
+    const log = anvilData?.log || [];
+    const project = anvilData?.project || 'Anvil';
+    const cadenceStr = (anvilData?.cadence || '').toLowerCase();
+
+    // Parse cadence target
+    const parseCadence = () => {
+      if (!cadenceStr) return null;
+      if (cadenceStr.includes('daily') || cadenceStr.includes('7x') || cadenceStr.includes('every day')) return 7;
+      const m = cadenceStr.match(/(\d+)x/);
+      if (m) return parseInt(m[1]);
+      if (cadenceStr.includes('5') || cadenceStr.includes('five')) return 5;
+      if (cadenceStr.includes('3') || cadenceStr.includes('three')) return 3;
+      if (cadenceStr.includes('4') || cadenceStr.includes('four')) return 4;
+      if (cadenceStr.includes('2') || cadenceStr.includes('twice') || cadenceStr.includes('two')) return 2;
+      return null;
+    };
+    const cadenceTarget = parseCadence();
+
+    // Build a set of logged date strings (YYYY-MM-DD) in local time
+    const loggedDates = new Set(log.map(e => {
+      const d = new Date(e.date);
+      return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    }));
+    const dateKey = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    const isLogged = d => loggedDates.has(dateKey(d));
+
+    // Current streak
+    const today = new Date(); today.setHours(0,0,0,0);
+    let streak = 0;
+    const sortedUnique = [...new Set(log.map(e => { const d = new Date(e.date); d.setHours(0,0,0,0); return d.toDateString(); }))].map(s => new Date(s)).sort((a,b) => b-a);
+    for (let i = 0; i < sortedUnique.length; i++) {
+      const exp = new Date(today); exp.setDate(today.getDate() - i);
+      if (sortedUnique[i].toDateString() === exp.toDateString()) streak++;
+      else break;
+    }
+
+    // This week (Mon–Sun)
+    const weekStart = new Date(today);
+    weekStart.setDate(today.getDate() - ((today.getDay() + 6) % 7));
+    const weekDays = Array(7).fill(null).map((_, i) => { const d = new Date(weekStart); d.setDate(weekStart.getDate() + i); return d; });
+    const weekHits = weekDays.filter(d => isLogged(d)).length;
+
+    // Last 35 days (5 weeks × 7) — start from 34 days ago to today
+    const gridStart = new Date(today); gridStart.setDate(today.getDate() - 34);
+    // align to Monday
+    const dayOfWeek = (gridStart.getDay() + 6) % 7;
+    gridStart.setDate(gridStart.getDate() - dayOfWeek);
+    const grid = Array(35).fill(null).map((_, i) => { const d = new Date(gridStart); d.setDate(gridStart.getDate() + i); return d; });
+    const monthHits = grid.filter(d => isLogged(d) && d <= today).length;
+
+    // Best week
+    let bestWeek = 0;
+    for (let w = 0; w < 5; w++) {
+      const wHits = grid.slice(w*7, w*7+7).filter(d => isLogged(d) && d <= today).length;
+      if (wHits > bestWeek) bestWeek = wHits;
+    }
+
+    const dayLabels = ['M','T','W','T','F','S','S'];
+    const hitColor = '#f97316';
+    const missColor = 'rgba(30,41,59,0.8)';
+    const futureColor = 'rgba(15,23,42,0.4)';
+
+    return (
+      <div className="bg-slate-800/60 rounded-2xl p-5 border border-slate-700">
+        {/* Header */}
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h3 className="text-sm font-bold text-orange-400 uppercase tracking-wide">🔨 Anvil Scoreboard</h3>
+            {project && <p className="text-xs text-slate-400 mt-0.5 truncate max-w-[180px]">{project}</p>}
+          </div>
+          <div className="flex items-center gap-1.5 bg-slate-700/60 rounded-xl px-3 py-2">
+            <span className="text-xl">🔥</span>
+            <div>
+              <p className="text-xl font-black text-white leading-none">{streak}</p>
+              <p className="text-xs text-slate-400">streak</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Stats Row */}
+        <div className="grid grid-cols-3 gap-2 mb-5">
+          {[
+            { label: 'This Week', value: cadenceTarget ? `${weekHits}/${cadenceTarget}` : `${weekHits}`, sub: 'sessions', color: weekHits >= (cadenceTarget||1) ? '#10b981' : weekHits > 0 ? '#f59e0b' : '#ef4444' },
+            { label: 'Last 35 Days', value: monthHits, sub: 'sessions', color: '#f97316' },
+            { label: 'Best Week', value: bestWeek, sub: 'sessions', color: '#a855f7' },
+          ].map(s => (
+            <div key={s.label} className="bg-slate-700/40 rounded-xl p-3 text-center">
+              <p className="text-xs text-slate-400 mb-1">{s.label}</p>
+              <p className="text-2xl font-black leading-none" style={{ color: s.color }}>{s.value}</p>
+              <p className="text-xs text-slate-500 mt-1">{s.sub}</p>
+            </div>
+          ))}
+        </div>
+
+        {/* This Week Strip */}
+        <div className="mb-5">
+          <p className="text-xs text-slate-400 font-semibold mb-2 uppercase tracking-wide">This Week</p>
+          <div className="flex gap-2">
+            {weekDays.map((d, i) => {
+              const hit = isLogged(d);
+              const isFuture = d > today;
+              const isToday = d.toDateString() === today.toDateString();
+              return (
+                <div key={i} className="flex-1 flex flex-col items-center gap-1">
+                  <span className="text-xs text-slate-500">{dayLabels[i]}</span>
+                  <div className="w-full aspect-square rounded-lg flex items-center justify-center text-xs font-bold transition-all"
+                    style={{
+                      background: isFuture ? futureColor : hit ? 'linear-gradient(135deg,#f97316,#ef4444)' : missColor,
+                      border: isToday ? '2px solid #f97316' : '1px solid rgba(51,65,85,0.4)',
+                      color: hit ? 'white' : isFuture ? '#334155' : '#475569',
+                    }}>
+                    {isFuture ? '' : hit ? '✓' : d.getDate()}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          {cadenceTarget && (
+            <div className="mt-2 h-1.5 rounded-full bg-slate-700 overflow-hidden">
+              <div className="h-full rounded-full transition-all" style={{ width: `${Math.min(weekHits/cadenceTarget,1)*100}%`, background: weekHits >= cadenceTarget ? 'linear-gradient(90deg,#10b981,#059669)' : 'linear-gradient(90deg,#f97316,#ef4444)' }}/>
+            </div>
+          )}
+        </div>
+
+        {/* 5-Week Heatmap */}
+        <div>
+          <p className="text-xs text-slate-400 font-semibold mb-2 uppercase tracking-wide">35-Day Heatmap</p>
+          <div className="flex gap-1 mb-1">
+            {dayLabels.map((l,i) => <div key={i} className="flex-1 text-center text-xs text-slate-600">{l}</div>)}
+          </div>
+          <div className="space-y-1">
+            {[0,1,2,3,4].map(week => (
+              <div key={week} className="flex gap-1">
+                {grid.slice(week*7, week*7+7).map((d, di) => {
+                  const hit = isLogged(d);
+                  const isFuture = d > today;
+                  const isToday = d.toDateString() === today.toDateString();
+                  const intensity = hit ? 1 : 0;
+                  return (
+                    <div key={di} className="flex-1 rounded-md transition-all"
+                      style={{
+                        aspectRatio: '1',
+                        background: isFuture ? futureColor : hit ? 'linear-gradient(135deg,#f97316,#ef4444)' : missColor,
+                        border: isToday ? '1.5px solid #f97316' : '1px solid rgba(51,65,85,0.3)',
+                        opacity: isFuture ? 0.3 : 1,
+                      }}
+                      title={`${d.toLocaleDateString('en-US',{month:'short',day:'numeric'})}: ${hit?'Logged':'Not logged'}`}
+                    />
+                  );
+                })}
+              </div>
+            ))}
+          </div>
+          <div className="flex items-center gap-2 mt-2 justify-end">
+            <span className="text-xs text-slate-500">Miss</span>
+            <div className="w-3 h-3 rounded-sm" style={{ background: missColor, border: '1px solid rgba(51,65,85,0.4)' }}/>
+            <div className="w-3 h-3 rounded-sm" style={{ background: 'linear-gradient(135deg,#f97316,#ef4444)' }}/>
+            <span className="text-xs text-slate-500">Hit</span>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // ── SCORE VIEW ─────────────────────────────────────────────────────────────
+  const ScoreView = ({ data, updateField, weekNum, setWeekNum, setActiveTab, openCoach, onPrint, onMilestone }) => {
+    const score = calcSEAScore(data, weekNum-1);
+    const wheel = data.weeks[weekNum-1].wheelOfJohn||{family:5,fun:5,fitness:5,finance:5,faith:5};
+
+    const TROPHIES = [
+      // Foundation
+      {id:'first-week',icon:'🎯',title:'Foundation Built',desc:'Completed your first weekly ritual',check:()=>data.weeks.some(w=>w.wins.some(x=>x.trim())&&w.focus?.trim())},
+      {id:'goals-set',icon:'🏹',title:'Goal Setter',desc:'All 4 goals defined with measurements',check:()=>data.goals.filter(g=>g.title?.trim()&&g.measurement?.trim()).length>=3},
+      {id:'5-weeks',icon:'📅',title:'5-Week Warrior',desc:'Planned 5 or more weeks',check:()=>data.weeks.filter(w=>w.wins.some(x=>x.trim())||w.focus?.trim()).length>=5},
+      {id:'10-weeks',icon:'🗓️',title:'10-Week Warrior',desc:'Planned 10 or more weeks',check:()=>data.weeks.filter(w=>w.wins.some(x=>x.trim())||w.focus?.trim()).length>=10},
+      // Anvil
+      {id:'anvil-7',icon:'🔥',title:'7-Day Streak',desc:'Kept the Anvil going for 7 consecutive days',check:()=>{const log=data.anvilProject?.log||[];if(!log.length)return false;const now=new Date();now.setHours(0,0,0,0);const u=[...new Set(log.map(e=>{const d=new Date(e.date);d.setHours(0,0,0,0);return d.toDateString()}))].map(s=>new Date(s)).sort((a,b)=>b-a);let str=0;for(let i=0;i<u.length;i++){const exp=new Date(now);exp.setDate(now.getDate()-i);if(u[i].toDateString()===exp.toDateString())str++;else break;}return str>=7;}},
+      {id:'anvil-21',icon:'🔥🔥',title:'21-Day Streak',desc:'Kept the Anvil going for 21 consecutive days',check:()=>{const log=data.anvilProject?.log||[];if(!log.length)return false;const now=new Date();now.setHours(0,0,0,0);const u=[...new Set(log.map(e=>{const d=new Date(e.date);d.setHours(0,0,0,0);return d.toDateString()}))].map(s=>new Date(s)).sort((a,b)=>b-a);let str=0;for(let i=0;i<u.length;i++){const exp=new Date(now);exp.setDate(now.getDate()-i);if(u[i].toDateString()===exp.toDateString())str++;else break;}return str>=21;}},
+      {id:'anvil-30',icon:'💎',title:'30-Day Legend',desc:'30 consecutive days on your Anvil',check:()=>{const log=data.anvilProject?.log||[];if(!log.length)return false;const now=new Date();now.setHours(0,0,0,0);const u=[...new Set(log.map(e=>{const d=new Date(e.date);d.setHours(0,0,0,0);return d.toDateString()}))].map(s=>new Date(s)).sort((a,b)=>b-a);let str=0;for(let i=0;i<u.length;i++){const exp=new Date(now);exp.setDate(now.getDate()-i);if(u[i].toDateString()===exp.toDateString())str++;else break;}return str>=30;}},
+      {id:'anvil-50',icon:'🏔️',title:'50 Sessions',desc:'Logged 50 Anvil sessions',check:()=>(data.anvilProject?.log||[]).length>=50},
+      // Scoring
+      {id:'score-80',icon:'⭐',title:'S.E.A. Excellence',desc:'Scored 80+ in a week',check:()=>score.total>=80},
+      {id:'score-90',icon:'🌟',title:'S.E.A. Elite',desc:'Scored 90+ in a week',check:()=>score.total>=90},
+      {id:'score-100',icon:'🏆',title:'Perfect Score',desc:'Scored 100 — flawless execution',check:()=>score.total>=100},
+      // Habits
+      {id:'habit-full',icon:'💪',title:'Perfect Week',desc:'100% habit completion in any week',check:()=>data.weeks.some(w=>{const acts=(w.aActivities||[]).filter(a=>a.name?.trim());return acts.length>0&&acts.every(a=>(a.days||[]).filter(Boolean).length===7);})},
+      {id:'habit-5',icon:'🔄',title:'Habit Builder',desc:'Tracking 5 or more habits',check:()=>data.weeks.some(w=>(w.aActivities||[]).filter(a=>a.name?.trim()).length>=5)},
+      // Wheel
+      {id:'wheel-8',icon:'⚖️',title:'Wheel Balance',desc:'Averaged 8+ on the Wheel of John',check:()=>data.weeks.some(w=>w.wheelOfJohn&&Object.values(w.wheelOfJohn).reduce((a,b)=>a+(b||5),0)/5>=8)},
+      // Goals
+      {id:'goal-25',icon:'🌱',title:'First Step',desc:'Hit 25% on any goal',check:()=>data.goals.some(g=>g.title?.trim()&&(g.completion||0)>=25)},
+      {id:'goal-50',icon:'🚀',title:'Halfway There',desc:'Hit 50% on any goal',check:()=>data.goals.some(g=>g.title?.trim()&&(g.completion||0)>=50)},
+      {id:'goal-100',icon:'🎉',title:'Goal Achieved!',desc:'Hit 100% on any goal',check:()=>data.goals.some(g=>g.title?.trim()&&(g.completion||0)>=100)},
+      // Reflection & Notes
+      {id:'notes-10',icon:'📝',title:'Reflective Leader',desc:'Written 10 or more journal notes',check:()=>(data.notes||[]).length>=10},
+      {id:'reflection-7',icon:'🧘',title:'Deep Thinker',desc:'Answered the reflection prompt 7 days',check:()=>data.dailyPlans.flat().filter(d=>d?.reflection?.trim()).length>=7},
+      // Sharing
+      {id:'sharer',icon:'🤝',title:'Accountability Partner',desc:'Shared your score with someone',check:()=>!!localStorage.getItem('share-used')},
+    ];
+
+    const COMPONENTS = [
+      {label:'Habit Completion',value:score.habitPct+'%',max:30,earned:Math.round(score.habitPct*0.3),color:'#f59e0b'},
+      {label:'Anvil Streak',value:score.anvilStreak+' days',max:25,earned:Math.round(Math.min(score.anvilStreak/30,1)*25),color:'#f97316'},
+      {label:'Wheel Average',value:score.wheelAvg,max:20,earned:Math.round((parseFloat(score.wheelAvg)/10)*20),color:'#6366f1'},
+      {label:'Weekly Ritual',value:score.ritualDone?'Done':'Not done',max:15,earned:score.ritualDone?15:0,color:'#10b981'},
+      {label:'Goal Progress',value:score.goalAvg+'%',max:10,earned:Math.round(score.goalAvg*0.1),color:'#3b82f6'},
+    ];
+
+    const [shareCopied, setShareCopied] = useState(false);
+    const [shareUrl, setShareUrl] = useState('');
+    const [showShareModal, setShowShareModal] = useState(false);
+
+    const generateShareLink = () => {
+      const weeksWithData = data.weeks.filter(w=>w.wins?.some(x=>x.trim())||w.focus?.trim());
+      const latestWeek = weeksWithData.length > 0 ? weeksWithData[weeksWithData.length-1] : data.weeks[0];
+      const shareData = {
+        n: localStorage.getItem('summary-name') || '',
+        s: score.total,
+        as: score.anvilStreak,
+        hp: score.habitPct,
+        wa: score.wheelAvg,
+        ap: data.anvilProject?.project || '',
+        w: (latestWeek?.wins||[]).filter(x=>x.trim()),
+        g: data.goals.filter(g=>g.title?.trim()).map(g=>({t:g.title,c:g.completion||0})),
+        d: new Date().toISOString().split('T')[0]
+      };
+      const encoded = btoa(unescape(encodeURIComponent(JSON.stringify(shareData))))
+        .replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+      const url = `${window.location.origin}${window.location.pathname}?share=${encoded}`;
+      const firstName = shareData.n?.split(' ')[0] || '';
+      const shareText = `${firstName ? firstName + "'s " : ''}S.E.A. Score this week: ${score.total}/100${score.anvilStreak > 0 ? ' 🔥 ' + score.anvilStreak + ' day streak' : ''}`;
+
+      if (navigator.share) {
+        navigator.share({ title: 'My S.E.A. Dashboard Score', text: shareText, url }).catch(()=>{});
+        localStorage.setItem('share-used','true');
+      } else {
+        localStorage.setItem('share-used','true');
+        setShareUrl(url);
+        setShowShareModal(true);
+      }
+    };
+
+    return (
+      <div className="page-content px-4 py-5 space-y-5">
+        {/* Big Score */}
+        <div className="rounded-3xl p-6 text-center" style={{background:'linear-gradient(135deg,#1e1b4b,#0f172a)',border:'1px solid rgba(99,102,241,0.3)'}}>
+          <div className="flex justify-between items-center mb-1 no-print">
+            <button onClick={generateShareLink} className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-green-400 border border-green-500/30 hover:bg-green-500/10 transition-all">
+              {shareCopied ? '✓ Link Copied!' : '📤 Share Score'}
+            </button>
+            <button onClick={onPrint} className="p-2 rounded-xl bg-white/10 hover:bg-white/20 text-white/60 hover:text-white transition-all" title="Print Score"><PrintIcon/></button>
+          </div>
+          <p className="text-slate-400 text-sm mb-2">S.E.A. Score — Week {weekNum}</p>
+          <StarRating score={score.total} size={36}/>
+          <div className="text-6xl font-black text-white mt-3 mb-1">{score.total}</div>
+          <p className="text-slate-400 text-sm">out of 100</p>
+          <button onClick={()=>openCoach({section:'score',score})} className="no-print mt-4 flex items-center gap-2 mx-auto px-4 py-2 rounded-xl text-sm text-purple-300 border border-purple-500/30" style={{background:'rgba(139,92,246,0.1)'}}>
+            <BotIcon/> Talk to coach about this
+          </button>
+        </div>
+
+        {/* Week selector */}
+        <div className="flex items-center justify-between bg-slate-800/60 rounded-2xl p-3 border border-slate-700">
+          <button onClick={()=>setWeekNum(Math.max(1,weekNum-1))} disabled={weekNum===1} className="p-2 bg-slate-700 rounded-xl disabled:opacity-30"><ChevLeft/></button>
+          <span className="text-sm font-semibold text-white">Week {weekNum} of 17</span>
+          <button onClick={()=>setWeekNum(Math.min(17,weekNum+1))} disabled={weekNum===17} className="p-2 bg-slate-700 rounded-xl disabled:opacity-30"><ChevRight/></button>
+        </div>
+
+        {/* Score Components */}
+        <div className="bg-slate-800/60 rounded-2xl p-5 border border-slate-700">
+          <h3 className="text-sm font-bold text-white uppercase tracking-wide mb-4">Score Breakdown</h3>
+          <div className="space-y-3">
+            {COMPONENTS.map(c=>(
+              <div key={c.label}>
+                <div className="flex justify-between text-xs mb-1">
+                  <span className="text-slate-300">{c.label}</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-slate-400">{c.value}</span>
+                    <span className="font-bold" style={{color:c.color}}>{c.earned}/{c.max}pts</span>
+                  </div>
+                </div>
+                <div className="h-2 bg-slate-700 rounded-full overflow-hidden">
+                  <div className="h-full rounded-full transition-all" style={{width:`${(c.earned/c.max)*100}%`,backgroundColor:c.color}}/>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Anvil Scoreboard */}
+        <AnvilScoreboard anvilData={data.anvilProject}/>
+
+        {/* Wheel */}
+        <div className="bg-slate-800/60 rounded-2xl p-5 border border-slate-700">
+          <h3 className="text-sm font-bold text-indigo-400 uppercase tracking-wide mb-4">Wheel of John</h3>
+          <div className="flex justify-center"><MiniRadar scores={wheel} size={200}/></div>
+        </div>
+
+        {/* Goal Progress */}
+        <div className="bg-slate-800/60 rounded-2xl p-5 border border-slate-700">
+          <h3 className="text-sm font-bold text-orange-400 uppercase tracking-wide mb-4">Goal Progress</h3>
+          <div className="space-y-4">
+            {data.goals.map((g,i)=>{
+              if(!g.title?.trim()) return null;
+              const pct=g.completion||0;
+              const colors=['#f97316','#3b82f6','#10b981','#a855f7'];
+              const col=colors[i];
+              return(
+                <div key={i}>
+                  <div className="flex justify-between text-sm mb-1">
+                    <span className="text-slate-200 font-medium truncate mr-4">{g.title}</span>
+                    <span className="font-bold" style={{color:col}}>{pct}%</span>
+                  </div>
+                  <div className="h-3 bg-slate-700 rounded-full overflow-hidden mb-1">
+                    <div className="h-full rounded-full transition-all" style={{width:`${pct}%`,backgroundColor:col}}/>
+                  </div>
+                  <input type="range" min="0" max="100" step="5" value={pct} onChange={e=>{const newPct=parseInt(e.target.value);const gs=JSON.parse(JSON.stringify(data.goals));gs[i]={...gs[i],completion:newPct};updateField&&updateField('goals',gs);const milestones=[25,50,75,100];if(milestones.includes(newPct)&&newPct>pct&&onMilestone)onMilestone({title:g.title,pct:newPct});}} className="w-full h-1 rounded appearance-none cursor-pointer" style={{accentColor:col}}/>
+                </div>
+              );
+            }).filter(Boolean)}
+          </div>
+        </div>
+
+        {/* Week-over-Week Trend Chart */}
+        {(()=>{
+          const weeksWithData = data.weeks.map((w,i)=>({w,i,s:calcSEAScore(data,i)})).filter(({w})=>w.wins.some(x=>x.trim())||w.focus?.trim());
+          if (weeksWithData.length < 2) return null;
+          const W = 320, H = 100, pad = 24;
+          const scores = weeksWithData.map(({s})=>s.total);
+          const minS = Math.max(0, Math.min(...scores) - 10);
+          const maxS = Math.min(100, Math.max(...scores) + 10);
+          const xScale = (i) => pad + (i / (weeksWithData.length-1)) * (W - pad*2);
+          const yScale = (v) => H - pad - ((v - minS) / (maxS - minS)) * (H - pad*2);
+          const points = weeksWithData.map(({s},i) => `${xScale(i)},${yScale(s.total)}`).join(' ');
+          const areaPoints = `${xScale(0)},${H-pad} ${points} ${xScale(weeksWithData.length-1)},${H-pad}`;
+          const latestScore = scores[scores.length-1];
+          const prevScore = scores[scores.length-2];
+          const trend = latestScore - prevScore;
+          const trendColor = trend > 0 ? '#10b981' : trend < 0 ? '#ef4444' : '#94a3b8';
+          return (
+            <div className="bg-slate-800/60 rounded-2xl p-5 border border-slate-700">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-bold text-indigo-400 uppercase tracking-wide">📈 Score Trend</h3>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-bold" style={{color:trendColor}}>
+                    {trend > 0 ? `+${trend}` : trend} vs last week
+                  </span>
+                </div>
+              </div>
+              <svg width="100%" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none">
+                {/* Grid lines */}
+                {[0,25,50,75,100].filter(v=>v>=minS&&v<=maxS).map(v=>(
+                  <line key={v} x1={pad} y1={yScale(v)} x2={W-pad} y2={yScale(v)} stroke="rgba(51,65,85,0.5)" strokeWidth="1" strokeDasharray="3,3"/>
+                ))}
+                {/* Area fill */}
+                <polygon points={areaPoints} fill="rgba(99,102,241,0.12)"/>
+                {/* Line */}
+                <polyline points={points} fill="none" stroke="#6366f1" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                {/* Dots */}
+                {weeksWithData.map(({s,i:wi},i)=>{
+                  const col = s.total>=80?'#10b981':s.total>=60?'#f59e0b':s.total>=40?'#f97316':'#ef4444';
+                  return <circle key={i} cx={xScale(i)} cy={yScale(s.total)} r="4" fill={col} stroke="#0f172a" strokeWidth="1.5"/>;
+                })}
+                {/* Week labels */}
+                {weeksWithData.map(({i:wi},i)=>(
+                  <text key={i} x={xScale(i)} y={H-4} textAnchor="middle" fill="#475569" fontSize="9">W{wi+1}</text>
+                ))}
+              </svg>
+              <div className="flex gap-3 mt-2 text-xs text-slate-500">
+                <span><span className="text-green-400">●</span> 80+</span>
+                <span><span className="text-yellow-400">●</span> 60–79</span>
+                <span><span className="text-orange-400">●</span> 40–59</span>
+                <span><span className="text-red-400">●</span> &lt;40</span>
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* 17-Week Grid */}
+        <div className="bg-slate-800/60 rounded-2xl p-5 border border-slate-700">
+          <h3 className="text-sm font-bold text-slate-200 uppercase tracking-wide mb-3">17-Week Overview</h3>
+          <div className="grid grid-cols-6 gap-2">
+            {data.weeks.map((w,i)=>{
+              const s=calcSEAScore(data,i);
+              const hasData=w.wins.some(x=>x.trim())||w.focus?.trim();
+              const bg=!hasData?'#1e293b':s.total>=80?'rgba(16,185,129,0.3)':s.total>=60?'rgba(245,158,11,0.3)':s.total>=40?'rgba(249,115,22,0.3)':'rgba(239,68,68,0.3)';
+              const border=!hasData?'#334155':s.total>=80?'rgba(16,185,129,0.6)':s.total>=60?'rgba(245,158,11,0.6)':s.total>=40?'rgba(249,115,22,0.6)':'rgba(239,68,68,0.6)';
+              return(
+                <button key={i} onClick={()=>{setWeekNum(i+1);}} className="rounded-xl p-2 text-center transition-all hover:scale-105" style={{background:bg,border:`1px solid ${border}`}}>
+                  <p className="text-xs text-slate-400">W{i+1}</p>
+                  <p className="text-sm font-bold text-white">{hasData?s.stars+'★':'—'}</p>
+                </button>
+              );
+            })}
+          </div>
+          <div className="flex gap-3 mt-3 text-xs text-slate-500 flex-wrap">
+            <span><span className="text-green-400">●</span> 80+ pts</span>
+            <span><span className="text-yellow-400">●</span> 60–79</span>
+            <span><span className="text-orange-400">●</span> 40–59</span>
+            <span><span className="text-red-400">●</span> &lt;40</span>
+          </div>
+        </div>
+
+        {/* Trophy Room */}
+        <div className="bg-slate-800/60 rounded-2xl p-5 border border-slate-700">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-sm font-bold text-yellow-400 uppercase tracking-wide">🏆 Trophy Room</h3>
+            <span className="text-xs text-slate-400">{TROPHIES.filter(t=>t.check()).length} / {TROPHIES.length} earned</span>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            {TROPHIES.map(t=>{
+              const earned=t.check();
+              return(
+                <div key={t.id} className={`rounded-xl p-3 border transition-all ${earned?'border-yellow-500/40':'border-slate-700 opacity-40'}`} style={earned?{background:'rgba(245,158,11,0.1)'}:{background:'rgba(30,41,59,0.5)'}}>
+                  <div className="text-2xl mb-1">{t.icon}</div>
+                  <p className={`text-xs font-bold ${earned?'text-yellow-400':'text-slate-500'}`}>{t.title}</p>
+                  <p className="text-xs text-slate-500 mt-0.5">{t.desc}</p>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Share Modal */}
+        {showShareModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center px-5 no-print" style={{backgroundColor:'rgba(0,0,0,0.85)',backdropFilter:'blur(6px)'}} onClick={()=>setShowShareModal(false)}>
+            <div className="bg-slate-900 rounded-3xl p-6 max-w-sm w-full border border-green-500/30 pop-in" onClick={e=>e.stopPropagation()}>
+              <div className="text-center mb-5">
+                <span className="text-4xl">📤</span>
+                <h3 className="text-lg font-black text-white mt-3 mb-1">Share Your Score</h3>
+                <p className="text-xs text-slate-400">Send this link to your accountability partner</p>
+              </div>
+              <div className="bg-slate-800 rounded-2xl p-4 mb-4 border border-slate-700">
+                <p className="text-xs text-slate-500 mb-2 font-semibold uppercase tracking-wide">Your share link</p>
+                <a href={shareUrl} target="_blank" rel="noopener noreferrer"
+                  className="text-blue-400 text-sm break-all hover:text-blue-300 underline leading-relaxed">
+                  {shareUrl}
+                </a>
+              </div>
+              <button onClick={()=>{navigator.clipboard.writeText(shareUrl).then(()=>{setShareCopied(true);setTimeout(()=>{setShareCopied(false);setShowShareModal(false);},2000);});}} className="w-full py-3 rounded-2xl font-bold text-white text-sm mb-3 transition-all" style={{background:'linear-gradient(135deg,#10b981,#059669)'}}>
+                {shareCopied ? '✓ Copied!' : '📋 Copy Link'}
+              </button>
+              <button onClick={()=>setShowShareModal(false)} className="w-full py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-400 rounded-2xl text-sm transition-colors">
+                Close
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+  const MoreView = ({ data, updateField, saveData, openCoach, personality, setPersonality, onReopenOnboarding, onMilestone }) => {
+    const [section, setSection] = useState(null);
+    const [newNote, setNewNote] = useState('');
+    const [noteTitle, setNoteTitle] = useState('');
+    const [noteTag, setNoteTag] = useState('Personal');
+    const [anvilEntry, setAnvilEntry] = useState('');
+    const [anvilLogDate, setAnvilLogDate] = useState('');
+
+    const anvil = data.anvilProject||{project:'',cadence:'',why:'',log:[]};
+    const notes = data.notes||[];
+    const TAG_COLORS = {Business:'bg-blue-900/50 text-blue-300',Personal:'bg-purple-900/50 text-purple-300',Ideas:'bg-yellow-900/50 text-yellow-300',Goals:'bg-green-900/50 text-green-300',Reflection:'bg-indigo-900/50 text-indigo-300'};
+
+    const SECTIONS = [
+      {id:'vision',label:'Vision & Goals',icon:'🎯',desc:'3-year, 1-year, 120-day vision + 4 goals'},
+      {id:'anvil',label:'Anvil Project',icon:'🔨',desc:anvil.project?`"${anvil.project}" — ${(anvil.log||[]).length} sessions logged`:'Set your Anvil project'},
+      {id:'notes',label:'Notes & Journal',icon:'📝',desc:`${notes.length} note${notes.length!==1?'s':''} captured`},
+      {id:'setup',label:'Setup & Settings',icon:'⚙️',desc:'Coach personality, start date, routines'},
+    ];
+
+    if (!section) return (
+      <div className="page-content px-4 py-5 space-y-3">
+        <div className="mb-4">
+          <h2 className="text-2xl font-bold text-white">More</h2>
+          <p className="text-slate-400 text-sm">Vision, Anvil, Notes, Settings</p>
+        </div>
+        {SECTIONS.map(s=>(
+          <button key={s.id} onClick={()=>setSection(s.id)} className="w-full flex items-center gap-4 p-4 bg-slate-800/60 rounded-2xl border border-slate-700 hover:border-slate-600 transition-all text-left">
+            <span className="text-3xl">{s.icon}</span>
+            <div className="flex-1">
+              <p className="font-semibold text-white">{s.label}</p>
+              <p className="text-xs text-slate-400 mt-0.5">{s.desc}</p>
+            </div>
+            <ChevRight/>
+          </button>
+        ))}
+        <button onClick={onReopenOnboarding} className="w-full flex items-center gap-4 p-4 rounded-2xl border transition-all text-left" style={{background:'linear-gradient(135deg,rgba(59,130,246,0.1),rgba(139,92,246,0.1))',borderColor:'rgba(99,102,241,0.3)'}}>
+          <span className="text-3xl">🔄</span>
+          <div className="flex-1">
+            <p className="font-semibold text-white">Review My Setup</p>
+            <p className="text-xs text-slate-400 mt-0.5">Edit your foundation — goals, Anvil, vision & more</p>
+          </div>
+          <ChevRight/>
+        </button>
+        <button onClick={()=>window.print()} className="w-full flex items-center gap-4 p-4 bg-slate-800/60 rounded-2xl border border-slate-700 hover:border-slate-600 transition-all text-left">
+          <span className="text-3xl">🖨️</span>
+          <div className="flex-1"><p className="font-semibold text-white">Print / Save PDF</p><p className="text-xs text-slate-400 mt-0.5">Print current view</p></div>
+        </button>
+        <div className="mt-4 p-4 bg-slate-800/30 rounded-2xl border border-slate-700">
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-xs text-slate-400 font-medium">Backup</p>
+          </div>
+          <div className="flex gap-2">
+            <button onClick={()=>{const b=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=`sea-planner-${new Date().toISOString().split('T')[0]}.json`;a.click();}} className="flex-1 py-2 bg-slate-700 hover:bg-slate-600 rounded-xl text-xs text-white">📥 Export</button>
+            <button onClick={()=>{const i=document.createElement('input');i.type='file';i.accept='.json';i.onchange=e=>{const r=new FileReader();r.onload=ev=>{try{setData(JSON.parse(ev.target.result));alert('Restored!');}catch(e){alert('Error: '+e.message);}};r.readAsText(e.target.files[0]);};i.click();}} className="flex-1 py-2 bg-slate-700 hover:bg-slate-600 rounded-xl text-xs text-white">📤 Import</button>
+            <button onClick={()=>{if(confirm('Clear ALL data?')){localStorage.clear();window.location.reload();}}} className="flex-1 py-2 bg-red-900/30 hover:bg-red-900/50 rounded-xl text-xs text-red-400">🗑️ Clear</button>
+          </div>
+        </div>
+      </div>
+    );
+
+    return (
+      <div className="page-content px-4 py-5">
+        <button onClick={()=>setSection(null)} className="flex items-center gap-2 text-slate-400 hover:text-white mb-5 transition-colors">
+          <ChevLeft/><span className="text-sm">Back</span>
+        </button>
+
+        {/* Vision & Goals */}
+        {section==='vision' && (
+          <div className="space-y-5">
+            <h2 className="text-xl font-bold text-white">Vision & Goals</h2>
+            {[{k:'vision3Year',label:'3-Year Vision',color:'blue',ph:'Where are you in 3 years?'},{k:'vision1Year',label:'1-Year Vision',color:'purple',ph:'What happens this year?'},{k:'vision120Day',label:'120-Day Vision',color:'green',ph:'Who will you be in 120 days?'}].map(({k,label,color,ph})=>(
+              <div key={k} className="bg-slate-800/60 rounded-2xl p-5 border border-slate-700">
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className={`text-sm font-bold text-${color}-400 uppercase tracking-wide`}>{label}</h3>
+                  <button onClick={()=>openCoach({section:k})} className="text-xs text-purple-400 px-2 py-1 bg-purple-500/10 rounded-lg">Coach</button>
+                </div>
+                <textarea value={data[k]||''} onChange={e=>updateField(k,e.target.value)} placeholder={ph} rows={3} className="w-full bg-slate-700/50 border border-slate-600/50 rounded-xl p-3 text-white placeholder-slate-500 text-sm resize-none focus:outline-none"/>
+              </div>
+            ))}
+            <div className="space-y-3">
+              <h3 className="text-sm font-bold text-orange-400 uppercase tracking-wide">Four Goals</h3>
+              {data.goals.map((g,i)=>(
+                <div key={i} className="bg-slate-800/60 rounded-2xl p-4 border border-slate-700">
+                  <label className="text-xs text-slate-500 font-bold block mb-2">GOAL {i+1}</label>
+                  <input value={g.title||''} onChange={e=>{const gs=JSON.parse(JSON.stringify(data.goals));gs[i]={...gs[i],title:e.target.value};updateField('goals',gs);}} placeholder="Goal title" className="w-full bg-slate-700/50 border border-slate-600/50 rounded-xl p-3 text-white placeholder-slate-500 text-sm focus:outline-none mb-2"/>
+                  <input value={g.measurement||''} onChange={e=>{const gs=JSON.parse(JSON.stringify(data.goals));gs[i]={...gs[i],measurement:e.target.value};updateField('goals',gs);}} placeholder="How will you measure success?" className="w-full bg-slate-700/50 border border-slate-600/50 rounded-xl p-3 text-white placeholder-slate-500 text-sm focus:outline-none mb-2"/>
+                  <textarea value={g.impact||''} onChange={e=>{const gs=JSON.parse(JSON.stringify(data.goals));gs[i]={...gs[i],impact:e.target.value};updateField('goals',gs);}} placeholder="Why does this matter?" rows={2} className="w-full bg-slate-700/50 border border-slate-600/50 rounded-xl p-3 text-white placeholder-slate-500 text-sm resize-none focus:outline-none"/>
+                  {g.title?.trim() && (()=>{
+                    const pct=g.completion||0;
+                    const colors=['#f97316','#3b82f6','#10b981','#a855f7'];
+                    const col=colors[i];
+                    return(
+                      <div className="mt-3 pt-3 border-t border-slate-700">
+                        <div className="flex justify-between items-center mb-2">
+                          <span className="text-xs text-slate-400 font-semibold uppercase tracking-wide">Progress</span>
+                          <span className="text-sm font-black" style={{color:col}}>{pct}%</span>
+                        </div>
+                        <div className="h-2 bg-slate-700 rounded-full overflow-hidden mb-2">
+                          <div className="h-full rounded-full transition-all" style={{width:`${pct}%`,backgroundColor:col}}/>
+                        </div>
+                        <input type="range" min="0" max="100" step="5" value={pct}
+                          onChange={e=>{const newPct=parseInt(e.target.value);const gs=JSON.parse(JSON.stringify(data.goals));gs[i]={...gs[i],completion:newPct};updateField('goals',gs);const milestones=[25,50,75,100];if(milestones.includes(newPct)&&newPct>pct&&onMilestone)onMilestone({title:g.title,pct:newPct});}}
+                          className="w-full h-2 rounded-full appearance-none cursor-pointer" style={{accentColor:col}}/>
+                      </div>
+                    );
+                  })()}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Anvil */}
+        {section==='anvil' && (
+          <div className="space-y-5">
+            <div className="flex items-center justify-between">
+              <h2 className="text-xl font-bold text-white">Anvil Project</h2>
+              <button onClick={()=>openCoach({section:'anvil',anvil})} className="flex items-center gap-1 text-xs text-purple-300 px-3 py-2 rounded-xl" style={{background:'rgba(139,92,246,0.1)'}}>
+                <BotIcon/> Coach
+              </button>
+            </div>
+            <div className="grid grid-cols-3 gap-3">
+              {[{label:'Streak',val:(()=>{if(!(anvil.log||[]).length)return 0;const now=new Date();now.setHours(0,0,0,0);const u=[...new Set(anvil.log.map(e=>{const d=new Date(e.date);d.setHours(0,0,0,0);return d.toDateString();}))].map(s=>new Date(s)).sort((a,b)=>b-a);let str=0;for(let i=0;i<u.length;i++){const exp=new Date(now);exp.setDate(now.getDate()-i);if(u[i].toDateString()===exp.toDateString())str++;else break;}return str;})(),icon:'🔥',color:'#f97316'},{label:'Sessions',val:(anvil.log||[]).length,icon:'✓',color:'#10b981'},{label:'This week',val:(()=>{const now=new Date();const monday=new Date(now);monday.setDate(now.getDate()-((now.getDay()+6)%7));monday.setHours(0,0,0,0);return(anvil.log||[]).filter(e=>new Date(e.date)>=monday).length;})(),icon:'📅',color:'#3b82f6'}].map(s=>(
+                <div key={s.label} className="bg-slate-800/60 rounded-2xl p-4 border border-slate-700 text-center">
+                  <p className="text-xs text-slate-400 mb-1">{s.label}</p>
+                  <p className="text-3xl font-black" style={{color:s.color}}>{s.val}</p>
+                </div>
+              ))}
+            </div>
+            <div className="bg-slate-800/60 rounded-2xl p-5 border border-slate-700 space-y-3">
+              <div><label className="text-xs text-slate-400 block mb-1">My Anvil is...</label><input value={anvil.project||''} onChange={e=>updateField('anvilProject',{...anvil,project:e.target.value})} placeholder="e.g. Writing 500 words daily, prospecting calls..." className="w-full bg-slate-700/50 border border-slate-600/50 rounded-xl p-3 text-white placeholder-slate-500 text-sm focus:outline-none"/></div>
+              <div><label className="text-xs text-slate-400 block mb-1">Why this one?</label><textarea value={anvil.why||''} onChange={e=>updateField('anvilProject',{...anvil,why:e.target.value})} rows={2} placeholder="What makes this the most important..." className="w-full bg-slate-700/50 border border-slate-600/50 rounded-xl p-3 text-white placeholder-slate-500 text-sm resize-none focus:outline-none"/></div>
+              <div><label className="text-xs text-slate-400 block mb-1">Cadence</label><input value={anvil.cadence||''} onChange={e=>updateField('anvilProject',{...anvil,cadence:e.target.value})} placeholder="Daily, 5x/week..." className="w-full bg-slate-700/50 border border-slate-600/50 rounded-xl p-3 text-white placeholder-slate-500 text-sm focus:outline-none"/></div>
+            </div>
+            <div className="bg-slate-800/60 rounded-2xl p-5 border border-slate-700">
+              <h3 className="text-sm font-bold text-orange-400 mb-3">Log a Session</h3>
+              <div className="space-y-3">
+                <input value={anvilEntry} onChange={e=>setAnvilEntry(e.target.value)}
+                  onKeyPress={e=>{if(e.key==='Enter'&&anvilEntry.trim()){const dateToLog=anvilLogDate?new Date(anvilLogDate+'T12:00:00').toISOString():new Date().toISOString();const l=[{date:dateToLog,note:anvilEntry.trim()},...(anvil.log||[])];updateField('anvilProject',{...anvil,log:l});setAnvilEntry('');setAnvilLogDate('');}}}
+                  placeholder={anvil.project?`What did you do on "${anvil.project}"?`:'Log your session...'}
+                  className="w-full bg-slate-700/50 border border-slate-600/50 rounded-xl p-3 text-white placeholder-slate-500 text-sm focus:outline-none"/>
+                <div className="flex items-center gap-2">
+                  <label className="text-xs text-slate-400 flex-shrink-0">Date:</label>
+                  <input type="date" value={anvilLogDate} max={new Date().toISOString().split('T')[0]}
+                    onChange={e=>setAnvilLogDate(e.target.value)}
+                    className="flex-1 bg-slate-700/50 border border-slate-600/50 rounded-xl p-2 text-white text-sm focus:border-orange-500 focus:outline-none"/>
+                  <button onClick={()=>setAnvilLogDate('')} className={`text-xs px-2 py-1 rounded-lg transition-colors ${!anvilLogDate?'bg-orange-500/20 text-orange-400 font-bold':'bg-slate-700 text-slate-400 hover:text-white'}`}>Today</button>
+                </div>
+                {anvilLogDate && (
+                  <p className="text-xs text-orange-300 text-center">📅 Logging for {new Date(anvilLogDate+'T12:00:00').toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'})}</p>
+                )}
+                <button onClick={()=>{if(!anvilEntry.trim())return;const dateToLog=anvilLogDate?new Date(anvilLogDate+'T12:00:00').toISOString():new Date().toISOString();const l=[{date:dateToLog,note:anvilEntry.trim()},...(anvil.log||[])];updateField('anvilProject',{...anvil,log:l});setAnvilEntry('');setAnvilLogDate('');}} disabled={!anvilEntry.trim()} className="w-full px-4 py-3 rounded-xl font-bold text-white text-sm disabled:opacity-40 transition-all" style={{background:'linear-gradient(135deg,#f97316,#ef4444)'}}>
+                  {anvilLogDate ? 'Log for Past Date ✓' : 'Log Today ✓'}
+                </button>
+              </div>
+            </div>
+            {(anvil.log||[]).length>0&&(
+              <div className="bg-slate-800/60 rounded-2xl p-5 border border-slate-700">
+                <h3 className="text-sm font-bold text-slate-300 mb-3">Recent Sessions</h3>
+                <div className="space-y-2 max-h-64 overflow-y-auto">
+                  {(anvil.log||[]).map((e,i)=>(
+                    <div key={i} className="flex items-start gap-3 p-3 bg-slate-700/30 rounded-xl">
+                      <span className="text-green-400 text-sm mt-0.5">✓</span>
+                      <div className="flex-1"><p className="text-sm text-white">{e.note}</p><p className="text-xs text-slate-500 mt-0.5">{new Date(e.date).toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'})}</p></div>
+                      <button onClick={()=>{const l=(anvil.log||[]).filter((_,j)=>j!==i);updateField('anvilProject',{...anvil,log:l});}} className="text-slate-600 hover:text-red-400 text-xs">✕</button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Notes */}
+        {section==='notes' && (
+          <div className="space-y-4">
+            <h2 className="text-xl font-bold text-white">Notes & Journal</h2>
+            <div className="bg-slate-800/60 rounded-2xl p-5 border border-slate-700 space-y-3">
+              <input value={noteTitle} onChange={e=>setNoteTitle(e.target.value)} placeholder="Title (optional)" className="w-full bg-slate-700/50 border border-slate-600/50 rounded-xl p-3 text-white placeholder-slate-500 text-sm focus:outline-none"/>
+              <textarea value={newNote} onChange={e=>setNewNote(e.target.value)} placeholder="What's on your mind? Capture ideas, reflections, breakthroughs..." rows={4} className="w-full bg-slate-700/50 border border-slate-600/50 rounded-xl p-3 text-white placeholder-slate-500 text-sm resize-none focus:outline-none"/>
+              <div className="flex gap-2 flex-wrap">
+                {['Business','Personal','Ideas','Goals','Reflection'].map(t=>(
+                  <button key={t} onClick={()=>setNoteTag(t)} className={`px-3 py-1 rounded-full text-xs border transition-colors ${noteTag===t?TAG_COLORS[t]+' border-current':'bg-slate-700/30 text-slate-500 border-slate-600'}`}>{t}</button>
+                ))}
+              </div>
+              <button onClick={()=>{if(!newNote.trim())return;const n={id:Date.now(),title:noteTitle.trim()||'Untitled',content:newNote.trim(),tag:noteTag,date:new Date().toISOString()};updateField('notes',[n,...notes]);setNewNote('');setNoteTitle('');}} disabled={!newNote.trim()} className="w-full py-3 rounded-xl font-bold text-white text-sm disabled:opacity-40" style={{background:'linear-gradient(135deg,#10b981,#059669)'}}>Save Note</button>
+            </div>
+            <div className="space-y-3">
+              {notes.map(n=>(
+                <div key={n.id} className="bg-slate-800/60 rounded-2xl p-4 border border-slate-700">
+                  <div className="flex items-start justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <span className="font-semibold text-white text-sm">{n.title}</span>
+                      <span className={`px-2 py-0.5 rounded-full text-xs ${TAG_COLORS[n.tag]||TAG_COLORS.Personal}`}>{n.tag}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-slate-500">{new Date(n.date).toLocaleDateString('en-US',{month:'short',day:'numeric'})}</span>
+                      <button onClick={()=>updateField('notes',notes.filter(x=>x.id!==n.id))} className="text-slate-600 hover:text-red-400 text-xs">✕</button>
+                    </div>
+                  </div>
+                  <p className="text-sm text-slate-300 whitespace-pre-wrap">{n.content}</p>
+                </div>
+              ))}
+              {notes.length===0&&<div className="text-center py-8 text-slate-500"><div className="text-4xl mb-2">📝</div><p className="text-sm">No notes yet</p></div>}
+            </div>
+          </div>
+        )}
+
+        {/* Setup */}
+        {section==='setup' && (
+          <div className="space-y-5">
+            <h2 className="text-xl font-bold text-white">Setup & Settings</h2>
+            <div className="bg-slate-800/60 rounded-2xl p-5 border border-slate-700">
+              <h3 className="text-sm font-bold text-purple-400 mb-1">🎛️ Coach Personality</h3>
+              {(()=>{
+                const p = personality || {style:2,tone:2,approach:2,energy:2};
+                const DIMS = [
+                  {key:'style', label:'Style', left:'Coach', right:'Advisor', leftDesc:'Push & drive', rightDesc:'Inform & guide', color:'#3b82f6'},
+                  {key:'tone',  label:'Tone',  left:'Empathetic', right:'Direct', leftDesc:'Warmth first', rightDesc:'No fluff', color:'#a855f7'},
+                  {key:'approach', label:'Approach', left:'Accepting', right:'Challenging', leftDesc:'Meet you where you are', rightDesc:'Push harder', color:'#10b981'},
+                  {key:'energy',   label:'Energy',   left:'Calm', right:'Fired Up', leftDesc:'Steady & measured', rightDesc:'Intense & urgent', color:'#f59e0b'},
+                ];
+                const summaryWords = [
+                  p.style<=1?'Coach-Style':p.style>=3?'Advisor-Style':'Blended',
+                  p.tone<=1?'Empathetic':p.tone>=3?'Direct':'Balanced',
+                  p.approach<=1?'Accepting':p.approach>=3?'Challenging':'Supportive',
+                  p.energy<=1?'Calm':p.energy>=3?'Fired Up':'Focused',
+                ];
+                return (
+                  <div>
+                    <p className="text-xs text-slate-400 mb-4">Your coach is: <span className="text-purple-300 font-semibold">{summaryWords.join(', ')}</span></p>
+                    <div className="space-y-5">
+                      {DIMS.map(d=>(
+                        <div key={d.key}>
+                          <div className="flex justify-between items-center mb-2">
+                            <span className="text-xs font-bold text-slate-300">{d.label}</span>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <div className="text-right w-20 flex-shrink-0">
+                              <p className="text-xs font-semibold text-white">{d.left}</p>
+                              <p className="text-xs text-slate-500">{d.leftDesc}</p>
+                            </div>
+                            <input type="range" min="0" max="4" step="1" value={p[d.key]}
+                              onChange={e=>{const np={...p,[d.key]:parseInt(e.target.value)};setPersonality(np);localStorage.setItem('coach-personality',JSON.stringify(np));}}
+                              className="flex-1 h-2 rounded-full appearance-none cursor-pointer"
+                              style={{accentColor:d.color}}/>
+                            <div className="w-20 flex-shrink-0">
+                              <p className="text-xs font-semibold text-white">{d.right}</p>
+                              <p className="text-xs text-slate-500">{d.rightDesc}</p>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    <button onClick={()=>{openCoach({section:'setup',test:true});}} className="w-full mt-5 py-3 rounded-xl text-sm font-bold text-white transition-all" style={{background:'linear-gradient(135deg,#3b82f6,#8b5cf6)'}}>
+                      🎙️ Test My Coach
+                    </button>
+                  </div>
+                );
+              })()}
+            </div>
+            <div className="bg-slate-800/60 rounded-2xl p-5 border border-slate-700">
+              <h3 className="text-sm font-bold text-blue-400 mb-2">Slight Edge</h3>
+              <p className="text-xs text-slate-400 mb-3">The consistent habits that compound and give you an edge</p>
+              <textarea value={data.slightEdge||''} onChange={e=>updateField('slightEdge',e.target.value)} placeholder="e.g. Daily workout, 30 min reading, journaling, practicing guitar..." rows={3} className="w-full bg-slate-700/50 border border-slate-600/50 rounded-xl p-3 text-white placeholder-slate-500 text-sm resize-none focus:outline-none"/>
+            </div>
+            <div className="bg-slate-800/60 rounded-2xl p-5 border border-slate-700">
+              <h3 className="text-sm font-bold text-purple-400 mb-3">Year Theme</h3>
+              <input value={data.yearTheme||''} onChange={e=>updateField('yearTheme',e.target.value)} placeholder="One word or phrase for the year" className="w-full bg-slate-700/50 border border-slate-600/50 rounded-xl p-3 text-white placeholder-slate-500 text-sm focus:outline-none"/>
+            </div>
+            <div className="bg-slate-800/60 rounded-2xl p-5 border border-slate-700">
+              <h3 className="text-sm font-bold text-blue-400 mb-1">120-Day Start Date</h3>
+              <p className="text-xs text-slate-400 mb-3">Set to a Monday — unlocks real calendar dates throughout the planner</p>
+              <input type="date" value={data.startDate||''} onChange={e=>updateField('startDate',e.target.value)} className="w-full bg-slate-700/50 border border-slate-600/50 rounded-xl p-3 text-white text-sm focus:outline-none"/>
+              {data.startDate&&(()=>{const[y,m,d]=data.startDate.split('-').map(Number);const s=new Date(y,m-1,d);const dow=s.getDay();if(dow!==1){const adj=dow===0?1:8-dow;s.setDate(s.getDate()+adj);}const e=new Date(s);e.setDate(s.getDate()+119);return(<div className="mt-2 p-3 bg-slate-700/30 rounded-xl"><p className="text-xs text-slate-400">Week 1 starts: <span className="text-white font-medium">{s.toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})}</span></p><p className="text-xs text-slate-400 mt-1">Ends: <span className="text-white font-medium">{e.toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})}</span></p>{dow!==1&&<p className="text-xs text-yellow-400 mt-1">⚠️ Adjusted to nearest Monday</p>}</div>);})()}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  // ── MAIN APP ───────────────────────────────────────────────────────────────
+  const calcWeekNum = (startDate) => {
+    if (!startDate) return 1;
+    const [y,m,d] = startDate.split('-').map(Number);
+    const start = new Date(y, m-1, d);
+    const dow = start.getDay();
+    if (dow !== 1) { const adj = dow===0?1:8-dow; start.setDate(start.getDate()+adj); }
+    const now = new Date(); now.setHours(0,0,0,0);
+    const diffDays = Math.floor((now - start) / (24*60*60*1000));
+    const week = Math.floor(diffDays / 7) + 1;
+    return Math.max(1, Math.min(17, week));
+  };
+
+  const SEAPlannerApp = ({ onboardingData, onReopenOnboarding }) => {
+    const [activeTab, setActiveTab] = useState('today');
+    const [weekNum, setWeekNum]     = useState(1);
+    const [dayIdx, setDayIdx]       = useState(()=>{ const d=new Date().getDay(); return d===0?6:d-1; });
+    const [loading, setLoading]     = useState(true);
+    const [saveStatus, setSaveStatus] = useState('');
+    const [coachOpen, setCoachOpen] = useState(false);
+    const [coachCtx, setCoachCtx]   = useState(null);
+    const [coachBadge, setCoachBadge] = useState(0);
+    const [popup, setPopup]         = useState(null);
+    const [anvilModal, setAnvilModal] = useState(false);
+    const [anvilEntry, setAnvilEntry] = useState('');
+    const [anvilDate, setAnvilDate] = useState('');
+    const [milestone, setMilestone] = useState(null); // {title, pct}
+    const [coachPersonality, setCoachPersonality] = useState(()=>{try{const s=localStorage.getItem('coach-personality');return s?JSON.parse(s):{style:2,tone:2,approach:2,energy:2};}catch(e){return{style:2,tone:2,approach:2,energy:2};}});
+    const saveTimer = useRef(null);
+
+    const createDay = () => ({aActivities:['','','',''],grateful:['','',''],wins:['','',''],tomorrowPriorities:['','',''],tasks:[{text:'',done:false,reminder:''},{text:'',done:false,reminder:''},{text:'',done:false,reminder:''}],notes:'',reflection:'',hardThings:'',hardThingsCompleted:false,stillness:'',stillnessCompleted:false,study:'',studyCompleted:false,todaysWins:['','','']});
+    const createWeek = () => ({wins:['','',''],improvements:'',focus:'',goalPriorities:['','','',''],aActivities:Array(3).fill(null).map(()=>({name:'',days:[false,false,false,false,false,false,false]})),messes:Array(3).fill(null).map(()=>({description:'',nextSteps:'',byWhen:'',completed:false})),wheelOfJohn:{family:5,fun:5,fitness:5,finance:5,faith:5}});
+
+    const [data, setData] = useState({
+      slightEdge:'',yearTheme:'',vision3Year:'',vision1Year:'',vision120Day:'',
+      goals:[{title:'',impact:'',measurement:''},{title:'',impact:'',measurement:''},{title:'',impact:'',measurement:''},{title:'',impact:'',measurement:''}],
+      weekByDesign:{monday:{theme:''},tuesday:{theme:''},wednesday:{theme:''},thursday:{theme:''},friday:{theme:''}},
+      weeks:Array(17).fill(null).map(()=>createWeek()),
+      dailyPlans:Array(17).fill(null).map(()=>Array(7).fill(null).map(()=>createDay())),
+      anvilProject:{project:'',cadence:'',why:'',log:[]},
+      notes:[],startDate:''
+    });
+
+    useEffect(()=>{
+      try{const s=localStorage.getItem('sea-planner-data');if(s)setData(JSON.parse(s));}
+      catch(e){console.log('Fresh start');}
+      finally{setLoading(false);}
+    },[]);
+
+    // Auto-calculate correct week number once data is loaded
+    useEffect(()=>{
+      if (!loading && data.startDate) {
+        setWeekNum(calcWeekNum(data.startDate));
+      }
+    },[loading, data.startDate]);
+
+    useEffect(()=>{
+      if(onboardingData&&!loading){
+        setData(prev=>{
+          const nw=JSON.parse(JSON.stringify(prev.weeks));
+          if(onboardingData.wheelOfJohn)nw[0].wheelOfJohn=onboardingData.wheelOfJohn;
+          return{...prev,slightEdge:onboardingData.slightEdge||prev.slightEdge,yearTheme:onboardingData.yearTheme||prev.yearTheme,vision120Day:onboardingData.vision120Day||prev.vision120Day,goals:onboardingData.goals?.some(g=>g.title)?onboardingData.goals:prev.goals,weeks:nw,anvilProject:onboardingData.anvil?.project?{...prev.anvilProject,...onboardingData.anvil,log:prev.anvilProject?.log||[]}:prev.anvilProject,startDate:onboardingData.startDate||prev.startDate};
+        });
+        if (onboardingData.personality) {
+          setCoachPersonality(onboardingData.personality);
+          localStorage.setItem('coach-personality', JSON.stringify(onboardingData.personality));
+        }
+        if (onboardingData.apiKey) {
+          localStorage.setItem('claude-api-key', onboardingData.apiKey);
+        }
+      }
+    },[onboardingData,loading]);
+
+    const saveData = useCallback((d)=>{
+      try{localStorage.setItem('sea-planner-data',JSON.stringify(d||data));setSaveStatus('Saved ✓');setTimeout(()=>setSaveStatus(''),2000);}
+      catch(e){setSaveStatus('Error');}
+    },[data]);
+
+    useEffect(()=>{
+      if(loading)return;
+      if(saveTimer.current)clearTimeout(saveTimer.current);
+      setSaveStatus('...');
+      saveTimer.current=setTimeout(()=>saveData(data),1500);
+      return()=>clearTimeout(saveTimer.current);
+    },[data]);
+
+    const updateField = (path,value)=>{
+      setData(prev=>{
+        const n=JSON.parse(JSON.stringify(prev));
+        if(typeof path==='string'&&!path.includes('.')){n[path]=value;return n;}
+        const keys=path.split('.');let cur=n;
+        for(let i=0;i<keys.length-1;i++)cur=cur[keys[i]];
+        cur[keys[keys.length-1]]=value;
+        return n;
+      });
+    };
+
+    const openCoach=(ctx)=>{setCoachCtx(ctx);setCoachOpen(true);};
+
+    const printTab = () => {
+      window.print();
+    };
+
+    const getAnvilStreak = () => {
+      const log = data.anvilProject?.log || [];
+      if (!log.length) return 0;
+      const now = new Date(); now.setHours(0,0,0,0);
+      const unique = [...new Set(log.map(e=>{const d=new Date(e.date);d.setHours(0,0,0,0);return d.toDateString();}))]
+        .map(s=>new Date(s)).sort((a,b)=>b-a);
+      let streak = 0;
+      for (let i=0;i<unique.length;i++){const exp=new Date(now);exp.setDate(now.getDate()-i);if(unique[i].toDateString()===exp.toDateString())streak++;else break;}
+      return streak;
+    };
+
+    const logAnvil = () => {
+      if (!anvilEntry.trim()) return;
+      const dateToLog = anvilDate ? new Date(anvilDate + 'T12:00:00').toISOString() : new Date().toISOString();
+      const newLog = [{date:dateToLog,note:anvilEntry.trim()}, ...(data.anvilProject?.log||[])];
+      setData(prev=>({...prev,anvilProject:{...prev.anvilProject,log:newLog}}));
+      setAnvilEntry(''); setAnvilDate(''); setAnvilModal(false);
+    };
+
+    const loggedToday = () => {
+      const log = data.anvilProject?.log || [];
+      return log.some(e => new Date(e.date).toDateString() === new Date().toDateString());
+    };
+    const score = loading?{total:0,stars:1}:calcSEAScore(data,weekNum-1);
+
+    const TABS=[
+      {id:'today',label:'Today',Icon:SunIcon},
+      {id:'week',label:'Week',Icon:CalIcon},
+      {id:'score',label:'Score',Icon:StarIcon},
+      {id:'more',label:'More',Icon:MenuIcon},
+    ];
+
+    if(loading)return(<div className="flex items-center justify-center h-screen" style={{background:'#0f172a'}}><div className="text-center"><div className="text-4xl mb-3">🌊</div><p className="text-white font-semibold">Loading S.E.A. Dashboard...</p><p className="text-slate-400 text-sm mt-1">Getting Results Inc.</p></div></div>);
+
+    return (
+      <div className="min-h-screen" style={{background:'#0f172a'}}>
+        {/* Proactive Check-In Modal — impossible to miss */}
+        {popup&&(
+          <div className="fixed inset-0 z-50 flex items-center justify-center px-5 no-print" style={{backgroundColor:'rgba(0,0,0,0.85)',backdropFilter:'blur(6px)'}}>
+            <div className="max-w-sm w-full pop-in" style={{animation:'popIn 0.4s cubic-bezier(0.34,1.56,0.64,1)'}}>
+              {/* Pulsing glow ring */}
+              <div className="rounded-3xl p-0.5 ring-pulse" style={{background:'linear-gradient(135deg,#3b82f6,#8b5cf6,#3b82f6)',backgroundSize:'200%'}}>
+                <div className="bg-slate-900 rounded-3xl p-6">
+                  {/* Label row */}
+                  <div className="flex items-center gap-2 mb-4">
+                    <span className="text-3xl">{popup._emoji||'🤖'}</span>
+                    <div>
+                      <p className="text-xs font-black uppercase tracking-widest" style={{color:'#a78bfa'}}>{popup._label||'AI Coach'}</p>
+                      <p className="text-xs text-slate-500">{new Date().toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'})}</p>
+                    </div>
+                  </div>
+                  {/* Message */}
+                  <p className="text-white text-base leading-relaxed font-medium mb-6">{popup.content||popup}</p>
+                  {/* Actions */}
+                  <div className="space-y-2">
+                    <button onClick={()=>{setPopup(null);setCoachOpen(true);}} className="w-full py-4 rounded-2xl font-black text-white text-sm tracking-wide" style={{background:'linear-gradient(135deg,#3b82f6,#8b5cf6)'}}>
+                      💬 Reply to Coach
+                    </button>
+                    <button onClick={()=>setPopup(null)} className="w-full py-3 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white rounded-2xl text-sm transition-colors">
+                      Got it — Dismiss
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Goal Milestone Celebration */}
+        {milestone && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center px-5 no-print" style={{backgroundColor:'rgba(0,0,0,0.85)',backdropFilter:'blur(6px)'}}>
+            <div className="bg-slate-900 rounded-3xl p-8 max-w-sm w-full text-center border border-yellow-500/40 pop-in">
+              <Confetti active={true}/>
+              <div className="text-6xl mb-4">
+                {milestone.pct===100?'🏆':milestone.pct===75?'🔥':milestone.pct===50?'⭐':'🎯'}
+              </div>
+              <p className="text-xs font-bold text-yellow-400 uppercase tracking-widest mb-2">Goal Milestone!</p>
+              <h3 className="text-2xl font-black text-white mb-2">{milestone.pct}% Complete</h3>
+              <p className="text-slate-300 text-sm mb-1 font-semibold">{milestone.title}</p>
+              <p className="text-slate-400 text-xs mb-6">
+                {milestone.pct===100?'You did it! Goal achieved! 🎉':milestone.pct===75?'Three quarters done — the finish line is in sight!':milestone.pct===50?'Halfway there — keep the momentum going!':'Great start — you\'re on the board!'}
+              </p>
+              <button onClick={()=>setMilestone(null)} className="w-full py-3 rounded-2xl font-bold text-white" style={{background:'linear-gradient(135deg,#f59e0b,#f97316)'}}>
+                Let's Keep Going! →
+              </button>
+            </div>
+          </div>
+        )}
+        <AICoach isOpen={coachOpen} onClose={()=>setCoachOpen(false)} plannerData={data} currentContext={coachCtx} onUnreadChange={setCoachBadge} onProactiveMessage={setPopup} personality={coachPersonality}/>
+
+        {/* Header */}
+        <div className="sticky top-0 z-40 no-print" style={{background:'rgba(15,23,42,0.95)',backdropFilter:'blur(12px)',borderBottom:'1px solid rgba(51,65,85,0.5)'}}>
+          <div className="max-w-2xl mx-auto px-4 py-3 flex items-center justify-between">
+            <div>
+              <h1 className="font-black text-lg" style={{background:'linear-gradient(135deg,#60a5fa,#a78bfa)',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent'}}>S.E.A. Dashboard</h1>
+              <p className="text-xs text-slate-500">Getting Results Inc.</p>
+            </div>
+            <div className="flex items-center gap-2">
+              {saveStatus&&<span className="text-xs text-slate-500">{saveStatus}</span>}
+              <button onClick={()=>openCoach({section:activeTab})} className="relative p-2.5 rounded-2xl" style={{background:'linear-gradient(135deg,#3b82f6,#8b5cf6)'}}>
+                <BotIcon/>
+                {coachBadge>0&&<span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full text-xs text-white flex items-center justify-center font-bold">{coachBadge}</span>}
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Content */}
+        <div className="max-w-2xl mx-auto">
+          {activeTab==='today'&&<TodayView data={data} updateField={updateField} weekNum={weekNum} dayIdx={dayIdx} setDayIdx={setDayIdx} openCoach={openCoach} score={score} onPrint={printTab}/>}
+          {activeTab==='week'&&<WeekView data={data} updateField={updateField} weekNum={weekNum} setWeekNum={setWeekNum} openCoach={openCoach} onPrint={printTab} onMilestone={setMilestone}/>}
+          {activeTab==='score'&&<ScoreView data={data} updateField={updateField} weekNum={weekNum} setWeekNum={setWeekNum} setActiveTab={setActiveTab} openCoach={openCoach} onPrint={printTab} onMilestone={setMilestone}/>}
+          {activeTab==='more'&&<MoreView data={data} updateField={updateField} saveData={saveData} openCoach={openCoach} personality={coachPersonality} setPersonality={setCoachPersonality} onReopenOnboarding={onReopenOnboarding} onMilestone={setMilestone}/>}
+        </div>
+
+        {/* Anvil FAB */}
+        <div className="fixed z-40 no-print" style={{bottom:'90px',right:'20px'}}>
+          <button onClick={()=>setAnvilModal(true)}
+            className="w-14 h-14 rounded-full shadow-2xl flex items-center justify-center transition-all active:scale-95 relative"
+            style={{background:loggedToday()?'linear-gradient(135deg,#10b981,#059669)':'linear-gradient(135deg,#f97316,#ef4444)'}}>
+            <span className="text-2xl">&#x1F528;</span>
+            {getAnvilStreak()>0&&(
+              <span className="absolute -top-1 -right-1 min-w-5 h-5 px-1 rounded-full text-xs font-black text-white flex items-center justify-center" style={{background:'#f59e0b',fontSize:'10px'}}>
+                {getAnvilStreak()}
+              </span>
+            )}
+          </button>
+        </div>
+
+        {/* Anvil Quick-Log Modal */}
+        {anvilModal&&(
+          <div className="fixed inset-0 z-50 flex items-end justify-center no-print" style={{backgroundColor:'rgba(0,0,0,0.7)'}} onClick={()=>setAnvilModal(false)}>
+            <div className="w-full max-w-2xl bg-slate-800 rounded-t-3xl p-6 pb-10 shadow-2xl" style={{borderTop:'1px solid rgba(249,115,22,0.4)'}} onClick={e=>e.stopPropagation()}>
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-3">
+                  <span className="text-3xl">&#x1F528;</span>
+                  <div>
+                    <h3 className="font-bold text-white">{data.anvilProject?.project||'Anvil Project'}</h3>
+                    <p className="text-xs text-slate-400">
+                      {loggedToday()?'Logged today':'Not logged today'}
+                      {getAnvilStreak()>0&&<span className="ml-2 text-orange-400">&#x1F525; {getAnvilStreak()} day streak</span>}
+                    </p>
+                  </div>
+                </div>
+                <button onClick={()=>setAnvilModal(false)} className="p-2 text-slate-500 hover:text-white text-xl">x</button>
+              </div>
+              <textarea value={anvilEntry} onChange={e=>setAnvilEntry(e.target.value)}
+                placeholder={data.anvilProject?.project?'What did you work on?':'Log your anvil session...'}
+                rows={3}
+                className="w-full bg-slate-700/50 border border-slate-600/50 rounded-2xl p-4 text-white placeholder-slate-500 text-sm resize-none focus:border-orange-500 focus:outline-none mb-3"/>
+              <div className="flex items-center gap-2 mb-4">
+                <label className="text-xs text-slate-400 flex-shrink-0">Date:</label>
+                <input type="date" value={anvilDate} max={new Date().toISOString().split('T')[0]}
+                  onChange={e=>setAnvilDate(e.target.value)}
+                  className="flex-1 bg-slate-700/50 border border-slate-600/50 rounded-xl p-2 text-white text-sm focus:border-orange-500 focus:outline-none"/>
+                <button onClick={()=>setAnvilDate('')} className={`text-xs px-2 py-1 rounded-lg transition-colors ${!anvilDate?'bg-orange-500/20 text-orange-400 font-bold':'bg-slate-700 text-slate-400 hover:text-white'}`}>Today</button>
+              </div>
+              {anvilDate && (
+                <p className="text-xs text-orange-300 mb-3 text-center">📅 Logging for {new Date(anvilDate+'T12:00:00').toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'})}</p>
+              )}
+              <button onClick={logAnvil} disabled={!anvilEntry.trim()}
+                className="w-full py-4 rounded-2xl font-bold text-white text-base disabled:opacity-40 transition-all"
+                style={{background:'linear-gradient(135deg,#f97316,#ef4444)'}}>
+                {anvilDate ? 'Log for Past Date ✓' : 'Log Anvil ✓'}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Bottom Nav */}
+        <div className="fixed bottom-0 left-0 right-0 z-40 no-print" style={{background:'rgba(15,23,42,0.97)',backdropFilter:'blur(16px)',borderTop:'1px solid rgba(51,65,85,0.5)'}}>
+          <div className="max-w-2xl mx-auto flex">
+            {TABS.map(({id,label,Icon})=>{
+              const active=activeTab===id;
+              return(
+                <button key={id} onClick={()=>setActiveTab(id)} className="flex-1 flex flex-col items-center py-3 gap-1 transition-all" style={active?{color:'#60a5fa'}:{color:'#475569'}}>
+                  <Icon/>
+                  <span className="text-xs font-medium">{label}</span>
+                  {active&&<div className="w-1 h-1 rounded-full bg-blue-400"/>}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // ── SHARE VIEW ─────────────────────────────────────────────────────────────
+  const ShareView = ({ shareData }) => {
+    const name = shareData.name || shareData.n || '';
+    const score = shareData.score || shareData.s || 0;
+    const anvilStreak = shareData.anvilStreak ?? shareData.as ?? 0;
+    const habitPct = shareData.habitPct ?? shareData.hp ?? 0;
+    const wheelAvg = shareData.wheelAvg || shareData.wa || '0';
+    const anvilProject = shareData.anvilProject || shareData.ap || '';
+    const wins = shareData.wins || shareData.w || [];
+    const goals = (shareData.goals || shareData.g || []).map(g=>({
+      title: g.title || g.t || '',
+      completion: g.completion ?? g.c ?? 0
+    }));
+    const sharedAt = shareData.sharedAt || shareData.d || '';
+    const scoreColor = score >= 80 ? '#10b981' : score >= 60 ? '#f59e0b' : score >= 40 ? '#f97316' : '#ef4444';
+    const stars = score >= 80 ? 5 : score >= 60 ? 4 : score >= 40 ? 3 : score >= 20 ? 2 : 1;
+    const goalColors = ['#f97316','#3b82f6','#10b981','#a855f7'];
+    const sharedDate = sharedAt ? new Date(sharedAt).toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'}) : '';
+    return (
+      <div className="min-h-screen px-4 py-8 max-w-lg mx-auto space-y-5" style={{background:'#0f172a'}}>
+        {/* Header */}
+        <div className="text-center mb-2">
+          <h1 className="font-black text-2xl mb-1" style={{background:'linear-gradient(135deg,#60a5fa,#a78bfa)',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent'}}>S.E.A. Dashboard</h1>
+          <p className="text-slate-400 text-xs">Getting Results Inc.</p>
+          {sharedDate && <p className="text-slate-500 text-xs mt-1">Shared on {sharedDate}</p>}
+        </div>
+
+        {/* Name + Score */}
+        <div className="rounded-3xl p-6 text-center" style={{background:'linear-gradient(135deg,#1e1b4b,#0f172a)',border:`1px solid ${scoreColor}40`}}>
+          {name && <p className="text-slate-300 text-sm font-semibold mb-3">{name}'s Weekly Score</p>}
+          <StarRating score={score} size={32}/>
+          <div className="text-6xl font-black mt-3 mb-1" style={{color:scoreColor}}>{score}</div>
+          <p className="text-slate-400 text-sm">out of 100</p>
+        </div>
+
+        {/* Stats Row */}
+        <div className="grid grid-cols-3 gap-3">
+          {[
+            {label:'Anvil Streak', value:anvilStreak, suffix:'days', icon:'🔥', color:'#f97316'},
+            {label:'Habit Rate',   value:habitPct+'%', suffix:'done', icon:'💪', color:'#f59e0b'},
+            {label:'Wheel Avg',    value:wheelAvg,     suffix:'/10',  icon:'⚖️', color:'#6366f1'},
+          ].map(s=>(
+            <div key={s.label} className="bg-slate-800/60 rounded-2xl p-4 text-center border border-slate-700">
+              <p className="text-xs text-slate-400 mb-1">{s.label}</p>
+              <p className="text-xl font-black" style={{color:s.color}}>{s.value}</p>
+              <p className="text-xs text-slate-500">{s.suffix}</p>
+            </div>
+          ))}
+        </div>
+
+        {/* Anvil */}
+        {anvilProject && (
+          <div className="bg-slate-800/60 rounded-2xl p-4 border border-slate-700 flex items-center gap-3">
+            <span className="text-2xl">🔨</span>
+            <div>
+              <p className="text-xs text-orange-400 font-bold uppercase tracking-wide mb-0.5">Anvil Project</p>
+              <p className="text-white text-sm font-semibold">{anvilProject}</p>
+              <p className="text-slate-400 text-xs">{anvilStreak} day streak</p>
+            </div>
+          </div>
+        )}
+
+        {/* Wins */}
+        {wins?.length > 0 && (
+          <div className="bg-slate-800/60 rounded-2xl p-5 border border-slate-700">
+            <h3 className="text-xs font-bold text-green-400 uppercase tracking-wide mb-3">This Week's Wins</h3>
+            <div className="space-y-2">
+              {wins.map((w,i)=>(
+                <div key={i} className="flex items-start gap-3">
+                  <span className="text-green-400 font-bold text-sm flex-shrink-0">✓</span>
+                  <p className="text-sm text-slate-200">{w}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Goals */}
+        {goals?.filter(g=>g.title).length > 0 && (
+          <div className="bg-slate-800/60 rounded-2xl p-5 border border-slate-700">
+            <h3 className="text-xs font-bold text-orange-400 uppercase tracking-wide mb-4">Goal Progress</h3>
+            <div className="space-y-4">
+              {goals.filter(g=>g.title).map((g,i)=>{
+                const col = goalColors[i%4];
+                return (
+                  <div key={i}>
+                    <div className="flex justify-between items-center mb-1">
+                      <span className="text-sm text-white font-medium truncate mr-4">{g.title}</span>
+                      <span className="text-sm font-bold flex-shrink-0" style={{color:col}}>{g.completion||0}%</span>
+                    </div>
+                    <div className="h-2 bg-slate-700 rounded-full overflow-hidden">
+                      <div className="h-full rounded-full" style={{width:`${g.completion||0}%`,backgroundColor:col}}/>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Footer */}
+        <div className="text-center py-4">
+          <p className="text-xs text-slate-500 mb-3">This is a read-only snapshot shared from the S.E.A. Dashboard</p>
+          <a href={window.location.pathname} className="inline-block px-5 py-2.5 rounded-xl text-sm font-bold text-white" style={{background:'linear-gradient(135deg,#3b82f6,#8b5cf6)'}}>
+            Open My S.E.A. Dashboard →
+          </a>
+        </div>
+      </div>
+    );
+  };
+
+  // ── APP ROOT ───────────────────────────────────────────────────────────────
+  const AppRoot = () => {
+    // Check for share link first
+    const urlParams = new URLSearchParams(window.location.search);
+    const shareParam = urlParams.get('share');
+    if (shareParam) {
+      try {
+        const padded = shareParam.replace(/-/g,'+').replace(/_/g,'/');
+        const shareData = JSON.parse(decodeURIComponent(escape(atob(padded))));
+        return <ShareView shareData={shareData}/>;
+      } catch(e) {
+        // Bad share link — fall through to normal app
+      }
+    }
+
+    const [onboardingDone, setOnboardingDone] = useState(false);
+    const [onboardingData, setOnboardingData] = useState(null);
+    const [showingOnboarding, setShowingOnboarding] = useState(false);
+    const hasData = ()=>{try{const s=localStorage.getItem('sea-planner-data');if(!s)return false;const p=JSON.parse(s);return!!(p.slightEdge||p.goals?.some(g=>g.title));}catch(e){return false;}};
+    const [showOnboarding] = useState(()=>!hasData());
+
+    const getExistingData = () => {
+      try {
+        const s = localStorage.getItem('sea-planner-data');
+        const p = s ? JSON.parse(s) : {};
+        const pers = localStorage.getItem('coach-personality');
+        return {
+          slightEdge: p.slightEdge||'', yearTheme: p.yearTheme||'',
+          vision120Day: p.vision120Day||'', startDate: p.startDate||'',
+          goals: p.goals||[{title:'',impact:'',measurement:''},{title:'',impact:'',measurement:''},{title:'',impact:'',measurement:''},{title:'',impact:'',measurement:''}],
+          wheelOfJohn: p.weeks?.[0]?.wheelOfJohn||{family:5,fun:5,fitness:5,finance:5,faith:5},
+          anvil: p.anvilProject ? {project:p.anvilProject.project||'',cadence:p.anvilProject.cadence||'',why:p.anvilProject.why||''} : {project:'',cadence:'',why:''},
+          personality: pers ? JSON.parse(pers) : {style:2,tone:2,approach:2,energy:2},
+          apiKey: localStorage.getItem('claude-api-key')||''
+        };
+      } catch(e) { return {slightEdge:'',yearTheme:'',vision120Day:'',startDate:'',goals:[{title:'',impact:'',measurement:''},{title:'',impact:'',measurement:''},{title:'',impact:'',measurement:''},{title:'',impact:'',measurement:''}],anvil:{project:'',cadence:'',why:''},personality:{style:2,tone:2,approach:2,energy:2}}; }
+    };
+
+    const handleOnboardingComplete = (d) => { setOnboardingData(d); setOnboardingDone(true); setShowingOnboarding(false); };
+    const handleReopenOnboarding = () => setShowingOnboarding(true);
+
+    if ((showOnboarding && !onboardingDone) || showingOnboarding) {
+      return <OnboardingFlow onComplete={handleOnboardingComplete} initialData={getExistingData()}/>;
+    }
+    return <SEAPlannerApp onboardingData={onboardingData} onReopenOnboarding={handleReopenOnboarding}/>;
+  };
+
+  ReactDOM.render(<AppRoot/>, document.getElementById('root'));
+</script>
+</body>
+</html>
