@@ -15,7 +15,11 @@
     body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0f172a; color: white; overscroll-behavior: none; }
     .chat-messages::-webkit-scrollbar { width: 4px; }
     .chat-messages::-webkit-scrollbar-thumb { background: #475569; border-radius: 2px; }
-    .page-content { padding-bottom: 110px; }
+    .page-content { padding-bottom: 48px; }
+    :root { --safe-bottom: env(safe-area-inset-bottom, 0px); --modal-bottom: max(24px, env(safe-area-inset-bottom, 24px)); --sheet-bottom: max(32px, calc(16px + env(safe-area-inset-bottom, 0px))); }
+    .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    .no-scrollbar::-webkit-scrollbar { display: none; }
+    .content-scroll { position: fixed; top: 58px; bottom: calc(64px + env(safe-area-inset-bottom, 0px)); left: 0; right: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; }
     input, textarea, select { font-size: 16px !important; }
     @keyframes popIn { 0% { transform: scale(0.8); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
     @keyframes slideUp { 0% { transform: translateY(20px); opacity: 0; } 100% { transform: translateY(0); opacity: 1; } }
@@ -26,9 +30,10 @@
     .ring-pulse { animation: pulse-ring 2s ease-in-out infinite; }
     .confetti-piece { position: fixed; top: -20px; width: 10px; height: 10px; animation: confetti-fall 3s ease-in forwards; z-index: 9999; pointer-events: none; border-radius: 2px; }
     @media (max-width: 768px) {
-      .coach-panel { position: fixed; bottom: 0; left: 0; right: 0; max-height: 85vh; max-height: 85dvh; border-top-left-radius: 1.5rem; border-top-right-radius: 1.5rem; z-index: 60; padding-bottom: env(safe-area-inset-bottom, 0px); transition: bottom 0.15s ease, max-height 0.15s ease; }
+      .coach-panel { position: fixed; bottom: 0; left: 0; right: 0; max-height: 85dvh; border-top-left-radius: 1.5rem; border-top-right-radius: 1.5rem; z-index: 60; transition: bottom 0.2s ease, max-height 0.2s ease; display: flex; flex-direction: column; }
       .coach-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 55; }
-      .coach-input-bar { padding-bottom: max(1rem, env(safe-area-inset-bottom, 1rem)); }
+      .coach-input-bar { padding-bottom: max(1rem, env(safe-area-inset-bottom, 1rem)); flex-shrink: 0; }
+      .coach-messages { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; }
     }
     @media (min-width: 769px) {
       .coach-panel { position: fixed; right: 0; top: 0; height: 100vh; width: 400px; border-left: 1px solid #334155; z-index: 60; }
@@ -43,6 +48,7 @@
 
       /* Remove sticky/fixed positioning */
       .sticky, [style*="position: fixed"], [style*="position:fixed"] { position: static !important; }
+      .content-scroll { position: static !important; overflow: visible !important; height: auto !important; }
 
       /* Content area — full width, no bottom padding */
       .page-content { padding-bottom: 0 !important; }
@@ -116,6 +122,7 @@
   const FireIcon   = () => <span style={{fontSize:'28px'}}>🔥</span>;
   const TrophyIcon = () => <span style={{fontSize:'24px'}}>🏆</span>;
   const PrintIcon  = () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>;
+  const JournalIcon = () => <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>;
 
   // ── Confetti ───────────────────────────────────────────────────────────────
   const Confetti = ({ active }) => {
@@ -181,25 +188,69 @@
   };
 
   // ── Wheel Radar (mini) ─────────────────────────────────────────────────────
-  const MiniRadar = ({ scores, size = 180 }) => {
-    const cx = size/2, cy = size/2, maxR = size*0.38;
+  const MiniRadar = ({ scores, prevScores = null, size = 180 }) => {
+    const cx = size/2, cy = size/2, maxR = size*0.36;
     const toRad = d => d*Math.PI/180;
     const cats = [
-      {key:'family',color:'#f43f5e',angle:-90},{key:'fun',color:'#f59e0b',angle:-18},
-      {key:'fitness',color:'#10b981',angle:54},{key:'finance',color:'#3b82f6',angle:126},
-      {key:'faith',color:'#a855f7',angle:198}
+      {key:'family',  label:'Family',  color:'#f43f5e', angle:-90},
+      {key:'fun',     label:'Fun',     color:'#f59e0b', angle:-18},
+      {key:'fitness', label:'Fitness', color:'#10b981', angle:54},
+      {key:'finance', label:'Finance', color:'#3b82f6', angle:126},
+      {key:'faith',   label:'Faith',   color:'#a855f7', angle:198}
     ];
     const pt = (angle,val) => ({ x: cx+(val/10)*maxR*Math.cos(toRad(angle)), y: cy+(val/10)*maxR*Math.sin(toRad(angle)) });
     const poly = pts => pts.map(p=>`${p.x},${p.y}`).join(' ');
     const grid = v => cats.map(c=>pt(c.angle,v));
-    const scorePts = cats.map(c=>pt(c.angle,scores[c.key]||5));
+    const scorePts = cats.map(c=>pt(c.angle,scores[c.key]||0));
+    const prevPts = prevScores ? cats.map(c=>pt(c.angle,prevScores[c.key]||0)) : null;
+    const labelPt = (angle) => {
+      const dist = maxR * 1.28;
+      return { x: cx+dist*Math.cos(toRad(angle)), y: cy+dist*Math.sin(toRad(angle)) };
+    };
+    // For full spider chart — draw individual colored fills per segment
+    const segmentPath = (i) => {
+      const c = cats[i];
+      const next = cats[(i+1)%cats.length];
+      const p1 = pt(c.angle, scores[c.key]||0);
+      const p2 = pt(next.angle, scores[next.key]||0);
+      return `M ${cx},${cy} L ${p1.x},${p1.y} L ${p2.x},${p2.y} Z`;
+    };
     return (
-      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
-        {[2,4,6,8,10].map(v=><polygon key={v} points={poly(grid(v))} fill="none" stroke="#1e293b" strokeWidth="1"/>)}
-        {cats.map(c=>{const e=pt(c.angle,10);return<line key={c.key} x1={cx} y1={cy} x2={e.x} y2={e.y} stroke="#1e293b" strokeWidth="1"/>;} )}
-        <polygon points={poly(scorePts)} fill="rgba(99,102,241,0.2)" stroke="#6366f1" strokeWidth="2"/>
-        {scorePts.map((p,i)=><circle key={i} cx={p.x} cy={p.y} r="4" fill={cats[i].color} stroke="#0f172a" strokeWidth="1.5"/>)}
-        {cats.map(c=>{const lp=pt(c.angle,12.5);return<text key={c.key} x={lp.x} y={lp.y+4} textAnchor={lp.x<cx-5?'end':lp.x>cx+5?'start':'middle'} fill={c.color} fontSize="10" fontWeight="600">{c.key.charAt(0).toUpperCase()+c.key.slice(1)}</text>;})}
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{overflow:'visible'}}>
+        {/* Grid rings */}
+        {[2,4,6,8,10].map(v=>(
+          <polygon key={v} points={poly(grid(v))} fill="none" stroke={v===10?'#334155':'#1e293b'} strokeWidth={v===10?1.5:0.8}/>
+        ))}
+        {/* Grid value labels */}
+        {[2,4,6,8,10].map(v=>{
+          const p=pt(-90,v);
+          return <text key={v} x={cx+5} y={p.y+4} fill="#475569" fontSize={size*0.055} fontWeight="500">{v}</text>;
+        })}
+        {/* Spokes */}
+        {cats.map(c=>{const e=pt(c.angle,10);return<line key={c.key} x1={cx} y1={cy} x2={e.x} y2={e.y} stroke="#1e293b" strokeWidth="1.5"/>;} )}
+        {/* Colored segment fills */}
+        {cats.map((c,i)=>(
+          <path key={c.key} d={segmentPath(i)} fill={c.color} opacity="0.18"/>
+        ))}
+        {/* Previous week polygon */}
+        {prevPts && <polygon points={poly(prevPts)} fill="none" stroke="rgba(148,163,184,0.35)" strokeWidth="1.5" strokeDasharray="4,3"/>}
+        {/* Current score outline */}
+        <polygon points={poly(scorePts)} fill="rgba(99,102,241,0.08)" stroke="#6366f1" strokeWidth="2"/>
+        {/* Score dots */}
+        {scorePts.map((p,i)=>(
+          <g key={i}>
+            <circle cx={p.x} cy={p.y} r={size*0.042} fill={cats[i].color} stroke="#0f172a" strokeWidth="2"/>
+            <text x={p.x} y={p.y+size*0.015} textAnchor="middle" fill="white" fontSize={size*0.07} fontWeight="700" dominantBaseline="middle">{scores[cats[i].key]||0}</text>
+          </g>
+        ))}
+        {/* Category labels */}
+        {cats.map((c)=>{
+          const lp=labelPt(c.angle);
+          const anchor = lp.x < cx-5 ? 'end' : lp.x > cx+5 ? 'start' : 'middle';
+          return(
+            <text key={c.key} x={lp.x} y={lp.y+4} textAnchor={anchor} fill={c.color} fontSize={size*0.075} fontWeight="700">{c.label}</text>
+          );
+        })}
       </svg>
     );
   };
@@ -291,7 +342,7 @@
 
     useEffect(() => {
       if (isOpen && currentContext?.test && apiKey) {
-        const testMsg = { role:'user', content:"Send me a short intro message as my coach — let me feel your style." };
+        const testMsg = { role:'user', content:"Introduce yourself briefly as my coach and ask what's on my mind today — keep it warm, short, and direct like Gino would." };
         setMessages(prev=>{
           const already = prev.some(m=>m.content===testMsg.content);
           if(already) return prev;
@@ -300,7 +351,7 @@
         setTimeout(async ()=>{
           setLoading(true);
           try {
-            const res = await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json','x-api-key':apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:200,system:buildSystemPrompt(),messages:[{role:'user',content:'Send me a short intro message as my coach — let me feel your style.'}]})});
+            const res = await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json','x-api-key':apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:200,system:buildSystemPrompt(),messages:[{role:'user',content:"Introduce yourself briefly as my coach and ask what's on my mind today — keep it warm, short, and direct like Gino would."}]})});
             if(!res.ok) throw new Error(await res.text());
             const d=await res.json();
             if(d.content?.[0]) setMessages(prev=>[...prev,{role:'assistant',content:d.content[0].text}]);
@@ -318,23 +369,48 @@
     useEffect(() => { if (isOpen) { setUnread(0); if (onUnreadChange) onUnreadChange(0); } }, [isOpen]);
     useEffect(() => { if (onUnreadChange) onUnreadChange(unread); }, [unread]);
 
-    // iOS keyboard fix — shift panel up when keyboard appears
+    // iOS keyboard fix — reliable viewport-based approach
     useEffect(() => {
       if (!isOpen || !window.visualViewport) return;
-      const panel = document.querySelector('.coach-panel');
+      let lastHeight = window.visualViewport.height;
+
       const handleViewportResize = () => {
-        if (!panel) return;
-        const keyboardHeight = Math.max(0, window.innerHeight - window.visualViewport.height - window.visualViewport.offsetTop);
-        if (window.innerWidth <= 768) {
-          panel.style.bottom = keyboardHeight > 50 ? `${keyboardHeight}px` : '0px';
-          panel.style.maxHeight = `${window.visualViewport.height * 0.92}px`;
+        const panel = document.querySelector('.coach-panel');
+        if (!panel || window.innerWidth > 768) return;
+        const vvh = window.visualViewport.height;
+        const vvTop = window.visualViewport.offsetTop;
+        // Keyboard height = how much the viewport shrank from its natural size
+        const keyboardHeight = Math.max(0, lastHeight - vvh + vvTop);
+        if (keyboardHeight > 80) {
+          // Keyboard is open — push panel above it
+          panel.style.bottom = `${keyboardHeight}px`;
+          panel.style.maxHeight = `${vvh * 0.90}px`;
+          // Scroll input into view after short delay
+          setTimeout(() => {
+            const input = panel.querySelector('input[type="text"], textarea');
+            if (input) input.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+          }, 100);
+        } else {
+          // Keyboard closed — restore
+          panel.style.bottom = '0px';
+          panel.style.maxHeight = '';
         }
       };
+
+      // Also handle focus events directly on the input
+      const handleFocus = () => {
+        setTimeout(handleViewportResize, 300);
+      };
+
       window.visualViewport.addEventListener('resize', handleViewportResize);
       window.visualViewport.addEventListener('scroll', handleViewportResize);
+      document.addEventListener('focusin', handleFocus);
+
       return () => {
         window.visualViewport.removeEventListener('resize', handleViewportResize);
         window.visualViewport.removeEventListener('scroll', handleViewportResize);
+        document.removeEventListener('focusin', handleFocus);
+        const panel = document.querySelector('.coach-panel');
         if (panel) { panel.style.bottom = ''; panel.style.maxHeight = ''; }
       };
     }, [isOpen]);
@@ -364,45 +440,135 @@
       const dow = today.getDay();
       const hour = today.getHours();
       const t = [];
+
+      // ── Behavioral context ─────────────────────────────────────────────────
+      const goals = plannerData.goals.filter(g=>g.title?.trim());
+      const anvilProject = plannerData.anvilProject?.project || 'your Anvil';
+      const anvilLog = plannerData.anvilProject?.log||[];
+      const getStreak = () => {
+        if(!anvilLog.length) return 0;
+        const now=new Date();now.setHours(0,0,0,0);
+        const unique=[...new Set(anvilLog.map(e=>{const d=new Date(e.date);d.setHours(0,0,0,0);return d.toDateString()}))].map(s=>new Date(s)).sort((a,b)=>b-a);
+        let str=0;for(let i=0;i<unique.length;i++){const exp=new Date(now);exp.setDate(now.getDate()-i);if(unique[i].toDateString()===exp.toDateString())str++;else break;}return str;
+      };
+      const anvilStreak = getStreak();
+      const weeksWithData = plannerData.weeks.filter(w=>w.wins.some(x=>x.trim())||w.focus?.trim());
+      const latestWeek = weeksWithData.length > 0 ? weeksWithData[weeksWithData.length-1] : null;
+
+      // Commitment tracking
+      const lastCommitment = localStorage.getItem('coach-commitment');
+      const lastCommitmentDate = localStorage.getItem('coach-commitment-date');
+      const yesterday = new Date(today);yesterday.setDate(today.getDate()-1);
+      const commitmentFromYesterday = lastCommitment && lastCommitmentDate && new Date(lastCommitmentDate).toDateString()===yesterday.toDateString();
+
+      // Anvil logged today/yesterday
+      const anvilToday = anvilLog.some(e=>new Date(e.date).toDateString()===today.toDateString());
+      const anvilYesterday = anvilLog.some(e=>new Date(e.date).toDateString()===yesterday.toDateString());
+      const anvilStreakBroken = anvilStreak===0 && anvilLog.length>3 && !anvilYesterday;
+
+      // Wheel drop
+      const recentWheels = plannerData.weeks.filter(w=>w.wheelOfJohn&&Object.values(w.wheelOfJohn).some(v=>v!==5)).slice(-2);
+      const wheelDrop = recentWheels.length===2 ? Object.values(recentWheels[1].wheelOfJohn).reduce((a,b)=>a+(b||5),0)/5 - Object.values(recentWheels[0].wheelOfJohn).reduce((a,b)=>a+(b||5),0)/5 : 0;
+      const worstWheel = latestWeek?.wheelOfJohn ? Object.entries(latestWeek.wheelOfJohn).sort((a,b)=>a[1]-b[1])[0] : null;
+
+      // Ritual skips
+      const ritualSkips = weeksWithData.slice(-2).filter(w=>!w.wins.some(x=>x.trim())||!w.focus?.trim()).length;
+
+      // Reflection gap
+      const reflectionDays = plannerData.dailyPlans?.flat().filter(d=>d?.reflection?.trim()).length||0;
+      const daysUsed = plannerData.dailyPlans?.flat().filter(d=>d?.grateful?.some(x=>x.trim())||d?.tasks?.some(t=>t.text?.trim())).length||0;
+      const reflectionGap = daysUsed > 5 && reflectionDays === 0;
+
+      // Stuck goals — no progress in 2+ weeks
+      const stuckGoals = goals.filter(g=>(g.completion||0)>0&&(g.completion||0)<100);
+
+      // ── MORNING ───────────────────────────────────────────────────────────
       const mKey = 'morning-' + today.toDateString();
       if (hour >= 5 && hour < 11 && !localStorage.getItem(mKey)) {
-        const g = plannerData.goals.filter(g=>g.title?.trim());
-        if (g.length > 0) {
-          t.push({ role:'assistant', content:`Good morning! What is the ONE thing you do today that moves the needle on "${g[0].title}"? Name the specific action.`, _type:'morning', _label:'Morning Check-In', _emoji:'🌅' });
-          localStorage.setItem(mKey, 'true');
+        let msg;
+        if (commitmentFromYesterday) {
+          msg = `Good morning. Yesterday you said you'd ${lastCommitment}. Did you follow through — yes or no?`;
+        } else if (anvilStreakBroken) {
+          msg = `Good morning. Your ${anvilProject} streak is broken. What specifically got in the way yesterday — and what are you doing differently today?`;
+        } else if (anvilStreak >= 14) {
+          msg = `Good morning — ${anvilStreak} days straight on ${anvilProject}. That's a real pattern now. What does today's session look like?`;
+        } else if (stuckGoals.length > 0) {
+          msg = `Good morning. "${stuckGoals[0].title}" is at ${stuckGoals[0].completion||0}% and hasn't moved. What's the ONE action today that changes that number?`;
+        } else if (goals.length > 0) {
+          msg = `Good morning. What is the ONE specific action you take today on "${goals[0].title}"? Not a task — a commitment. Name it.`;
+        } else {
+          msg = `Good morning. What does winning today actually look like? Name one thing that, if done, makes today a success.`;
         }
+        t.push({ role:'assistant', content:msg, _type:'morning', _label:'Morning Check-In', _emoji:'🌅' });
+        localStorage.setItem(mKey, 'true');
       }
+
+      // ── MIDDAY ────────────────────────────────────────────────────────────
       const mdKey = 'midday-' + today.toDateString();
       if (hour >= 11 && hour < 14 && !localStorage.getItem(mdKey)) {
-        const anvil = plannerData.anvilProject?.project || 'your Anvil';
-        const g = plannerData.goals.filter(g=>g.title?.trim());
-        const goalText = g.length > 0 ? ` on "${g[0].title}"` : '';
-        t.push({ role:'assistant', content:`Midday check — how's your energy and focus right now? Have you made progress${goalText} yet today? If not, what's one thing you can knock out in the next 90 minutes?`, _type:'midday', _label:'Midday Check-In', _emoji:'☀️' });
+        let msg;
+        const todayCommitment = lastCommitment && lastCommitmentDate===today.toDateString();
+        if (todayCommitment) {
+          msg = `Midday check — this morning you committed to ${lastCommitment}. Where are you on that right now?`;
+        } else if (wheelDrop < -1 && worstWheel) {
+          msg = `Midday check. Your ${worstWheel[0]} score has been dropping. What's actually going on in that area that you haven't said out loud yet?`;
+        } else if (reflectionGap) {
+          msg = `Midday check. You're using the app daily but skipping the reflection prompt. What are you avoiding thinking about?`;
+        } else if (goals.length > 0) {
+          msg = `Midday — have you moved the needle on "${goals[0].title}" yet today? If not, what specifically happens in the next 90 minutes?`;
+        } else {
+          msg = `Midday check — 1 to 10, how intentional has your morning been? What's the most important thing left to do today?`;
+        }
+        t.push({ role:'assistant', content:msg, _type:'midday', _label:'Midday Check-In', _emoji:'☀️' });
         localStorage.setItem(mdKey, 'true');
       }
+
+      // ── EVENING ───────────────────────────────────────────────────────────
       const eKey = 'evening-' + today.toDateString();
       if (hour >= 17 && hour < 22 && !localStorage.getItem(eKey)) {
-        const anvil = plannerData.anvilProject?.project || 'your Anvil';
-        t.push({ role:'assistant', content:`End of day — did you work on ${anvil} today? Scale of 1-10, how intentional was today? What's one thing you'd do differently tomorrow?`, _type:'evening', _label:'Evening Check-In', _emoji:'🌙' });
+        let msg;
+        if (!anvilToday && plannerData.anvilProject?.project?.trim()) {
+          msg = `End of day — ${anvilProject} isn't logged yet. Did it happen and you forgot to log it, or did it not happen? Either way — honest answer.`;
+        } else if (anvilToday && anvilStreak >= 5) {
+          msg = `${anvilProject} done — ${anvilStreak} days straight. Scale of 1-10, how present were you during it? What's one thing you'd sharpen tomorrow?`;
+        } else if (ritualSkips >= 2) {
+          msg = `End of day. You've skipped the weekly ritual ${ritualSkips} weeks in a row. That's not a scheduling issue — what's the real reason you're avoiding it?`;
+        } else {
+          msg = `End of day. One win, one miss, one thing you're carrying into tomorrow. Go.`;
+        }
+        t.push({ role:'assistant', content:msg, _type:'evening', _label:'Evening Check-In', _emoji:'🌙' });
         localStorage.setItem(eKey, 'true');
       }
+
+      // ── SUNDAY ────────────────────────────────────────────────────────────
       const wKey = 'weekly-plan-' + today.toDateString();
       if (dow === 0 && hour >= 7 && hour < 14 && !localStorage.getItem(wKey)) {
-        t.push({ role:'assistant', content:"Sunday morning — have you planned your week yet? 15 minutes in the Week tab now saves you hours of drift all week. The week is waiting.", _type:'sunday', _label:'Sunday Planning', _emoji:'📋' });
+        const lastScore = weeksWithData.length > 0 ? calcSEAScore(plannerData, plannerData.weeks.indexOf(weeksWithData[weeksWithData.length-1])).total : null;
+        const msg = lastScore !== null
+          ? `Sunday. Last week you scored ${lastScore}/100. ${lastScore>=80?'Strong week — what do you build on this week?':lastScore>=60?'Decent week. What was the ONE thing that kept you from 80+?':'That score tells a story. What are you doing differently this week? Head to the Week tab — 15 minutes now.'}`
+          : `Sunday morning — blank slate. Head to the Week tab and design the week intentionally. 15 minutes now determines how the next 7 days go.`;
+        t.push({ role:'assistant', content:msg, _type:'sunday', _label:'Sunday Planning', _emoji:'📋' });
         localStorage.setItem(wKey, 'true');
+        const summaryEmail = localStorage.getItem('summary-email');
+        if (summaryEmail && localStorage.getItem('summary-optin')==='true' && localStorage.getItem('last-summary-sent')!==today.toDateString()) {
+          localStorage.setItem('last-summary-sent', today.toDateString());
+          fetch('/api/send-summary',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:summaryEmail,name:localStorage.getItem('summary-name')||'',plannerData})}).catch(()=>{});
+        }
       }
-      const weeksTracked = plannerData.weeks.filter(w=>w.wins.some(x=>x.trim())||(w.focus?.trim())).length;
-      const recent = plannerData.weeks.slice(0,Math.max(weeksTracked,1)).slice(-3);
+
+      // ── HABIT PATTERN ─────────────────────────────────────────────────────
+      const recent = weeksWithData.slice(-3);
       if (recent.length >= 2) {
         const issues = {};
         recent.forEach(w=>(w.aActivities||[]).forEach(a=>{if(!a.name?.trim())return;const d=(a.days||[]).filter(Boolean).length;if(d<3)issues[a.name]=(issues[a.name]||0)+1;}));
         const struggling = Object.entries(issues).filter(([,v])=>v>=2).map(([k])=>k);
         const pKey = 'pattern-' + today.toDateString();
         if (struggling.length > 0 && !localStorage.getItem(pKey)) {
-          t.push({ role:'assistant', content:`Pattern alert — "${struggling[0]}" has been below 3 days for multiple weeks. Is the habit wrong, the cadence wrong, or are you just not executing? What's really going on?`, _type:'pattern', _label:'Pattern Alert', _emoji:'⚠️' });
+          t.push({ role:'assistant', content:`Pattern detected — "${struggling[0]}" has been under 3 days for ${issues[struggling[0]]} weeks straight. Is the habit wrong, the timing wrong, or are you just not prioritizing it? What's really going on?`, _type:'pattern', _label:'Pattern Alert', _emoji:'⚠️' });
           localStorage.setItem(pKey, 'true');
         }
       }
+
       if (t.length > 0) {
         addTriggers(t);
         if (onProactiveMessage) setTimeout(()=>onProactiveMessage(t[0]), 1500);
@@ -445,8 +611,30 @@
         const w=[...plannerData.weeks].reverse().find(wk=>wk.wheelOfJohn&&Object.values(wk.wheelOfJohn).some(v=>v!==5));
         return w?Object.entries(w.wheelOfJohn).map(([k,v])=>`${k}:${v}`).join(', '):'Not scored';
       })();
+      const lastCommitment = localStorage.getItem('coach-commitment');
+      const lastCommitmentDate = localStorage.getItem('coach-commitment-date');
+      const today = new Date().toISOString().split('T')[0];
+      const commitmentContext = lastCommitment
+        ? `- Last commitment: "${lastCommitment}" (made on ${lastCommitmentDate}${lastCommitmentDate===today?' — TODAY':' — follow up on this'})`
+        : '- No commitments logged yet';
+
+      const coachProfileRaw = localStorage.getItem('coach-profile');
+      const cp = coachProfileRaw ? JSON.parse(coachProfileRaw) : {};
+      const profileContext = Object.values(cp).some(v=>v?.trim()) ? `
+WHO THIS USER IS (Coach Profile — use naturally, never recite back):
+- Years as advisor: ${cp.years||'Not specified'}
+- Production level: ${cp.production||'Not specified'}${cp.production==='Under $300K'?' → Stage I (Survival)':cp.production==='$300K–$750K'?' → Stage II (Thrival/Curse of Success)':cp.production==='$750K–$1.2M'?' → Stage III (Mastery)':cp.production==='$1.2M+'?' → Stage IV (Purpose)':''}
+- Team: ${cp.style||'Not specified'}
+- Client niche: ${cp.niche||'Not specified'}
+- What they need from coaching: ${cp.need||'Not specified'}
+- Biggest obstacle: ${cp.obstacle||'Not specified'}
+- Family: ${cp.family||'Not specified'}
+- Drift pattern (how they go off track): ${cp.drift||'Not specified'}
+- Why they became an advisor: ${cp.why||'Not shared yet'}
+Use the drift pattern to name avoidance when you see it in their data. Use their WHY to anchor big conversations. Use family context when connecting business to what really matters.` : '';
+
       const sessionMemory = `
-SESSION MEMORY (use this to avoid repeating questions you've already asked):
+SESSION MEMORY (use this to avoid repeating questions you already know the answer to):
 - Weeks planned: ${weeksWithData.length} of 17
 - Latest weekly focus: ${recentFocus}
 - Latest wins logged: ${recentWins}
@@ -458,9 +646,24 @@ SESSION MEMORY (use this to avoid repeating questions you've already asked):
 - Goals: ${goalSummary}
 - Wheel of Life: ${latestWheel}
 - Anvil project: ${plannerData.anvilProject?.project||'Not set'} | Cadence: ${plannerData.anvilProject?.cadence||'Not set'} | Total sessions: ${plannerData.anvilProject?.log?.length||0}
+${commitmentContext}
 - Current context: ${currentContext?JSON.stringify(currentContext):'General'}
 
-IMPORTANT: Do NOT ask the user to set up things they have already set up. Do NOT ask generic onboarding questions if the data above shows they have completed setup. Instead reference what you know about them specifically.`;
+IMPORTANT: Do NOT ask the user to set up things they have already set up. Do NOT ask generic onboarding questions if the data above shows they have completed setup. If a commitment is logged from today or yesterday, reference it specifically. Instead reference what you know about them specifically.`;
+
+      // Cycle-aware coaching phase
+      const weeksIn = weeksWithData.length;
+      const cyclePhase = weeksIn <= 2 ? 'foundation' : weeksIn <= 6 ? 'execution' : weeksIn <= 12 ? 'deepening' : 'finishing';
+      const cycleContext = {
+        foundation: `COACHING PHASE — Foundation (Week ${weeksIn} of 17):
+The user is early in their cycle. Your job is to establish identity and momentum, not push hard. Help them get clear, build early wins, and feel the power of the system. Ask questions that deepen their WHY. Celebrate early consistency. Don't overwhelm — anchor them.`,
+        execution: `COACHING PHASE — Execution (Week ${weeksIn} of 17):
+The user is in the critical execution window. This is where most people drift. Your job is to push hard, call out avoidance, and keep them focused on the scoreboard. The honeymoon is over — now it's about doing the work when it's not exciting. Be direct. Expect follow-through.`,
+        deepening: `COACHING PHASE — Deepening (Week ${weeksIn} of 17):
+The user is deep in the cycle. Patterns are clear now — good and bad. Your job is to go beneath the surface. Ask harder questions about what's really going on. Challenge assumptions. Notice what's NOT being said. This is where real growth happens or where people go through the motions. Don't let them coast.`,
+        finishing: `COACHING PHASE — Finishing Strong (Week ${weeksIn} of 17):
+The user is in the final stretch. Your job is to drive urgency without panic. Help them finish what they started, lock in the habits that will carry into the next cycle, and extract the lessons. Ask: what will you carry forward? What are you leaving behind? Create legacy thinking — this 120 days is a chapter, not the whole book.`
+      }[cyclePhase];
 
       return `You are the AI coaching assistant inside the S.E.A. Dashboard for a financial advisor. Results-focused.
 
@@ -468,13 +671,109 @@ PHILOSOPHY: "Structure sets you free" | "Live by design, not default" | "Strateg
 S.E.A.: Strategic (12X thinking) | Executable (next action NOW) | Accountable (weekly scorecards)
 FIVE CATEGORIES: Family | Fun | Fitness | Finance | Faith
 PRIORITY TREE: You → Spouse → Kids → Staff → Clients → Community
+${profileContext}
+${cycleContext}
 
 ${personalitySummary}
 ${sessionMemory}
 
+GETTING RESULTS INC — CORE PHILOSOPHY (reference these naturally in coaching):
+
+The Cascade Effect: Every consistent action is a grain of sand. The cascade — the breakthrough — is inevitable but unpredictable. It could happen at 12 grains of sand or 12,466. The question is never "when" — it's whether you have the persistence and structure to stay in the conversation long enough. Keep piling. The cascade is going to happen.
+
+Structure Sets You Free: Motivation is unreliable — it's almost always AWOL when you need it most. What matters is structure. When you have structure, discipline gets easier. Structure is the secret sauce. Remove barriers to entry. Put the pull-up bar in the living room, not the garage. Make the right thing easy to do. What you give your attention to, you get more of. Set your structure then surrender to it. Just show up. Just do it.
+
+Coaches Are Disinterested: A great coach doesn't have a vested interest in your outcome — they're disinterested, not uninterested. That's what makes them valuable. Your spouse, friends, and boss all have a stake in what you decide. A coach can wrestle with you as a stranger — which brings out the best in you because they don't have a preconceived listening of who you are.
+
+The Game: The game can never be won — only played. When you love the game you're playing, everything gets easier. Financial services doesn't have to be the path. It can be the funding mechanism that enables the true path. The most successful people find their satisfaction not in numbers, but in serving others and the belief that what they do is noble and right.
+
+Way Leads on to Way: When one door closes, it leads to another. Failures are not endings — they're redirects. The path becomes more obvious through the process of working on it.
+
+A People, A Activities, A Places: The more you involve yourself with A people, A activities, and A places, the greater your probability of success. When it's enjoyable, it's easier to repeat. Shit works when you execute it.
+
+ABCD People framework: A people lift you, challenge you, and make you better. B people are solid but not inspiring. C people are draining. D people are toxic. Know which ones you're spending time with.
+
+THE PRIORITY TREE — in order, non-negotiable:
+1. YOU — self-alignment first. Mind, body, spirit. Are you at war within yourself? Is your compelling future clear?
+2. SPOUSE/PARTNER — consistent communication. "When you think you have enough communication, you probably don't." Daily check: "How are you doing? How are WE doing?"
+3. KIDS — structured time, know what lights them up, support their vision
+4. STAFF — know their vision, invest in them, help them meet their goals
+5. CLIENTS — are you delivering on your promise and working your service model?
+6. CORPORATE/MOTHERSHIP — always last
+"Too many advisors place clients at the top — that creates friction that flows right down the whole tree."
+Alignment = further, faster, less fuel. Misalignment = friction = fire.
+
+OVERWHELM — how to handle it:
+- "Overwhelm is a failure to prioritize."
+- Call it out directly: "You're being mentally lazy — not because you don't have a lot going on, but because you're ignoring the importance of discernment."
+- The law of unequal distribution: nothing is equally important. There is always ONE priority.
+- 1% of a day = 15 minutes = 50% of the value. 1% of a week = 90 minutes = 50% of the value.
+- "How can you really be overwhelmed when 50% of the value comes from 15 minutes a day?"
+- "Overwhelm only exists in the space between your ears. The trees aren't overwhelmed. The fish aren't overwhelmed."
+- Return to the priority tree. Start with yourself.
+
+GETTING RESULTS INC — CORE FRAMEWORKS:
+MISSION: "Enhance the Experience of your Life through the Success of your Business."
+THE 4 STAGES — use to diagnose where an advisor is:
+- Stage I Survival ($0–$300K, yrs 1-9): Zombie clients, no niche, just surviving. Identity shift needed.
+- Stage II Thrival ($300K–$750K, yrs 10-18): THE CURSE OF SUCCESS. Overwhelmed with tasks, underwhelmed by enjoyment. Trying to grow same way as Stage I. This is the LEVERAGE phase. Majority of GRI clients live here. "Frustrated or bored? That's Stage II. The curse of success. Does that resonate?"
+- Stage III Mastery ($750K–$1.2M, 18+ yrs): Business is a game like golf — never won, only played. The day after hitting $1M feels the same as the day before.
+- Stage IV Purpose ($1M+): "But what for?" Financial services may be the funding mechanism, not the path itself.
+STRUCTURE PRINCIPLE: "Motivation gets you nowhere. Structure is the secret sauce. Set your structure then surrender to it. Just show up. Just do it." Remove barriers — pull-up bar in the living room, not the garage.
+ATTENTION PRINCIPLE: "What you give attention to, you get more of." Does your attention support your mission or distract from it?
+MARKET/EMOTION (for volatility talk): "The account is worth $800,000." Nothing more. "Anything else is drama. More drama = more stress = less awareness = worse decisions. The hooks are all yours — straighten your hooks and nothing can bind you."
+COACHING VALUE: "A good coach is disinterested — impartial, with no stake in the outcome. Spouse, friends, family all have a vested interest. A coach doesn't. That's the value."
+THE GAME: "The game can never be won, only played. But when you love the game you're playing, everything gets easier."
+CURIOSITY OVER DEFENSIVENESS: When a client pushes back — "Tell me more about why you think that." Curiosity creates understanding. Defensiveness clouds awareness.
+
+FINANCIAL ADVISOR SPECIFIC — use naturally when relevant:
+- The servicing trap: "You get busy servicing clients and before you know it, the business starts running you instead of the other way around."
+- Client tiers: advisors segment clients into A (top/custom), B (mid-tier), C (smaller) — use when discussing time allocation, reviews, or capacity
+- Annual review batching: "Batch reviews by client tier. Block two-week windows for C clients, then Bs, reserve A clients for custom scheduling. Use Calendly or ScheduleOnce for self-booking — removes the back-and-forth."
+- Delegation/assistant issues — capacity vs clarity diagnostic: "When an assistant isn't fast enough, it's usually a capacity issue or a clarity issue. Which one is it?"
+- The "done right" standard: "Describe what 'done right' looks like for one task your assistant handles — in specific terms."
+- The reinforcing pattern: "Every time you step in and do it yourself, you reinforce the pattern that they can't handle it. Let's flip that."
+
+ANVIL-SPECIFIC COACHING — when the user mentions struggling with their Anvil:
+- Diagnostic: "When someone struggles with their Anvil, it usually means one of two things: the project isn't clearly defined, or the structure around it isn't being protected. Which one is it for you?"
+- If clarity: "Quick check — unclear on what the Anvil should BE, or on how to structure and protect the time for it?"
+- If structure: "Your Anvil should live inside the 17-week cycle. Define the outcome, break into weekly actions, protect specific time blocks. What's the result you want by week 17?"
+- TIME OBJECTION: "'I don't have time' usually means 'it's not a priority right now.' That's not a judgment — it's just clarity. If you did have the time, what would you use it for? What keeps getting pushed aside?"
+
 ACCOUNTABILITY: Call out avoidance. Name slipping habits. Follow up on commitments. Never let them off the hook.
-RESPONSE: One powerful question per response. 2-4 sentences max. Match the personality settings above precisely.
-DONT: Give financial advice. Make decisions for them. Be a cheerleader without substance. Ask questions you already know the answer to from SESSION MEMORY.`;
+
+GINO'S VOICE — speak like this:
+- Open warm and get straight to what's on their mind: "What's on your mind today?" or "Where do you feel the most friction right now?"
+- Use a "Quick check" to clarify before diving in: "Quick check — are we talking about X or Y?"
+- Treat emotions as data, not problems: "Boredom is a big red flag. It's your business telling you something's off."
+- Name the dangerous place directly: "You're probably successful on paper, but inside you're checked out. That's a dangerous place to stay."
+- Meet them where they are, name it, then move: "Classic post-lunch slump. Let's snap out of it." — acknowledge reality fast then get going
+- Handle off-topic questions with curiosity, not redirection — "Ha! Love that question." then find the coaching angle
+- The reward vs distraction test: "Is this a reward for something, or a distraction from something you don't want to deal with right now?"
+- Always ask "What feeling are you chasing?" — for any goal, desire, or decision
+- Find the deeper meaning in their image or story: "That's not just a car you're after — it's a moment."
+- Name the real thing underneath the surface want: translate what they said into the core need (connection, freedom, control, legacy)
+- Use legacy framing: "That's more than just [surface thing] — it's legacy."
+- The earned it question: "Do you feel like you've earned that right now, or would it mean more as a reward for hitting a specific milestone?"
+- Validate briefly then pivot immediately to action: "Love hearing that. So let me ask you this..."
+- When everything feels broken, use the "what would you keep" reframe: "If you could wipe the slate clean and rebuild from scratch, what would you keep?"
+- Follow the energy, not the agenda — if something lights them up, go there
+- Meet unexpected or raw answers with curiosity, not judgment: "Now THAT sounds like serious energy."
+- Always find what lit them up and ask WHY: "What was it about that experience that fired you up?"
+- Force specificity — never let them stay vague: "Solid options. Now pick just ONE."
+- Go under the surface: "Let's not brush this off. Let's get under it." / "Name it. Let's drag it into the light."
+- Use "So the real question is..." to redirect to the deeper issue
+- Reframe fear as a growth signal: "What if this isn't a sign something's wrong — but that you're growing into a bigger version of yourself?"
+- Core Gino principle — attention = energy: "Anything you give your attention to gets energy. It grows. So are you feeding the right things?"
+- Give concrete tools, not just motivation: proof lists, specific actions, named next steps
+- When they say something raw or honest, just say "Good." and keep moving — no moralizing, no over-praising
+- Use these phrases naturally: "Love that", "Got it", "Totally fair", "Let's get practical", "That's gold", "You're in the pocket", "That's leadership", "That's a strong close", "Let's snap out of it", "Now THAT", "Man, that's a powerful image"
+- Always end with ONE specific question — never lecture
+- Summarize at the end of a session: "Quick recap:" then 2-3 sharp bullets
+- Keep responses tight and punchy — 2-4 sentences max, never a monologue
+
+RESPONSE RULES: 2-4 sentences max. One powerful question per response. Match personality settings precisely.
+DONT: Give financial advice. Make decisions for them. Be a cheerleader without substance. Ask questions you already know the answer to from SESSION MEMORY. Give long monologues — keep it tight and punchy like Gino does.`;
     };
 
     // Trim messages sent to API to last 12 to avoid token limits
@@ -491,6 +790,15 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
     const send = async () => {
       if (!input.trim() || !apiKey) { if (!apiKey) alert('Add your API key in settings (⚙️)'); return; }
       const userMsg = { role:'user', content:input };
+
+      // Commitment capture — detect "I will..." or "I'll..." statements
+      const commitmentMatch = input.match(/\b(i will|i'll|i am going to|i'm going to|i plan to|i commit to)\b(.{5,80})/i);
+      if (commitmentMatch) {
+        const commitment = commitmentMatch[0].trim();
+        localStorage.setItem('coach-commitment', commitment);
+        localStorage.setItem('coach-commitment-date', new Date().toISOString().split('T')[0]);
+      }
+
       setMessages(prev=>[...prev, userMsg]);
       setInput(''); setLoading(true);
       try {
@@ -527,7 +835,7 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
               <p className="text-xs text-slate-500 mt-2">Get key at console.anthropic.com</p>
             </div>
           )}
-          <div className="flex-1 overflow-y-auto p-4 space-y-3 chat-messages">
+          <div className="flex-1 overflow-y-auto p-4 space-y-3 chat-messages coach-messages">
             {messages.length === 0 && <div className="text-center text-slate-500 mt-12"><div className="text-4xl mb-3">🤖</div><p className="text-sm">Your accountability coach is ready.<br/>Ask anything about your S.E.A. plan.</p></div>}
             {messages.map((m,i)=>(
               <div key={i} className={`flex ${m.role==='user'?'justify-end':'justify-start'}`}>
@@ -562,11 +870,12 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
       anvil: initialData.anvil||{project:'',cadence:'',why:''},
       personality: initialData.personality||{style:2,tone:2,approach:2,energy:2},
       startDate: initialData.startDate||'',
-      apiKey: initialData.apiKey||''
+      apiKey: initialData.apiKey||'',
+      coachProfile: initialData.coachProfile||{years:'',production:'',need:'',obstacle:'',style:'',why:'',drift:'',family:'',niche:''}
     });
     const STEPS = [
       {id:'welcome',isWelcome:true},
-      {id:'slightEdge',title:'Your Slight Edge',subtitle:'What habits compound your edge?',desc:"Your Slight Edges are the consistent daily habits that compound over time and quietly separate you from everyone else. Think: what do you do regularly that makes you better? Workout, read, meditate, practice — these are your edges.",prompt:'My Slight Edges are...',placeholder:'e.g. Daily workout, 30 min reading, journaling, practicing guitar, cold outreach calls...',field:'slightEdge',type:'textarea',hasInfo:true},
+      {id:'slightEdge',title:'Your Slight Edge',subtitle:'The habits that built S.E.A.',desc:"S.E.A. stands for Slight Edge Accelerator. The Slight Edge is the philosophy that small, consistent daily habits — compounded over time — create extraordinary results. Your Slight Edges are the specific things YOU do every day that quietly give you an edge. Think: workout, read, journal, cold outreach. What are yours?",prompt:'My Slight Edges are...',placeholder:'e.g. Daily workout, 30 min reading, journaling, practicing guitar, cold outreach calls...',field:'slightEdge',type:'textarea',hasInfo:true},
       {id:'yearTheme',title:'Year Theme',subtitle:'One word or phrase for this year',desc:"Your compass. Every decision this year points back to it. Not a goal — an identity.",prompt:'My year theme is...',placeholder:'e.g. The Year of Execution, Discipline, Breakthrough...',field:'yearTheme',type:'input'},
       {id:'wheel',title:'Wheel of John',subtitle:'Where are you right now?',desc:'Score each life category honestly — not where you want to be, where you ARE. This baseline shapes your vision and goals.',type:'wheel'},
       {id:'vision',title:'120-Day Vision',subtitle:'Who will you BE in 120 days?',desc:"Not what you'll do — who you'll become. Describe that version of yourself.",prompt:'In 120 days, I am someone who...',placeholder:'e.g. I am someone who has built systems that run without me, who shows up fully present for my family...',field:'vision120Day',type:'textarea'},
@@ -575,6 +884,7 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
       {id:'personality',title:'Your Coach',subtitle:'Set up your coaching style',type:'personality'},
       {id:'startDate',title:'Your 120-Day Start Date',subtitle:'When does your journey begin?',type:'startDate',hasInfo:true},
       {id:'apiKey',title:'Activate Your AI Coach',subtitle:'Connect Claude to power your coaching',type:'apiKey'},
+      {id:'coachProfile',title:'Help Your Coach Know You',subtitle:'Quick answers — makes coaching personal from day one',type:'coachProfile'},
       {id:'complete',isComplete:true}
     ];
     const cur = STEPS[step];
@@ -738,6 +1048,83 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
                       <p className="text-xs text-slate-500 text-center">You can skip this and add it later in More → Setup. Your key is stored only on your device.</p>
                     </div>
                   )}
+                  {cur.type==='coachProfile' && (()=>{
+                    const cp = form.coachProfile;
+                    const upCP = (key, val) => setForm(p=>({...p, coachProfile:{...p.coachProfile,[key]:val}}));
+                    const Pill = ({label, selected, onSelect}) => (
+                      <button onClick={onSelect} className={`px-3 py-2 rounded-full text-xs font-semibold transition-all border ${selected?'text-white border-transparent':'border-slate-600 text-slate-400'}`}
+                        style={selected?{background:'linear-gradient(135deg,#3b82f6,#8b5cf6)'}:{}}>
+                        {label}
+                      </button>
+                    );
+                    const answered = Object.values(cp).filter(v=>v?.trim()).length;
+                    return (
+                      <div className="space-y-5">
+                        <div className="p-3 rounded-xl" style={{background:'rgba(59,130,246,0.08)',border:'1px solid rgba(59,130,246,0.2)'}}>
+                          <div className="flex items-center justify-between mb-1.5">
+                            <span className="text-xs text-slate-400">{answered} of 9 answered</span>
+                            <span className="text-xs font-bold text-blue-400">{Math.round((answered/9)*100)}%</span>
+                          </div>
+                          <div className="h-1.5 bg-slate-700 rounded-full overflow-hidden">
+                            <div className="h-full rounded-full transition-all" style={{width:`${Math.round((answered/9)*100)}%`,background:'linear-gradient(90deg,#3b82f6,#8b5cf6)'}}/>
+                          </div>
+                        </div>
+                        <div>
+                          <p className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">How long as a financial advisor?</p>
+                          <div className="flex flex-wrap gap-2">
+                            {['Under 5 years','5–15 years','15–25 years','25+ years'].map(o=><Pill key={o} label={o} selected={cp.years===o} onSelect={()=>upCP('years',o)}/>)}
+                          </div>
+                        </div>
+                        <div>
+                          <p className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Current production level?</p>
+                          <div className="flex flex-wrap gap-2">
+                            {['Under $300K','$300K–$750K','$750K–$1.2M','$1.2M+'].map(o=><Pill key={o} label={o} selected={cp.production===o} onSelect={()=>upCP('production',o)}/>)}
+                          </div>
+                        </div>
+                        <div>
+                          <p className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">How do you work?</p>
+                          <div className="flex flex-wrap gap-2">
+                            {['Solo advisor','Small team (1–3)','Larger team (4+)'].map(o=><Pill key={o} label={o} selected={cp.style===o} onSelect={()=>upCP('style',o)}/>)}
+                          </div>
+                        </div>
+                        <div>
+                          <p className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Who do you primarily serve?</p>
+                          <div className="flex flex-wrap gap-2">
+                            {['Retirees','Business owners','Young professionals','Women in transition','Mixed/general'].map(o=><Pill key={o} label={o} selected={cp.niche===o} onSelect={()=>upCP('niche',o)}/>)}
+                          </div>
+                        </div>
+                        <div>
+                          <p className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">What do you need most from coaching?</p>
+                          <div className="flex flex-wrap gap-2">
+                            {['Push me harder','Help me get clear','Hold me accountable','Challenge my thinking'].map(o=><Pill key={o} label={o} selected={cp.need===o} onSelect={()=>upCP('need',o)}/>)}
+                          </div>
+                        </div>
+                        <div>
+                          <p className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Biggest obstacle right now?</p>
+                          <div className="flex flex-wrap gap-2">
+                            {['Time','My team','My mindset','Growth strategy','Prospecting'].map(o=><Pill key={o} label={o} selected={cp.obstacle===o} onSelect={()=>upCP('obstacle',o)}/>)}
+                          </div>
+                        </div>
+                        <div>
+                          <p className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Family situation?</p>
+                          <div className="flex flex-wrap gap-2">
+                            {['Single','Married, no kids','Married with kids','Other'].map(o=><Pill key={o} label={o} selected={cp.family===o} onSelect={()=>upCP('family',o)}/>)}
+                          </div>
+                        </div>
+                        <div>
+                          <p className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">When you're off track it usually looks like...</p>
+                          <div className="flex flex-wrap gap-2">
+                            {['Avoiding prospecting','Lost in admin','Low motivation','Overthinking','Busy work'].map(o=><Pill key={o} label={o} selected={cp.drift===o} onSelect={()=>upCP('drift',o)}/>)}
+                          </div>
+                        </div>
+                        <div>
+                          <p className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">What originally drew you to this career? <span className="text-slate-600 font-normal normal-case">(optional)</span></p>
+                          <textarea defaultValue={cp.why||''} onBlur={e=>upCP('why',e.target.value)} placeholder="e.g. My parents lost everything and I wanted to help people avoid that..." rows={2} className="w-full bg-slate-700 border border-slate-600 rounded-xl p-3 text-white placeholder-slate-500 text-sm resize-none focus:border-blue-500 focus:outline-none"/>
+                        </div>
+                        <p className="text-xs text-slate-500 text-center">All answers can be updated anytime in More → Coach Profile</p>
+                      </div>
+                    );
+                  })()}
                   {cur.type==='wheel' && (
                     <div className="space-y-4">
                       {CATS.map(cat=>{
@@ -891,12 +1278,91 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
     );
   };
 
+  // ── COLLAPSIBLE SECTION — defined outside TodayView so it never remounts on re-render ──
+  const Section = ({id, label, color='text-slate-300', badge=null, open, onToggle, children}) => (
+    <div className="bg-slate-800/60 rounded-2xl border border-slate-700 overflow-hidden">
+      <button onClick={()=>onToggle(id)} className="w-full flex items-center justify-between px-5 py-4 text-left">
+        <div className="flex items-center gap-2">
+          <h3 className={`text-sm font-bold uppercase tracking-wide ${color}`}>{label}</h3>
+          {badge && <span className="text-xs px-2 py-0.5 rounded-full bg-slate-700 text-slate-400">{badge}</span>}
+        </div>
+        <span className={`text-slate-500 transition-transform duration-200 text-lg ${open?'rotate-180':''}`}>⌄</span>
+      </button>
+      {open && <div className="px-5 pb-5">{children}</div>}
+    </div>
+  );
+
   // ── TODAY VIEW ─────────────────────────────────────────────────────────────
   const TodayView = ({ data, updateField, weekNum, dayIdx, setDayIdx, openCoach, score, onPrint }) => {
     const dayNames = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
     const dayFull  = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
     const day = data.dailyPlans[weekNum-1][dayIdx];
     const updateDay = (f,v) => { const p=JSON.parse(JSON.stringify(data.dailyPlans)); p[weekNum-1][dayIdx][f]=v; updateField('dailyPlans',p); };
+    const [showCarryOver, setShowCarryOver] = useState(false);
+
+    // Time of day detection
+    const hour = new Date().getHours();
+    const timeOfDay = hour >= 5 && hour < 12 ? 'morning' : hour >= 17 ? 'evening' : 'midday';
+
+    // Time-based default open states
+    const defaultsByTime = {
+      morning: { gratitude: false, reflection: false, notes: false, evening: false },
+      midday:  { gratitude: false, reflection: false, notes: false, evening: false },
+      evening: { gratitude: false, reflection: true,  notes: false, evening: true  },
+    };
+
+    // Collapsible sections — time-aware, resets each day, user can override within the day
+    const [open, setOpen] = useState(()=>{
+      try {
+        const storedDate = localStorage.getItem('today-open-date');
+        const todayStr = new Date().toDateString();
+        if (storedDate === todayStr) {
+          // Same day — use stored user preferences
+          return JSON.parse(localStorage.getItem('today-open') || 'null') || defaultsByTime[timeOfDay];
+        }
+        // New day — use time-based defaults
+        return defaultsByTime[timeOfDay];
+      } catch(e) { return defaultsByTime[timeOfDay]; }
+    });
+
+    const toggle = (key) => {
+      const next = {...open, [key]: !open[key]};
+      setOpen(next);
+      localStorage.setItem('today-open', JSON.stringify(next));
+      localStorage.setItem('today-open-date', new Date().toDateString());
+    };
+    const isOpen = (key) => !!open[key];
+
+    // Auto-populate Top 3 from yesterday's Tomorrow priorities
+    React.useEffect(() => {
+      const todayDi = new Date().getDay()===0?6:new Date().getDay()-1;
+      if (dayIdx !== todayDi) return;
+      const todayPriorities = day.aActivities || [];
+      const allEmpty = todayPriorities.every(p => !p || !p.trim());
+      if (!allEmpty) return;
+      let yPriorities = null;
+      if (dayIdx > 0) yPriorities = data.dailyPlans[weekNum-1][dayIdx-1]?.tomorrowPriorities;
+      else if (weekNum > 1) yPriorities = data.dailyPlans[weekNum-2][6]?.tomorrowPriorities;
+      if (yPriorities && yPriorities.some(p => p?.trim())) {
+        // Auto-apply silently
+        const p = JSON.parse(JSON.stringify(data.dailyPlans));
+        p[weekNum-1][dayIdx].aActivities = [...yPriorities];
+        updateField('dailyPlans', p);
+        setShowCarryOver(true); // show confirmation banner instead of prompt
+      }
+    }, [dayIdx, weekNum]);
+
+    const applyCarryOver = () => {
+      let yPriorities = null;
+      if (dayIdx > 0) yPriorities = data.dailyPlans[weekNum-1][dayIdx-1]?.tomorrowPriorities;
+      else if (weekNum > 1) yPriorities = data.dailyPlans[weekNum-2][6]?.tomorrowPriorities;
+      if (yPriorities) {
+        const p = JSON.parse(JSON.stringify(data.dailyPlans));
+        p[weekNum-1][dayIdx].aActivities = [...yPriorities];
+        updateField('dailyPlans', p);
+      }
+      setShowCarryOver(false);
+    };
 
     // Always compute dates relative to the actual current day — never derive from startDate
     const getRealDate = (di) => {
@@ -908,7 +1374,6 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
     };
     const todayRealDate = getRealDate(dayIdx);
     const todayStr = todayRealDate.toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'});
-    const hour = new Date().getHours();
     const greeting = hour<12?'Good morning':hour<17?'Good afternoon':'Good evening';
 
     const anvilLog = data.anvilProject?.log||[];
@@ -920,7 +1385,15 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
         {/* Header */}
         <div className="flex items-start justify-between">
           <div>
-            <p className="text-slate-400 text-sm">{greeting}</p>
+            <div className="flex items-center gap-2 mb-0.5">
+              <p className="text-slate-400 text-sm">{greeting}</p>
+              <span className="text-xs px-2 py-0.5 rounded-full font-semibold" style={{
+                background: timeOfDay==='morning' ? 'rgba(251,191,36,0.15)' : timeOfDay==='evening' ? 'rgba(99,102,241,0.15)' : 'rgba(51,65,85,0.5)',
+                color: timeOfDay==='morning' ? '#fbbf24' : timeOfDay==='evening' ? '#a78bfa' : '#64748b'
+              }}>
+                {timeOfDay==='morning' ? '☀️ Morning' : timeOfDay==='evening' ? '🌙 Evening' : '🌤 Midday'}
+              </span>
+            </div>
             <h1 className="text-2xl font-bold text-white">{todayStr}</h1>
           </div>
           <div className="flex items-center gap-2">
@@ -967,10 +1440,15 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
                 <span className="text-xs font-bold px-2.5 py-1 rounded-full flex-shrink-0 text-white" style={{background:a.color}}>All 5 →</span>
               </button>
               {showAll && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center px-5" style={{backgroundColor:'rgba(0,0,0,0.85)',backdropFilter:'blur(6px)'}} onClick={()=>setShowAll(false)}>
-                  <div className="bg-slate-900 rounded-3xl p-6 max-w-sm w-full border border-slate-700 pop-in" onClick={e=>e.stopPropagation()}>
-                    <h3 className="text-lg font-black text-white mb-5 text-center">The Five Agreements</h3>
-                    <div className="space-y-3">
+                <div className="fixed inset-0 z-50 flex flex-col items-center justify-end md:justify-center px-0 md:px-5" style={{backgroundColor:'rgba(0,0,0,0.85)',backdropFilter:'blur(6px)'}} onClick={()=>setShowAll(false)}>
+                  <div className="bg-slate-900 rounded-t-3xl md:rounded-3xl w-full border-t md:border border-slate-700 pop-in flex flex-col mx-auto max-w-lg" style={{maxHeight:'calc(100vh - 80px)'}} onClick={e=>e.stopPropagation()}>
+                    {/* Fixed header */}
+                    <div className="flex-shrink-0 px-5 pt-5 pb-3">
+                      <div className="w-10 h-1 bg-slate-600 rounded-full mx-auto mb-4"/>
+                      <h3 className="text-lg font-black text-white text-center">The Five Agreements</h3>
+                    </div>
+                    {/* Scrollable content */}
+                    <div className="flex-1 overflow-y-auto px-5 pb-3 space-y-3">
                       {AGREEMENTS.map(ag=>(
                         <div key={ag.num} className="rounded-2xl p-4 flex items-start gap-3" style={{background:`${ag.color}12`,border:`1px solid ${ag.color}30`}}>
                           <span className="text-xl flex-shrink-0 mt-0.5">{ag.icon}</span>
@@ -982,9 +1460,12 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
                         </div>
                       ))}
                     </div>
-                    <button onClick={()=>setShowAll(false)} className="w-full mt-5 py-3 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-2xl text-sm font-semibold transition-colors">
-                      Close
-                    </button>
+                    {/* Close button */}
+                    <div className="flex-shrink-0 px-5 pt-3 pb-5 border-t border-slate-800">
+                      <button onClick={()=>setShowAll(false)} className="w-full py-3.5 bg-slate-700 hover:bg-slate-600 text-white rounded-2xl text-sm font-bold transition-colors">
+                        Close
+                      </button>
+                    </div>
                   </div>
                 </div>
               )}
@@ -1008,8 +1489,7 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
         </div>
 
         {/* Gratitude */}
-        <div className="bg-slate-800/60 rounded-2xl p-5 border border-slate-700">
-          <h3 className="text-sm font-bold text-green-400 uppercase tracking-wide mb-3">Grateful For</h3>
+        <Section id="gratitude" label="🌱 Gratitude" color="text-green-400" open={isOpen("gratitude")} onToggle={toggle}>
           <div className="space-y-2">
             {[0,1,2].map(i=>(
               <div key={i} className="flex items-center gap-3">
@@ -1018,7 +1498,7 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
               </div>
             ))}
           </div>
-        </div>
+        </Section>
 
         {/* Daily Reflection Prompt */}
         {(()=>{
@@ -1047,11 +1527,8 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
           const dayOfYear = Math.floor((new Date() - new Date(new Date().getFullYear(),0,0)) / 86400000);
           const prompt = PROMPTS[dayOfYear % PROMPTS.length];
           return (
-            <div className="rounded-2xl px-4 py-4 space-y-3" style={{background:'rgba(139,92,246,0.08)',border:'1px solid rgba(139,92,246,0.25)'}}>
-              <div>
-                <p className="text-xs font-bold text-purple-400 uppercase tracking-wide mb-2">💭 Today's Reflection</p>
-                <p className="text-sm text-slate-200 leading-relaxed font-medium">{prompt}</p>
-              </div>
+            <Section id="reflection" label="💭 Reflection" color="text-purple-400" open={isOpen("reflection")} onToggle={toggle} badge={day.reflection?.trim()?'✓':null}>
+              <p className="text-sm text-slate-200 leading-relaxed font-medium mb-3">{prompt}</p>
               <textarea
                 value={day.reflection||''}
                 onChange={e=>updateDay('reflection',e.target.value)}
@@ -1059,12 +1536,20 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
                 rows={3}
                 className="w-full bg-slate-800/60 border border-purple-500/20 rounded-xl p-3 text-white placeholder-slate-500 text-sm resize-none focus:border-purple-500 focus:outline-none"
               />
-              {day.reflection?.trim() && (
-                <p className="text-xs text-purple-400/60 text-right">✓ Saved</p>
-              )}
-            </div>
+            </Section>
           );
         })()}
+
+        {/* Carry-over banner */}
+        {showCarryOver && (
+          <div className="rounded-2xl p-4 border border-green-500/40 flex items-center justify-between gap-3" style={{background:'rgba(16,185,129,0.1)'}}>
+            <div>
+              <p className="text-sm font-bold text-green-300">✓ Tomorrow's priorities loaded</p>
+              <p className="text-xs text-slate-400 mt-0.5">Your Top 3 from yesterday are ready to go</p>
+            </div>
+            <button onClick={()=>setShowCarryOver(false)} className="px-3 py-1.5 rounded-xl text-xs text-slate-400 bg-slate-700 hover:bg-slate-600 transition-colors flex-shrink-0">Got it</button>
+          </div>
+        )}
 
         {/* Top 3 Priorities */}
         <div className="bg-slate-800/60 rounded-2xl p-5 border border-slate-700">
@@ -1139,14 +1624,12 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
         </div>
 
         {/* Notes */}
-        <div className="bg-slate-800/60 rounded-2xl p-5 border border-slate-700">
-          <h3 className="text-sm font-bold text-slate-300 uppercase tracking-wide mb-3">Notes</h3>
+        <Section id="notes" label="📝 Notes" color="text-slate-300" open={isOpen("notes")} onToggle={toggle} badge={day.notes?.trim()?'✓':null}>
           <textarea value={day.notes||''} onChange={e=>updateDay('notes',e.target.value)} placeholder="Thoughts, ideas, observations..." rows={3} className="w-full bg-slate-700/50 border border-slate-600/50 rounded-xl p-3 text-white placeholder-slate-500 text-sm resize-none focus:border-slate-400 focus:outline-none"/>
-        </div>
+        </Section>
 
         {/* Evening Review */}
-        <div className="bg-slate-800/60 rounded-2xl p-5 border border-slate-700">
-          <h3 className="text-sm font-bold text-orange-400 uppercase tracking-wide mb-4">Evening Review</h3>
+        <Section id="evening" label="🌙 Evening Review" color="text-orange-400" open={isOpen("evening")} onToggle={toggle}>
           <div className="space-y-4">
             <div>
               <label className="text-xs text-slate-400 block mb-2">Today's Wins</label>
@@ -1182,7 +1665,7 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
               ))}
             </div>
           </div>
-        </div>
+        </Section>
       </div>
     );
   };
@@ -1602,21 +2085,40 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
   };
 
   // ── SCORE VIEW ─────────────────────────────────────────────────────────────
-  const ScoreView = ({ data, updateField, weekNum, setWeekNum, setActiveTab, openCoach, onPrint, onMilestone }) => {
+  const ScoreView = ({ data, updateField, weekNum, setWeekNum, setActiveTab, openCoach, onPrint, onMilestone, setShowResetModal }) => {
     const score = calcSEAScore(data, weekNum-1);
     const wheel = data.weeks[weekNum-1].wheelOfJohn||{family:5,fun:5,fitness:5,finance:5,faith:5};
+    const prevWheel = weekNum > 1 ? (data.weeks[weekNum-2].wheelOfJohn||null) : null;
 
     const TROPHIES = [
       // Foundation
       {id:'first-week',icon:'🎯',title:'Foundation Built',desc:'Completed your first weekly ritual',check:()=>data.weeks.some(w=>w.wins.some(x=>x.trim())&&w.focus?.trim())},
-      {id:'goals-set',icon:'🏹',title:'Goal Setter',desc:'All 4 goals defined with measurements',check:()=>data.goals.filter(g=>g.title?.trim()&&g.measurement?.trim()).length>=3},
+      {id:'goals-set',icon:'🏹',title:'Goal Setter',desc:'3+ goals defined with measurements',check:()=>data.goals.filter(g=>g.title?.trim()&&g.measurement?.trim()).length>=3},
       {id:'5-weeks',icon:'📅',title:'5-Week Warrior',desc:'Planned 5 or more weeks',check:()=>data.weeks.filter(w=>w.wins.some(x=>x.trim())||w.focus?.trim()).length>=5},
       {id:'10-weeks',icon:'🗓️',title:'10-Week Warrior',desc:'Planned 10 or more weeks',check:()=>data.weeks.filter(w=>w.wins.some(x=>x.trim())||w.focus?.trim()).length>=10},
-      // Anvil
-      {id:'anvil-7',icon:'🔥',title:'7-Day Streak',desc:'Kept the Anvil going for 7 consecutive days',check:()=>{const log=data.anvilProject?.log||[];if(!log.length)return false;const now=new Date();now.setHours(0,0,0,0);const u=[...new Set(log.map(e=>{const d=new Date(e.date);d.setHours(0,0,0,0);return d.toDateString()}))].map(s=>new Date(s)).sort((a,b)=>b-a);let str=0;for(let i=0;i<u.length;i++){const exp=new Date(now);exp.setDate(now.getDate()-i);if(u[i].toDateString()===exp.toDateString())str++;else break;}return str>=7;}},
-      {id:'anvil-21',icon:'🔥🔥',title:'21-Day Streak',desc:'Kept the Anvil going for 21 consecutive days',check:()=>{const log=data.anvilProject?.log||[];if(!log.length)return false;const now=new Date();now.setHours(0,0,0,0);const u=[...new Set(log.map(e=>{const d=new Date(e.date);d.setHours(0,0,0,0);return d.toDateString()}))].map(s=>new Date(s)).sort((a,b)=>b-a);let str=0;for(let i=0;i<u.length;i++){const exp=new Date(now);exp.setDate(now.getDate()-i);if(u[i].toDateString()===exp.toDateString())str++;else break;}return str>=21;}},
-      {id:'anvil-30',icon:'💎',title:'30-Day Legend',desc:'30 consecutive days on your Anvil',check:()=>{const log=data.anvilProject?.log||[];if(!log.length)return false;const now=new Date();now.setHours(0,0,0,0);const u=[...new Set(log.map(e=>{const d=new Date(e.date);d.setHours(0,0,0,0);return d.toDateString()}))].map(s=>new Date(s)).sort((a,b)=>b-a);let str=0;for(let i=0;i<u.length;i++){const exp=new Date(now);exp.setDate(now.getDate()-i);if(u[i].toDateString()===exp.toDateString())str++;else break;}return str>=30;}},
-      {id:'anvil-50',icon:'🏔️',title:'50 Sessions',desc:'Logged 50 Anvil sessions',check:()=>(data.anvilProject?.log||[]).length>=50},
+      // Anvil — use total sessions and best-ever streak (not just current)
+      {id:'anvil-7',icon:'🔥',title:'7-Day Streak',desc:'Hit a 7-day Anvil streak',check:()=>{
+        const log=data.anvilProject?.log||[];if(log.length<7)return false;
+        const u=[...new Set(log.map(e=>{const d=new Date(e.date);d.setHours(0,0,0,0);return d.toDateString()}))].map(s=>new Date(s)).sort((a,b)=>a-b);
+        let best=0,cur=1;
+        for(let i=1;i<u.length;i++){const diff=(u[i]-u[i-1])/(86400000);if(diff===1)cur++;else cur=1;if(cur>best)best=cur;}
+        return Math.max(best,1)>=7;
+      }},
+      {id:'anvil-21',icon:'🔥🔥',title:'21-Day Streak',desc:'Hit a 21-day Anvil streak',check:()=>{
+        const log=data.anvilProject?.log||[];if(log.length<21)return false;
+        const u=[...new Set(log.map(e=>{const d=new Date(e.date);d.setHours(0,0,0,0);return d.toDateString()}))].map(s=>new Date(s)).sort((a,b)=>a-b);
+        let best=0,cur=1;
+        for(let i=1;i<u.length;i++){const diff=(u[i]-u[i-1])/(86400000);if(diff===1)cur++;else cur=1;if(cur>best)best=cur;}
+        return Math.max(best,1)>=21;
+      }},
+      {id:'anvil-30',icon:'💎',title:'30-Day Legend',desc:'Hit a 30-day Anvil streak',check:()=>{
+        const log=data.anvilProject?.log||[];if(log.length<30)return false;
+        const u=[...new Set(log.map(e=>{const d=new Date(e.date);d.setHours(0,0,0,0);return d.toDateString()}))].map(s=>new Date(s)).sort((a,b)=>a-b);
+        let best=0,cur=1;
+        for(let i=1;i<u.length;i++){const diff=(u[i]-u[i-1])/(86400000);if(diff===1)cur++;else cur=1;if(cur>best)best=cur;}
+        return Math.max(best,1)>=30;
+      }},
+      {id:'anvil-50',icon:'🏔️',title:'50 Sessions',desc:'Logged 50 Anvil sessions total',check:()=>(data.anvilProject?.log||[]).length>=50},
       // Scoring
       {id:'score-80',icon:'⭐',title:'S.E.A. Excellence',desc:'Scored 80+ in a week',check:()=>score.total>=80},
       {id:'score-90',icon:'🌟',title:'S.E.A. Elite',desc:'Scored 90+ in a week',check:()=>score.total>=90},
@@ -1632,9 +2134,11 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
       {id:'goal-100',icon:'🎉',title:'Goal Achieved!',desc:'Hit 100% on any goal',check:()=>data.goals.some(g=>g.title?.trim()&&(g.completion||0)>=100)},
       // Reflection & Notes
       {id:'notes-10',icon:'📝',title:'Reflective Leader',desc:'Written 10 or more journal notes',check:()=>(data.notes||[]).length>=10},
-      {id:'reflection-7',icon:'🧘',title:'Deep Thinker',desc:'Answered the reflection prompt 7 days',check:()=>data.dailyPlans.flat().filter(d=>d?.reflection?.trim()).length>=7},
+      {id:'reflection-7',icon:'🧘',title:'Deep Thinker',desc:'Reflected 7 or more days',check:()=>data.dailyPlans.flat().filter(d=>d?.reflection?.trim()).length>=7},
       // Sharing
       {id:'sharer',icon:'🤝',title:'Accountability Partner',desc:'Shared your score with someone',check:()=>!!localStorage.getItem('share-used')},
+      // Reset
+      {id:'cycle-2',icon:'🔁',title:'Second Wind',desc:'Completed a full 120-day cycle and started fresh',check:()=>parseInt(localStorage.getItem('sea-cycle-number')||'1')>=2},
     ];
 
     const COMPONENTS = [
@@ -1666,6 +2170,7 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
       const encoded = btoa(unescape(encodeURIComponent(JSON.stringify(shareData))))
         .replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
       const url = `${window.location.origin}${window.location.pathname}?share=${encoded}`;
+      localStorage.setItem('share-used', 'true'); // unlock Accountability Partner trophy
       const firstName = shareData.n?.split(' ')[0] || '';
       const shareText = `${firstName ? firstName + "'s " : ''}S.E.A. Score this week: ${score.total}/100${score.anvilStreak > 0 ? ' 🔥 ' + score.anvilStreak + ' day streak' : ''}`;
 
@@ -1681,7 +2186,18 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
 
     return (
       <div className="page-content px-4 py-5 space-y-5">
-        {/* Big Score */}
+
+        {/* Week 17 Completion Banner */}
+        {weekNum === 17 && (
+          <div className="rounded-3xl p-6 text-center border" style={{background:'linear-gradient(135deg,rgba(99,102,241,0.15),rgba(139,92,246,0.15))',borderColor:'rgba(99,102,241,0.4)'}}>
+            <span className="text-4xl">🏁</span>
+            <h3 className="text-xl font-black text-white mt-3 mb-2">You finished 120 days!</h3>
+            <p className="text-slate-300 text-sm mb-4">This cycle is complete. Archive your journey and start your next 120 days stronger.</p>
+            <button onClick={()=>setShowResetModal(true)} className="w-full py-3 rounded-2xl font-bold text-white" style={{background:'linear-gradient(135deg,#6366f1,#8b5cf6)'}}>
+              Archive & Start New Cycle →
+            </button>
+          </div>
+        )}
         <div className="rounded-3xl p-6 text-center" style={{background:'linear-gradient(135deg,#1e1b4b,#0f172a)',border:'1px solid rgba(99,102,241,0.3)'}}>
           <div className="flex justify-between items-center mb-1 no-print">
             <button onClick={generateShareLink} className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-green-400 border border-green-500/30 hover:bg-green-500/10 transition-all">
@@ -1731,8 +2247,21 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
 
         {/* Wheel */}
         <div className="bg-slate-800/60 rounded-2xl p-5 border border-slate-700">
-          <h3 className="text-sm font-bold text-indigo-400 uppercase tracking-wide mb-4">Wheel of John</h3>
-          <div className="flex justify-center"><MiniRadar scores={wheel} size={200}/></div>
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-sm font-bold text-indigo-400 uppercase tracking-wide">⚖️ Wheel of John</h3>
+            {prevWheel && <span className="text-xs text-slate-500">Dashed = last week</span>}
+          </div>
+          <div className="flex justify-center py-2">
+            <MiniRadar scores={wheel} prevScores={prevWheel} size={260}/>
+          </div>
+          <div className="grid grid-cols-5 gap-2 mt-4">
+            {[{key:'family',label:'Family',color:'#f43f5e'},{key:'fun',label:'Fun',color:'#f59e0b'},{key:'fitness',label:'Fitness',color:'#10b981'},{key:'finance',label:'Finance',color:'#3b82f6'},{key:'faith',label:'Faith',color:'#a855f7'}].map(c=>(
+              <div key={c.key} className="text-center">
+                <div className="text-lg font-black" style={{color:c.color}}>{wheel[c.key]||0}</div>
+                <div className="text-xs text-slate-500 truncate">{c.label}</div>
+              </div>
+            ))}
+          </div>
         </div>
 
         {/* Goal Progress */}
@@ -1895,6 +2424,80 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
     const [noteTag, setNoteTag] = useState('Personal');
     const [anvilEntry, setAnvilEntry] = useState('');
     const [anvilLogDate, setAnvilLogDate] = useState('');
+    const [backupStatus, setBackupStatus] = useState('');
+    const [coachProfile, setCoachProfile] = useState(()=>{try{const s=localStorage.getItem('coach-profile');return s?JSON.parse(s):{years:'',production:'',need:'',obstacle:'',style:'',why:'',drift:'',family:'',niche:''};}catch(e){return{years:'',production:'',need:'',obstacle:'',style:'',why:'',drift:'',family:'',niche:''};}}); 
+    const updateProfile = (key, val) => {
+      const p = {...coachProfile, [key]:val};
+      setCoachProfile(p);
+      localStorage.setItem('coach-profile', JSON.stringify(p));
+    };
+
+    const exportBackup = () => {
+      try {
+        const backup = {
+          version: '1.0',
+          exportedAt: new Date().toISOString(),
+          plannerData: data,
+          settings: {
+            coachPersonality: localStorage.getItem('coach-personality'),
+            apiKey: localStorage.getItem('claude-api-key'),
+            coachProfile: localStorage.getItem('coach-profile'),
+            summaryEmail: localStorage.getItem('summary-email'),
+            summaryName: localStorage.getItem('summary-name'),
+            summaryOptIn: localStorage.getItem('summary-optin'),
+            coachCommitment: localStorage.getItem('coach-commitment'),
+            coachCommitmentDate: localStorage.getItem('coach-commitment-date'),
+            shareUsed: localStorage.getItem('share-used'),
+          }
+        };
+        const blob = new Blob([JSON.stringify(backup, null, 2)], {type:'application/json'});
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `sea-dashboard-backup-${new Date().toISOString().split('T')[0]}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+        setBackupStatus('✓ Backup downloaded successfully!');
+        setTimeout(()=>setBackupStatus(''), 4000);
+      } catch(e) {
+        setBackupStatus('✗ Export failed — try again');
+        setTimeout(()=>setBackupStatus(''), 4000);
+      }
+    };
+
+    const importBackup = (e) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        try {
+          const backup = JSON.parse(ev.target.result);
+          if (!backup.plannerData) throw new Error('Invalid backup file');
+          // Restore planner data
+          localStorage.setItem('sea-planner-data', JSON.stringify(backup.plannerData));
+          // Restore settings
+          if (backup.settings) {
+            const s = backup.settings;
+            if (s.coachPersonality) localStorage.setItem('coach-personality', s.coachPersonality);
+            if (s.apiKey) localStorage.setItem('claude-api-key', s.apiKey);
+            if (s.coachProfile) localStorage.setItem('coach-profile', s.coachProfile);
+            if (s.summaryEmail) localStorage.setItem('summary-email', s.summaryEmail);
+            if (s.summaryName) localStorage.setItem('summary-name', s.summaryName);
+            if (s.summaryOptIn) localStorage.setItem('summary-optin', s.summaryOptIn);
+            if (s.coachCommitment) localStorage.setItem('coach-commitment', s.coachCommitment);
+            if (s.coachCommitmentDate) localStorage.setItem('coach-commitment-date', s.coachCommitmentDate);
+            if (s.shareUsed) localStorage.setItem('share-used', s.shareUsed);
+          }
+          setBackupStatus('✓ Backup restored! Reloading...');
+          setTimeout(()=>window.location.reload(), 1500);
+        } catch(err) {
+          setBackupStatus('✗ Invalid backup file — please try again');
+          setTimeout(()=>setBackupStatus(''), 4000);
+        }
+      };
+      reader.readAsText(file);
+      e.target.value = ''; // reset input so same file can be re-selected
+    };
 
     const anvil = data.anvilProject||{project:'',cadence:'',why:'',log:[]};
     const notes = data.notes||[];
@@ -1903,7 +2506,7 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
     const SECTIONS = [
       {id:'vision',label:'Vision & Goals',icon:'🎯',desc:'3-year, 1-year, 120-day vision + 4 goals'},
       {id:'anvil',label:'Anvil Project',icon:'🔨',desc:anvil.project?`"${anvil.project}" — ${(anvil.log||[]).length} sessions logged`:'Set your Anvil project'},
-      {id:'notes',label:'Notes & Journal',icon:'📝',desc:`${notes.length} note${notes.length!==1?'s':''} captured`},
+      {id:'profile',label:'Coach Profile',icon:'🧠',desc:'Help your coach know you better — takes 3 minutes'},
       {id:'setup',label:'Setup & Settings',icon:'⚙️',desc:'Coach personality, start date, routines'},
     ];
 
@@ -2097,6 +2700,113 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
         )}
 
         {/* Setup */}
+        {section==='profile' && (
+          <div className="space-y-4">
+            <div>
+              <h2 className="text-xl font-bold text-white">Coach Profile</h2>
+              <p className="text-xs text-slate-400 mt-1">Help your coach really know you — tap to answer, under 5 minutes</p>
+            </div>
+
+            {(()=>{
+              const answered = Object.values(coachProfile).filter(v=>v?.trim()).length;
+              const pct = Math.round((answered/9)*100);
+              const Pill = ({label, selected, onSelect}) => (
+                <button onClick={onSelect} className={`px-4 py-2 rounded-full text-sm font-semibold transition-all border ${selected?'text-white border-transparent':'border-slate-600 text-slate-400'}`}
+                  style={selected?{background:'linear-gradient(135deg,#3b82f6,#8b5cf6)'}:{}}>
+                  {label}
+                </button>
+              );
+              const Q = ({num, label, sub, children}) => (
+                <div className="bg-slate-800/60 rounded-2xl p-4 border border-slate-700">
+                  <div className="flex items-start gap-3 mb-3">
+                    <span className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-black flex-shrink-0" style={{background:'linear-gradient(135deg,#3b82f6,#8b5cf6)',color:'white'}}>{num}</span>
+                    <div>
+                      <p className="text-sm font-semibold text-white leading-snug">{label}</p>
+                      {sub && <p className="text-xs text-slate-500 mt-0.5">{sub}</p>}
+                    </div>
+                  </div>
+                  <div className="pl-9">{children}</div>
+                </div>
+              );
+              return (
+                <div className="space-y-3">
+                  {/* Progress — sticky at top */}
+                  <div className="rounded-2xl p-4 border border-slate-700" style={{background:'rgba(30,41,59,0.8)'}}>
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-xs font-bold text-slate-400 uppercase tracking-wide">Profile Completion</span>
+                      <span className="text-sm font-black" style={{color:pct>=100?'#10b981':pct>=60?'#3b82f6':'#94a3b8'}}>{answered} / 9</span>
+                    </div>
+                    <div className="h-2.5 bg-slate-700 rounded-full overflow-hidden">
+                      <div className="h-full rounded-full transition-all duration-500" style={{width:`${pct}%`,background:pct>=100?'linear-gradient(90deg,#10b981,#059669)':pct>=60?'linear-gradient(90deg,#3b82f6,#10b981)':'linear-gradient(90deg,#6366f1,#3b82f6)'}}/>
+                    </div>
+                    <p className="text-xs mt-2" style={{color:pct>=100?'#10b981':'#64748b'}}>{pct>=100?'✓ Profile complete — your coach really knows you':'More answers = sharper, more personal coaching'}</p>
+                  </div>
+
+                  <Q num="1" label="How long have you been a financial advisor?">
+                    <div className="flex flex-wrap gap-2">
+                      {['Under 5 years','5–15 years','15–25 years','25+ years'].map(o=>(
+                        <Pill key={o} label={o} selected={coachProfile.years===o} onSelect={()=>updateProfile('years',o)}/>
+                      ))}
+                    </div>
+                  </Q>
+                  <Q num="2" label="Current production level?">
+                    <div className="flex flex-wrap gap-2">
+                      {['Under $300K','$300K–$750K','$750K–$1.2M','$1.2M+'].map(o=>(
+                        <Pill key={o} label={o} selected={coachProfile.production===o} onSelect={()=>updateProfile('production',o)}/>
+                      ))}
+                    </div>
+                  </Q>
+                  <Q num="3" label="How do you work?" sub="Team setup">
+                    <div className="flex flex-wrap gap-2">
+                      {['Solo advisor','Small team (1–3)','Larger team (4+)'].map(o=>(
+                        <Pill key={o} label={o} selected={coachProfile.style===o} onSelect={()=>updateProfile('style',o)}/>
+                      ))}
+                    </div>
+                  </Q>
+                  <Q num="4" label="Who do you primarily serve?" sub="Your client niche">
+                    <div className="flex flex-wrap gap-2">
+                      {['Retirees','Business owners','Young professionals','Women in transition','Mixed/general'].map(o=>(
+                        <Pill key={o} label={o} selected={coachProfile.niche===o} onSelect={()=>updateProfile('niche',o)}/>
+                      ))}
+                    </div>
+                  </Q>
+                  <Q num="5" label="What do you need most from your coach?">
+                    <div className="flex flex-wrap gap-2">
+                      {['Push me harder','Help me get clear','Hold me accountable','Challenge my thinking'].map(o=>(
+                        <Pill key={o} label={o} selected={coachProfile.need===o} onSelect={()=>updateProfile('need',o)}/>
+                      ))}
+                    </div>
+                  </Q>
+                  <Q num="6" label="Biggest obstacle right now?">
+                    <div className="flex flex-wrap gap-2">
+                      {['Time','My team','My mindset','Growth strategy','Prospecting'].map(o=>(
+                        <Pill key={o} label={o} selected={coachProfile.obstacle===o} onSelect={()=>updateProfile('obstacle',o)}/>
+                      ))}
+                    </div>
+                  </Q>
+                  <Q num="7" label="Family situation" sub="Helps connect business to what really matters">
+                    <div className="flex flex-wrap gap-2">
+                      {['Single','Married, no kids','Married with kids','Other'].map(o=>(
+                        <Pill key={o} label={o} selected={coachProfile.family===o} onSelect={()=>updateProfile('family',o)}/>
+                      ))}
+                    </div>
+                  </Q>
+                  <Q num="8" label="When you're off track it usually looks like..." sub="Your personal drift signature">
+                    <div className="flex flex-wrap gap-2">
+                      {['Avoiding prospecting','Lost in admin','Low motivation','Overthinking','Busy work'].map(o=>(
+                        <Pill key={o} label={o} selected={coachProfile.drift===o} onSelect={()=>updateProfile('drift',o)}/>
+                      ))}
+                    </div>
+                  </Q>
+                  <Q num="9" label="What originally drew you to this career?" sub="Optional — this is where great coaching starts">
+                    <textarea defaultValue={coachProfile.why||''} onBlur={e=>updateProfile('why',e.target.value)} placeholder="e.g. My parents lost everything and I wanted to help people avoid that..." rows={3} className="w-full bg-slate-700/50 border border-slate-600/50 rounded-xl p-3 text-white placeholder-slate-500 text-sm resize-none focus:border-blue-500 focus:outline-none"/>
+                  </Q>
+                </div>
+              );
+            })()}
+          </div>
+        )}
+
         {section==='setup' && (
           <div className="space-y-5">
             <h2 className="text-xl font-bold text-white">Setup & Settings</h2>
@@ -2164,6 +2874,29 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
               <input type="date" value={data.startDate||''} onChange={e=>updateField('startDate',e.target.value)} className="w-full bg-slate-700/50 border border-slate-600/50 rounded-xl p-3 text-white text-sm focus:outline-none"/>
               {data.startDate&&(()=>{const[y,m,d]=data.startDate.split('-').map(Number);const s=new Date(y,m-1,d);const dow=s.getDay();if(dow!==1){const adj=dow===0?1:8-dow;s.setDate(s.getDate()+adj);}const e=new Date(s);e.setDate(s.getDate()+119);return(<div className="mt-2 p-3 bg-slate-700/30 rounded-xl"><p className="text-xs text-slate-400">Week 1 starts: <span className="text-white font-medium">{s.toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})}</span></p><p className="text-xs text-slate-400 mt-1">Ends: <span className="text-white font-medium">{e.toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})}</span></p>{dow!==1&&<p className="text-xs text-yellow-400 mt-1">⚠️ Adjusted to nearest Monday</p>}</div>);})()}
             </div>
+
+            {/* Backup & Restore */}
+            <div className="bg-slate-800/60 rounded-2xl p-5 border border-slate-700">
+              <h3 className="text-sm font-bold text-teal-400 mb-1">💾 Backup & Restore</h3>
+              <p className="text-xs text-slate-400 mb-4">Your data lives in this browser. Export a backup file to protect your 120-day journey — and restore it on any device.</p>
+              <div className="space-y-3">
+                <button onClick={exportBackup} className="w-full py-3 rounded-xl font-bold text-white text-sm flex items-center justify-center gap-2 transition-all" style={{background:'linear-gradient(135deg,#0d9488,#0891b2)'}}>
+                  📥 Export Backup File
+                </button>
+                <div className="relative">
+                  <input type="file" accept=".json" onChange={importBackup} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"/>
+                  <button className="w-full py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-all border border-teal-500/40 text-teal-400 hover:bg-teal-500/10">
+                    📤 Restore from Backup
+                  </button>
+                </div>
+                {backupStatus && (
+                  <p className={`text-xs text-center font-semibold ${backupStatus.includes('✓')?'text-green-400':backupStatus.includes('✗')?'text-red-400':'text-teal-400'}`}>
+                    {backupStatus}
+                  </p>
+                )}
+                <p className="text-xs text-slate-500 text-center">Backup includes all goals, habits, Anvil log, reflections, notes, and settings</p>
+              </div>
+            </div>
           </div>
         )}
       </div>
@@ -2196,7 +2929,10 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
     const [anvilModal, setAnvilModal] = useState(false);
     const [anvilEntry, setAnvilEntry] = useState('');
     const [anvilDate, setAnvilDate] = useState('');
-    const [milestone, setMilestone] = useState(null); // {title, pct}
+    const [milestone, setMilestone] = useState(null);
+    const [showResetModal, setShowResetModal] = useState(false);
+    const [resetStep, setResetStep] = useState(1); // 1=reflection, 2=confirm
+    const [resetReflection, setResetReflection] = useState({wins:'',lessons:'',proud:'',nextTheme:'',nextVision:'',nextAnvil:''}); // {title, pct}
     const [coachPersonality, setCoachPersonality] = useState(()=>{try{const s=localStorage.getItem('coach-personality');return s?JSON.parse(s):{style:2,tone:2,approach:2,energy:2};}catch(e){return{style:2,tone:2,approach:2,energy:2};}});
     const saveTimer = useRef(null);
 
@@ -2240,6 +2976,9 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
         if (onboardingData.apiKey) {
           localStorage.setItem('claude-api-key', onboardingData.apiKey);
         }
+        if (onboardingData.coachProfile && Object.values(onboardingData.coachProfile).some(v=>v?.trim())) {
+          localStorage.setItem('coach-profile', JSON.stringify(onboardingData.coachProfile));
+        }
       }
     },[onboardingData,loading]);
 
@@ -2255,6 +2994,45 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
       saveTimer.current=setTimeout(()=>saveData(data),1500);
       return()=>clearTimeout(saveTimer.current);
     },[data]);
+
+    const archiveAndReset = (reflection) => {
+      // Archive current cycle
+      const archive = {
+        archivedAt: new Date().toISOString(),
+        cycleNumber: parseInt(localStorage.getItem('sea-cycle-number')||'1'),
+        startDate: data.startDate,
+        finalScore: calcSEAScore(data, 16).total,
+        reflection,
+        data: JSON.parse(JSON.stringify(data))
+      };
+      const archives = JSON.parse(localStorage.getItem('sea-archives')||'[]');
+      archives.push(archive);
+      localStorage.setItem('sea-archives', JSON.stringify(archives));
+      localStorage.setItem('sea-cycle-number', String(archive.cycleNumber + 1));
+
+      // Reset to fresh state, keeping profile settings
+      const newStartDate = new Date().toISOString().split('T')[0];
+      const freshData = {
+        slightEdge: data.slightEdge,
+        yearTheme: reflection.nextTheme || '',
+        vision3Year: data.vision3Year,
+        vision1Year: '',
+        vision120Day: reflection.nextVision || '',
+        goals: [{title:'',impact:'',measurement:''},{title:'',impact:'',measurement:''},{title:'',impact:'',measurement:''},{title:'',impact:'',measurement:''}],
+        weekByDesign: data.weekByDesign,
+        weeks: Array(17).fill(null).map(()=>createWeek()),
+        dailyPlans: Array(17).fill(null).map(()=>Array(7).fill(null).map(()=>createDay())),
+        anvilProject: {project: reflection.nextAnvil || data.anvilProject?.project || '', cadence: data.anvilProject?.cadence || '', why: data.anvilProject?.why || '', log: []},
+        notes: [],
+        startDate: newStartDate
+      };
+      setData(freshData);
+      localStorage.setItem('sea-planner-data', JSON.stringify(freshData));
+      setWeekNum(1);
+      setShowResetModal(false);
+      setResetStep(1);
+      setResetReflection({wins:'',lessons:'',proud:'',nextTheme:'',nextVision:'',nextAnvil:''});
+    };
 
     const updateField = (path,value)=>{
       setData(prev=>{
@@ -2302,6 +3080,7 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
       {id:'today',label:'Today',Icon:SunIcon},
       {id:'week',label:'Week',Icon:CalIcon},
       {id:'score',label:'Score',Icon:StarIcon},
+      {id:'journal',label:'Journal',Icon:JournalIcon},
       {id:'more',label:'More',Icon:MenuIcon},
     ];
 
@@ -2315,7 +3094,7 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
             <div className="max-w-sm w-full pop-in" style={{animation:'popIn 0.4s cubic-bezier(0.34,1.56,0.64,1)'}}>
               {/* Pulsing glow ring */}
               <div className="rounded-3xl p-0.5 ring-pulse" style={{background:'linear-gradient(135deg,#3b82f6,#8b5cf6,#3b82f6)',backgroundSize:'200%'}}>
-                <div className="bg-slate-900 rounded-3xl p-6">
+                <div className="bg-slate-900 rounded-3xl p-6 max-w-sm w-full">
                   {/* Label row */}
                   <div className="flex items-center gap-2 mb-4">
                     <span className="text-3xl">{popup._emoji||'🤖'}</span>
@@ -2361,11 +3140,78 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
             </div>
           </div>
         )}
+
+        {/* 120-Day Reset Modal */}
+        {showResetModal && (
+          <div className="fixed inset-0 z-50 flex flex-col items-center justify-end md:justify-center px-0 md:px-5 no-print" style={{backgroundColor:'rgba(0,0,0,0.9)',backdropFilter:'blur(8px)'}}>
+            <div className="w-full max-w-2xl bg-slate-900 rounded-t-3xl md:rounded-3xl shadow-2xl" style={{borderTop:'1px solid rgba(99,102,241,0.4)',maxHeight:'calc(100vh - 80px)',overflowY:'auto'}}>
+              <div className="p-6" style={{paddingBottom:'var(--modal-bottom)'}}>
+                {resetStep === 1 && (
+                  <div className="space-y-5">
+                    <div className="text-center mb-2">
+                      <span className="text-4xl">🏁</span>
+                      <h2 className="text-2xl font-black text-white mt-3 mb-1">120-Day Reflection</h2>
+                      <p className="text-slate-400 text-sm">Before you start your next cycle, take 5 minutes to capture what this journey meant.</p>
+                    </div>
+                    {[
+                      {key:'wins',label:'Top 3 Wins This Cycle',ph:'What are you most proud of accomplishing?',rows:3},
+                      {key:'lessons',label:'Biggest Lessons Learned',ph:'What did this cycle teach you?',rows:3},
+                      {key:'proud',label:'Who Did You Become?',ph:'How are you different after these 120 days?',rows:2},
+                    ].map(f=>(
+                      <div key={f.key} className="bg-slate-800/60 rounded-2xl p-4 border border-slate-700">
+                        <label className="text-xs font-bold text-indigo-400 uppercase tracking-wide block mb-2">{f.label}</label>
+                        <textarea value={resetReflection[f.key]} onChange={e=>setResetReflection(r=>({...r,[f.key]:e.target.value}))} placeholder={f.ph} rows={f.rows} className="w-full bg-slate-700/50 border border-slate-600/50 rounded-xl p-3 text-white placeholder-slate-500 text-sm resize-none focus:border-indigo-500 focus:outline-none"/>
+                      </div>
+                    ))}
+                    <div className="bg-slate-800/60 rounded-2xl p-4 border border-purple-500/30">
+                      <p className="text-xs font-bold text-purple-400 uppercase tracking-wide mb-3">Set Up Your Next 120 Days</p>
+                      {[
+                        {key:'nextTheme',label:'Year/Cycle Theme',ph:'e.g. The Year of Execution',rows:1},
+                        {key:'nextVision',label:'120-Day Vision',ph:'Who will you be at the end of the next cycle?',rows:2},
+                        {key:'nextAnvil',label:'Anvil Project',ph:'What is your highest-leverage activity next cycle?',rows:1},
+                      ].map(f=>(
+                        <div key={f.key} className="mb-3">
+                          <label className="text-xs text-slate-400 block mb-1">{f.label}</label>
+                          <textarea value={resetReflection[f.key]} onChange={e=>setResetReflection(r=>({...r,[f.key]:e.target.value}))} placeholder={f.ph} rows={f.rows} className="w-full bg-slate-700/50 border border-slate-600/50 rounded-xl p-3 text-white placeholder-slate-500 text-sm resize-none focus:border-purple-500 focus:outline-none"/>
+                        </div>
+                      ))}
+                    </div>
+                    <button onClick={()=>setResetStep(2)} className="w-full py-4 rounded-2xl font-bold text-white text-base" style={{background:'linear-gradient(135deg,#6366f1,#8b5cf6)'}}>
+                      Continue → Archive & Start Fresh
+                    </button>
+                    <button onClick={()=>setShowResetModal(false)} className="w-full py-3 bg-slate-800 text-slate-400 rounded-2xl text-sm">
+                      Not Yet — Go Back
+                    </button>
+                  </div>
+                )}
+                {resetStep === 2 && (
+                  <div className="space-y-5 text-center">
+                    <span className="text-5xl">📦</span>
+                    <h2 className="text-xl font-black text-white mt-3">Ready to Archive & Reset?</h2>
+                    <div className="bg-slate-800/60 rounded-2xl p-5 border border-slate-700 text-left space-y-2">
+                      <p className="text-sm text-slate-300">✓ Your full 17-week history will be <span className="text-green-400 font-semibold">saved to archive</span></p>
+                      <p className="text-sm text-slate-300">✓ Your reflection will be <span className="text-green-400 font-semibold">preserved</span></p>
+                      <p className="text-sm text-slate-300">✓ Your settings, coach, and Slight Edge will <span className="text-green-400 font-semibold">carry over</span></p>
+                      <p className="text-sm text-slate-300">✓ Goals, weeks, and Anvil log will <span className="text-yellow-400 font-semibold">reset fresh</span></p>
+                    </div>
+                    <p className="text-xs text-slate-500">This cannot be undone — but your archive is always saved.</p>
+                    <button onClick={()=>archiveAndReset(resetReflection)} className="w-full py-4 rounded-2xl font-black text-white text-base" style={{background:'linear-gradient(135deg,#10b981,#059669)'}}>
+                      🚀 Archive This Cycle & Start Fresh
+                    </button>
+                    <button onClick={()=>setResetStep(1)} className="w-full py-3 bg-slate-800 text-slate-400 rounded-2xl text-sm">
+                      ← Back to Reflection
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
         <AICoach isOpen={coachOpen} onClose={()=>setCoachOpen(false)} plannerData={data} currentContext={coachCtx} onUnreadChange={setCoachBadge} onProactiveMessage={setPopup} personality={coachPersonality}/>
 
         {/* Header */}
-        <div className="sticky top-0 z-40 no-print" style={{background:'rgba(15,23,42,0.95)',backdropFilter:'blur(12px)',borderBottom:'1px solid rgba(51,65,85,0.5)'}}>
-          <div className="max-w-2xl mx-auto px-4 py-3 flex items-center justify-between">
+        <div className="fixed top-0 left-0 right-0 z-40 no-print" style={{height:'58px',background:'rgba(15,23,42,0.95)',backdropFilter:'blur(12px)',borderBottom:'1px solid rgba(51,65,85,0.5)'}}>
+          <div className="max-w-2xl mx-auto px-4 h-full flex items-center justify-between">
             <div>
               <h1 className="font-black text-lg" style={{background:'linear-gradient(135deg,#60a5fa,#a78bfa)',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent'}}>S.E.A. Dashboard</h1>
               <p className="text-xs text-slate-500">Getting Results Inc.</p>
@@ -2380,12 +3226,15 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
           </div>
         </div>
 
-        {/* Content */}
-        <div className="max-w-2xl mx-auto">
-          {activeTab==='today'&&<TodayView data={data} updateField={updateField} weekNum={weekNum} dayIdx={dayIdx} setDayIdx={setDayIdx} openCoach={openCoach} score={score} onPrint={printTab}/>}
-          {activeTab==='week'&&<WeekView data={data} updateField={updateField} weekNum={weekNum} setWeekNum={setWeekNum} openCoach={openCoach} onPrint={printTab} onMilestone={setMilestone}/>}
-          {activeTab==='score'&&<ScoreView data={data} updateField={updateField} weekNum={weekNum} setWeekNum={setWeekNum} setActiveTab={setActiveTab} openCoach={openCoach} onPrint={printTab} onMilestone={setMilestone}/>}
-          {activeTab==='more'&&<MoreView data={data} updateField={updateField} saveData={saveData} openCoach={openCoach} personality={coachPersonality} setPersonality={setCoachPersonality} onReopenOnboarding={onReopenOnboarding} onMilestone={setMilestone}/>}
+        {/* Content — scrolls independently between header and tab bar */}
+        <div className="content-scroll no-print-scroll">
+          <div className="max-w-2xl mx-auto">
+            {activeTab==='today'&&<TodayView data={data} updateField={updateField} weekNum={weekNum} dayIdx={dayIdx} setDayIdx={setDayIdx} openCoach={openCoach} score={score} onPrint={printTab}/>}
+            {activeTab==='week'&&<WeekView data={data} updateField={updateField} weekNum={weekNum} setWeekNum={setWeekNum} openCoach={openCoach} onPrint={printTab} onMilestone={setMilestone}/>}
+            {activeTab==='score'&&<ScoreView data={data} updateField={updateField} weekNum={weekNum} setWeekNum={setWeekNum} setActiveTab={setActiveTab} openCoach={openCoach} onPrint={printTab} onMilestone={setMilestone} setShowResetModal={setShowResetModal}/>}
+            {activeTab==='journal'&&<JournalView data={data} updateField={updateField}/>}
+            {activeTab==='more'&&<MoreView data={data} updateField={updateField} saveData={saveData} openCoach={openCoach} personality={coachPersonality} setPersonality={setCoachPersonality} onReopenOnboarding={onReopenOnboarding} onMilestone={setMilestone}/>}
+          </div>
         </div>
 
         {/* Anvil FAB */}
@@ -2404,8 +3253,8 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
 
         {/* Anvil Quick-Log Modal */}
         {anvilModal&&(
-          <div className="fixed inset-0 z-50 flex items-end justify-center no-print" style={{backgroundColor:'rgba(0,0,0,0.7)'}} onClick={()=>setAnvilModal(false)}>
-            <div className="w-full max-w-2xl bg-slate-800 rounded-t-3xl p-6 pb-10 shadow-2xl" style={{borderTop:'1px solid rgba(249,115,22,0.4)'}} onClick={e=>e.stopPropagation()}>
+          <div className="fixed inset-0 z-50 flex flex-col items-center justify-end md:justify-center px-0 md:px-5 no-print" style={{backgroundColor:'rgba(0,0,0,0.7)'}} onClick={()=>setAnvilModal(false)}>
+            <div className="w-full max-w-2xl bg-slate-800 rounded-t-3xl md:rounded-3xl p-6 shadow-2xl" style={{borderTop:'1px solid rgba(249,115,22,0.4)',paddingBottom:'var(--modal-bottom)'}} onClick={e=>e.stopPropagation()}>
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-3">
                   <span className="text-3xl">&#x1F528;</span>
@@ -2443,12 +3292,12 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
         )}
 
         {/* Bottom Nav */}
-        <div className="fixed bottom-0 left-0 right-0 z-40 no-print" style={{background:'rgba(15,23,42,0.97)',backdropFilter:'blur(16px)',borderTop:'1px solid rgba(51,65,85,0.5)'}}>
-          <div className="max-w-2xl mx-auto flex">
+        <div className="fixed bottom-0 left-0 right-0 z-40 no-print" style={{height:'64px',background:'rgba(15,23,42,0.97)',backdropFilter:'blur(16px)',borderTop:'1px solid rgba(51,65,85,0.5)'}}>
+          <div className="max-w-2xl mx-auto flex h-full">
             {TABS.map(({id,label,Icon})=>{
               const active=activeTab===id;
               return(
-                <button key={id} onClick={()=>setActiveTab(id)} className="flex-1 flex flex-col items-center py-3 gap-1 transition-all" style={active?{color:'#60a5fa'}:{color:'#475569'}}>
+                <button key={id} onClick={()=>setActiveTab(id)} className="flex-1 flex flex-col items-center justify-center gap-1 transition-all" style={active?{color:'#60a5fa'}:{color:'#475569'}}>
                   <Icon/>
                   <span className="text-xs font-medium">{label}</span>
                   {active&&<div className="w-1 h-1 rounded-full bg-blue-400"/>}
@@ -2457,6 +3306,185 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
             })}
           </div>
         </div>
+      </div>
+    );
+  };
+
+  // ── JOURNAL VIEW ──────────────────────────────────────────────────────────
+  const JournalView = ({ data, updateField }) => {
+    const [newNote, setNewNote] = useState('');
+    const [noteTitle, setNoteTitle] = useState('');
+    const [noteTag, setNoteTag] = useState('Personal');
+    const [filter, setFilter] = useState('All');
+    const [search, setSearch] = useState('');
+    const [editNote, setEditNote] = useState(null); // {id, title, content, tag}
+    const TAG_COLORS = {Business:'bg-blue-900/50 text-blue-300',Personal:'bg-purple-900/50 text-purple-300',Ideas:'bg-yellow-900/50 text-yellow-300',Goals:'bg-green-900/50 text-green-300',Reflection:'bg-indigo-900/50 text-indigo-300',Daily:'bg-slate-700 text-slate-300'};
+    const TAG_BORDER = {Business:'#3b82f6',Personal:'#a855f7',Ideas:'#f59e0b',Goals:'#10b981',Reflection:'#6366f1',Daily:'#475569'};
+    const notes = data.notes || [];
+    const TAGS = ['Business','Personal','Ideas','Goals','Reflection'];
+
+    const buildFeed = () => {
+      const entries = [...notes.map(n=>({...n, source:'note'}))];
+      (data.dailyPlans||[]).forEach((week, wi) => {
+        (week||[]).forEach((day, di) => {
+          if (!day) return;
+          const dayDate = (() => {
+            if (!data.startDate) return null;
+            const [y,m,d] = data.startDate.split('-').map(Number);
+            const start = new Date(y,m-1,d);
+            const dow = start.getDay();
+            if (dow!==1){const adj=dow===0?1:8-dow;start.setDate(start.getDate()+adj);}
+            const d2 = new Date(start);
+            d2.setDate(d2.getDate() + wi*7 + di);
+            return d2.toISOString();
+          })();
+          if (day.reflection?.trim()) entries.push({id:`ref-${wi}-${di}`,title:'💭 Daily Reflection',content:day.reflection.trim(),tag:'Reflection',date:dayDate||new Date().toISOString(),readOnly:true});
+          if (day.notes?.trim()) entries.push({id:`note-${wi}-${di}`,title:'📅 Daily Note',content:day.notes.trim(),tag:'Daily',date:dayDate||new Date().toISOString(),readOnly:true});
+        });
+      });
+      return entries.sort((a,b) => new Date(b.date) - new Date(a.date));
+    };
+
+    const saveNew = () => {
+      if (!newNote.trim()) return;
+      const n = {id:Date.now(),title:noteTitle.trim()||'Note',content:newNote.trim(),tag:noteTag,date:new Date().toISOString()};
+      updateField('notes',[n,...notes]);
+      setNewNote(''); setNoteTitle('');
+    };
+
+    const saveEdit = () => {
+      if (!editNote) return;
+      const updated = notes.map(n => n.id===editNote.id ? {...n, title:editNote.title, content:editNote.content, tag:editNote.tag} : n);
+      updateField('notes', updated);
+      setEditNote(null);
+    };
+
+    const deleteNote = (id) => {
+      updateField('notes', notes.filter(n => n.id !== id));
+      setEditNote(null);
+    };
+
+    const feed = buildFeed();
+    const filtered = feed
+      .filter(e => filter==='All' || e.tag===filter)
+      .filter(e => {
+        if (!search.trim()) return true;
+        const q = search.toLowerCase();
+        return e.title?.toLowerCase().includes(q) || e.content?.toLowerCase().includes(q);
+      });
+
+    return (
+      <div className="page-content px-4 py-5 space-y-4">
+        {/* Header */}
+        <div>
+          <h2 className="text-xl font-bold text-white">Journal</h2>
+          <p className="text-xs text-slate-400">{feed.length} {feed.length===1?'entry':'entries'} total</p>
+        </div>
+
+        {/* Search */}
+        <div className="relative">
+          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 text-sm">🔍</span>
+          <input
+            value={search}
+            onChange={e=>setSearch(e.target.value)}
+            placeholder="Search entries..."
+            className="w-full bg-slate-800/60 border border-slate-700 rounded-2xl pl-9 pr-4 py-3 text-white placeholder-slate-500 text-sm focus:border-indigo-500 focus:outline-none"
+          />
+          {search && (
+            <button onClick={()=>setSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-white text-lg">×</button>
+          )}
+        </div>
+        {search && <p className="text-xs text-slate-400 -mt-2">{filtered.length} result{filtered.length!==1?'s':''} for "{search}"</p>}
+
+        {/* Composer */}
+        <div className="bg-slate-800/60 rounded-2xl p-4 border border-slate-700 space-y-3">
+          <input value={noteTitle} onChange={e=>setNoteTitle(e.target.value)} placeholder="Title (optional)" className="w-full bg-slate-700/50 border border-slate-600/50 rounded-xl p-3 text-white placeholder-slate-500 text-sm focus:border-green-500 focus:outline-none"/>
+          <textarea value={newNote} onChange={e=>setNewNote(e.target.value)} placeholder="Capture an idea, reflection, breakthrough..." rows={3} className="w-full bg-slate-700/50 border border-slate-600/50 rounded-xl p-3 text-white placeholder-slate-500 text-sm resize-none focus:border-green-500 focus:outline-none"/>
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex gap-2 flex-wrap">
+              {TAGS.map(t=>(
+                <button key={t} onClick={()=>setNoteTag(t)} className={`px-3 py-1 rounded-full text-xs border transition-colors ${noteTag===t?TAG_COLORS[t]+' border-current':'bg-slate-700/30 text-slate-500 border-slate-600'}`}>{t}</button>
+              ))}
+            </div>
+            <button onClick={saveNew} disabled={!newNote.trim()} className="flex-shrink-0 px-4 py-2 rounded-xl font-bold text-white text-sm disabled:opacity-40" style={{background:'linear-gradient(135deg,#10b981,#059669)'}}>Save</button>
+          </div>
+        </div>
+
+        {/* Filter pills */}
+        <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
+          {['All',...TAGS,'Daily'].map(t=>(
+            <button key={t} onClick={()=>setFilter(t)} className={`flex-shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold border transition-all ${filter===t?'text-white border-transparent':'border-slate-700 text-slate-400'}`}
+              style={filter===t?{background:'linear-gradient(135deg,#3b82f6,#8b5cf6)'}:{}}>
+              {t}
+            </button>
+          ))}
+        </div>
+
+        {/* Feed */}
+        <div className="space-y-3">
+          {filtered.map(n=>(
+            <div key={n.id} className="bg-slate-800/60 rounded-2xl p-4 border border-slate-700 transition-all" onClick={()=>!n.readOnly&&setEditNote({id:n.id,title:n.title,content:n.content,tag:n.tag})}>
+              <div className="flex items-start justify-between mb-2 gap-2">
+                <div className="flex items-center gap-2 min-w-0 flex-wrap">
+                  <span className="font-semibold text-white text-sm">{n.title}</span>
+                  <span className={`px-2 py-0.5 rounded-full text-xs flex-shrink-0 ${TAG_COLORS[n.tag]||TAG_COLORS.Personal}`}>{n.tag}</span>
+                  {n.readOnly && <span className="text-xs text-slate-600">auto</span>}
+                </div>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  <span className="text-xs text-slate-500">{new Date(n.date).toLocaleDateString('en-US',{month:'short',day:'numeric'})}</span>
+                  {!n.readOnly && <span className="text-xs text-slate-500 hover:text-blue-400">✏️</span>}
+                </div>
+              </div>
+              <p className="text-sm text-slate-300 whitespace-pre-wrap leading-relaxed">{n.content}</p>
+            </div>
+          ))}
+          {filtered.length===0 && (
+            <div className="text-center py-12 text-slate-500">
+              <div className="text-5xl mb-3">📝</div>
+              <p className="font-semibold text-slate-400">{filter==='All'?'No entries yet':'No entries tagged '+filter}</p>
+              <p className="text-xs mt-1">{filter==='All'?'Write your first note above, or answer the daily reflection on the Today tab':''}</p>
+            </div>
+          )}
+        </div>
+
+        {/* Edit Modal */}
+        {editNote && (
+          <div className="fixed inset-0 z-50 flex flex-col items-center justify-end md:justify-center px-0 md:px-5" style={{backgroundColor:'rgba(0,0,0,0.85)',backdropFilter:'blur(6px)'}} onClick={()=>setEditNote(null)}>
+            <div className="bg-slate-900 rounded-t-3xl md:rounded-3xl w-full max-w-lg border-t md:border border-slate-700 flex flex-col" style={{maxHeight:'calc(100vh - 80px)'}} onClick={e=>e.stopPropagation()}>
+              {/* Handle + header */}
+              <div className="px-5 pt-4 pb-3 border-b border-slate-800 flex-shrink-0">
+                <div className="w-10 h-1 bg-slate-600 rounded-full mx-auto mb-3"/>
+                <div className="flex items-center justify-between">
+                  <h3 className="text-base font-black text-white">Edit Note</h3>
+                  <button onClick={()=>deleteNote(editNote.id)} className="text-xs text-red-400 hover:text-red-300 px-3 py-1.5 rounded-xl bg-red-500/10 hover:bg-red-500/20 transition-all font-semibold">Delete</button>
+                </div>
+              </div>
+              {/* Scrollable edit area */}
+              <div className="overflow-y-auto px-5 py-4 space-y-3 flex-1">
+                <input value={editNote.title} onChange={e=>setEditNote(p=>({...p,title:e.target.value}))} placeholder="Title" className="w-full bg-slate-800 border border-slate-700 rounded-xl p-3 text-white placeholder-slate-500 text-sm focus:border-blue-500 focus:outline-none"/>
+                <textarea value={editNote.content} onChange={e=>setEditNote(p=>({...p,content:e.target.value}))} rows={6} className="w-full bg-slate-800 border border-slate-700 rounded-xl p-3 text-white text-sm resize-none focus:border-blue-500 focus:outline-none leading-relaxed"/>
+                <div>
+                  <p className="text-xs text-slate-500 mb-2 font-semibold uppercase tracking-wide">Category</p>
+                  <div className="flex flex-wrap gap-2">
+                    {TAGS.map(t=>(
+                      <button key={t} onClick={()=>setEditNote(p=>({...p,tag:t}))}
+                        className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-all ${editNote.tag===t?'text-white border-transparent':'border-slate-600 text-slate-400'}`}
+                        style={editNote.tag===t?{background:TAG_BORDER[t]||'#3b82f6'}:{}}>
+                        {t}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+              {/* Save button */}
+              <div className="px-5 pt-4 pb-5 border-t border-slate-800 flex-shrink-0">
+                <button onClick={saveEdit} className="w-full py-3.5 rounded-2xl font-bold text-white text-sm transition-all" style={{background:'linear-gradient(135deg,#3b82f6,#8b5cf6)'}}>
+                  Save Changes
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   };
@@ -2605,7 +3633,8 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
           wheelOfJohn: p.weeks?.[0]?.wheelOfJohn||{family:5,fun:5,fitness:5,finance:5,faith:5},
           anvil: p.anvilProject ? {project:p.anvilProject.project||'',cadence:p.anvilProject.cadence||'',why:p.anvilProject.why||''} : {project:'',cadence:'',why:''},
           personality: pers ? JSON.parse(pers) : {style:2,tone:2,approach:2,energy:2},
-          apiKey: localStorage.getItem('claude-api-key')||''
+          apiKey: localStorage.getItem('claude-api-key')||'',
+          coachProfile: (() => { try { const s=localStorage.getItem('coach-profile'); return s?JSON.parse(s):{years:'',production:'',need:'',obstacle:'',style:'',why:'',drift:'',family:'',niche:''}; } catch(e) { return {years:'',production:'',need:'',obstacle:'',style:'',why:'',drift:'',family:'',niche:''}; } })()
         };
       } catch(e) { return {slightEdge:'',yearTheme:'',vision120Day:'',startDate:'',goals:[{title:'',impact:'',measurement:''},{title:'',impact:'',measurement:''},{title:'',impact:'',measurement:''},{title:'',impact:'',measurement:''}],anvil:{project:'',cadence:'',why:''},personality:{style:2,tone:2,approach:2,energy:2}}; }
     };
