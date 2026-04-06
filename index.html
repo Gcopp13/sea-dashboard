@@ -1292,6 +1292,110 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
     </div>
   );
 
+  // ── ANVIL VIEW ─────────────────────────────────────────────────────────────
+  const AnvilView = ({ data, updateField, openCoach }) => {
+    const anvil = data.anvilProject||{project:'',cadence:'',why:'',log:[]};
+    const [anvilEntry, setAnvilEntry] = useState('');
+    const [anvilLogDate, setAnvilLogDate] = useState('');
+
+    const logSession = () => {
+      if (!anvilEntry.trim()) return;
+      const dateToLog = anvilLogDate ? new Date(anvilLogDate+'T12:00:00').toISOString() : new Date().toISOString();
+      const l = [{date:dateToLog,note:anvilEntry.trim()},...(anvil.log||[])];
+      updateField('anvilProject',{...anvil,log:l});
+      setAnvilEntry(''); setAnvilLogDate('');
+    };
+
+    // Streak calc
+    const today = new Date(); today.setHours(0,0,0,0);
+    const sortedUnique = [...new Set((anvil.log||[]).map(e=>{const d=new Date(e.date);d.setHours(0,0,0,0);return d.toDateString();}))].map(s=>new Date(s)).sort((a,b)=>b-a);
+    let streak=0;
+    for(let i=0;i<sortedUnique.length;i++){const exp=new Date(today);exp.setDate(today.getDate()-i);if(sortedUnique[i].toDateString()===exp.toDateString())streak++;else break;}
+
+    // This week
+    const monday=new Date(today);monday.setDate(today.getDate()-((today.getDay()+6)%7));
+    const weekSessions=(anvil.log||[]).filter(e=>new Date(e.date)>=monday).length;
+
+    return (
+      <div className="page-content px-4 py-5 space-y-5">
+        {/* Header */}
+        <div className="flex items-start justify-between">
+          <div>
+            <h1 className="text-2xl font-black text-white">🔨 Anvil</h1>
+            <p className="text-slate-400 text-sm mt-0.5">{anvil.project||'Set your Anvil project'}</p>
+          </div>
+          <button onClick={()=>openCoach({section:'anvil',anvil})} className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium" style={{background:'linear-gradient(135deg,#3b82f6,#8b5cf6)'}}>
+            <BotIcon/><span>Coach</span>
+          </button>
+        </div>
+
+        {/* Stats */}
+        <div className="grid grid-cols-3 gap-3">
+          {[
+            {label:'Streak',val:streak,suffix:'days',color:'#f97316'},
+            {label:'This Week',val:weekSessions,suffix:'sessions',color:'#10b981'},
+            {label:'All Time',val:(anvil.log||[]).length,suffix:'total',color:'#3b82f6'},
+          ].map(s=>(
+            <div key={s.label} className="bg-slate-800/60 rounded-2xl p-4 border border-slate-700 text-center">
+              <p className="text-xs text-slate-400 mb-1">{s.label}</p>
+              <p className="text-2xl font-black" style={{color:s.color}}>{s.val}</p>
+              <p className="text-xs text-slate-500">{s.suffix}</p>
+            </div>
+          ))}
+        </div>
+
+        {/* Anvil Scoreboard */}
+        <AnvilScoreboard anvilData={anvil}/>
+
+        {/* Log a Session */}
+        <div className="bg-slate-800/60 rounded-2xl p-5 border border-orange-500/30">
+          <h3 className="text-sm font-bold text-orange-400 uppercase tracking-wide mb-3">🔨 Log a Session</h3>
+          <div className="space-y-3">
+            <input value={anvilEntry} onChange={e=>setAnvilEntry(e.target.value)}
+              onKeyPress={e=>{if(e.key==='Enter')logSession();}}
+              placeholder={anvil.project?`What did you do on "${anvil.project}"?`:'Log your session...'}
+              className="w-full bg-slate-700/50 border border-slate-600/50 rounded-xl p-3 text-white placeholder-slate-500 text-sm focus:border-orange-500 focus:outline-none"/>
+            <div className="flex items-center gap-2">
+              <label className="text-xs text-slate-400 flex-shrink-0">Date:</label>
+              <input type="date" value={anvilLogDate} max={new Date().toISOString().split('T')[0]}
+                onChange={e=>setAnvilLogDate(e.target.value)}
+                className="flex-1 bg-slate-700/50 border border-slate-600/50 rounded-xl p-2 text-white text-sm focus:border-orange-500 focus:outline-none"/>
+              <button onClick={()=>setAnvilLogDate('')} className={`text-xs px-2 py-1 rounded-lg transition-colors ${!anvilLogDate?'bg-orange-500/20 text-orange-400 font-bold':'bg-slate-700 text-slate-400 hover:text-white'}`}>Today</button>
+            </div>
+            {anvilLogDate&&<p className="text-xs text-orange-300 text-center">📅 Logging for {new Date(anvilLogDate+'T12:00:00').toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'})}</p>}
+            <button onClick={logSession} disabled={!anvilEntry.trim()} className="w-full px-4 py-3 rounded-xl font-bold text-white text-sm disabled:opacity-40 transition-all" style={{background:'linear-gradient(135deg,#f97316,#ef4444)'}}>
+              {anvilLogDate?'Log for Past Date ✓':'Log Today ✓'}
+            </button>
+          </div>
+        </div>
+
+        {/* Setup */}
+        <div className="bg-slate-800/60 rounded-2xl p-5 border border-slate-700 space-y-3">
+          <h3 className="text-sm font-bold text-slate-300 uppercase tracking-wide mb-1">Anvil Setup</h3>
+          <div><label className="text-xs text-slate-400 block mb-1">My Anvil is...</label><input value={anvil.project||''} onChange={e=>updateField('anvilProject',{...anvil,project:e.target.value})} placeholder="e.g. 8 appointments per week" className="w-full bg-slate-700/50 border border-slate-600/50 rounded-xl p-3 text-white placeholder-slate-500 text-sm focus:outline-none"/></div>
+          <div><label className="text-xs text-slate-400 block mb-1">Cadence</label><input value={anvil.cadence||''} onChange={e=>updateField('anvilProject',{...anvil,cadence:e.target.value})} placeholder="Daily, 5x/week..." className="w-full bg-slate-700/50 border border-slate-600/50 rounded-xl p-3 text-white placeholder-slate-500 text-sm focus:outline-none"/></div>
+          <div><label className="text-xs text-slate-400 block mb-1">Why this one?</label><textarea value={anvil.why||''} onChange={e=>updateField('anvilProject',{...anvil,why:e.target.value})} rows={2} placeholder="What makes this your highest-leverage activity..." className="w-full bg-slate-700/50 border border-slate-600/50 rounded-xl p-3 text-white placeholder-slate-500 text-sm resize-none focus:outline-none"/></div>
+        </div>
+
+        {/* Recent Sessions */}
+        {(anvil.log||[]).length>0&&(
+          <div className="bg-slate-800/60 rounded-2xl p-5 border border-slate-700">
+            <h3 className="text-sm font-bold text-slate-300 mb-3">Recent Sessions</h3>
+            <div className="space-y-2 max-h-64 overflow-y-auto">
+              {(anvil.log||[]).map((e,i)=>(
+                <div key={i} className="flex items-start gap-3 p-3 bg-slate-700/30 rounded-xl">
+                  <span className="text-green-400 text-sm mt-0.5">✓</span>
+                  <div className="flex-1"><p className="text-sm text-white">{e.note}</p><p className="text-xs text-slate-500 mt-0.5">{new Date(e.date).toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'})}</p></div>
+                  <button onClick={()=>{const l=(anvil.log||[]).filter((_,j)=>j!==i);updateField('anvilProject',{...anvil,log:l});}} className="text-slate-600 hover:text-red-400 text-xs">✕</button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
   // ── TODAY VIEW ─────────────────────────────────────────────────────────────
   const TodayView = ({ data, updateField, weekNum, dayIdx, setDayIdx, openCoach, score, onPrint }) => {
     const dayNames = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
@@ -1564,69 +1668,39 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
           </div>
         </div>
 
-        {/* Daily Task List */}
+        {/* Habit Tracker — full week grid */}
         <div className="bg-slate-800/60 rounded-2xl p-5 border border-slate-700">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-sm font-bold text-indigo-400 uppercase tracking-wide">✓ Tasks Today</h3>
-            <button onClick={()=>{const t=[...(day.tasks||[])];t.push({text:'',done:false,reminder:''});updateDay('tasks',t);}} className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-indigo-400 border border-indigo-500/30 hover:bg-indigo-500/10 transition-all">
-              + Add Task
+            <h3 className="text-sm font-bold text-yellow-400 uppercase tracking-wide">Habit Tracker</h3>
+            <button onClick={()=>{const a=JSON.parse(JSON.stringify(data.weeks[weekNum-1].aActivities||[]));a.push({name:'',days:[false,false,false,false,false,false,false]});const ws=JSON.parse(JSON.stringify(data.weeks));ws[weekNum-1].aActivities=a;updateField('weeks',ws);}} className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-yellow-400 border border-yellow-500/30 hover:bg-yellow-500/10 transition-all">
+              + Add Habit
             </button>
           </div>
-          <div className="space-y-3">
-            {(day.tasks||[{text:'',done:false,reminder:''},{text:'',done:false,reminder:''},{text:'',done:false,reminder:''}]).map((task,ti)=>(
-              <div key={ti} className="space-y-1.5">
+          <div className="space-y-5">
+            {(data.weeks[weekNum-1].aActivities||[]).map((act,ai)=>(
+              <div key={ai} className="space-y-2">
                 <div className="flex items-center gap-2">
-                  {/* Checkbox */}
-                  <button onClick={()=>{const t=JSON.parse(JSON.stringify(day.tasks||[]));t[ti]={...t[ti],done:!t[ti].done};updateDay('tasks',t);}}
-                    className={`w-6 h-6 rounded-lg border-2 flex items-center justify-center flex-shrink-0 transition-all ${task.done?'border-indigo-500 bg-indigo-500':'border-slate-600 bg-transparent'}`}>
-                    {task.done && <span className="text-white text-xs font-black">✓</span>}
-                  </button>
-                  {/* Task text */}
-                  <input value={task.text||''} onChange={e=>{const t=JSON.parse(JSON.stringify(day.tasks||[]));t[ti]={...t[ti],text:e.target.value};updateDay('tasks',t);}}
-                    placeholder={`Task ${ti+1}`}
-                    className={`flex-1 bg-slate-700/50 border border-slate-600/50 rounded-xl p-2.5 text-sm focus:border-indigo-500 focus:outline-none transition-all ${task.done?'line-through text-slate-500':'text-white'}`}/>
-                  {/* Remove */}
-                  <button onClick={()=>{const t=JSON.parse(JSON.stringify(day.tasks||[]));t.splice(ti,1);updateDay('tasks',t);}}
-                    className="w-7 h-7 rounded-lg text-slate-600 hover:text-red-400 hover:bg-red-500/10 flex items-center justify-center transition-all text-lg flex-shrink-0">✕</button>
+                  <input value={act.name||''} onChange={e=>{const ws=JSON.parse(JSON.stringify(data.weeks));const a=ws[weekNum-1].aActivities||[];a[ai]={...a[ai],name:e.target.value};ws[weekNum-1].aActivities=a;updateField('weeks',ws);}} placeholder={`Habit ${ai+1}`} className="flex-1 bg-slate-700/50 border border-slate-600/50 rounded-xl p-3 text-white placeholder-slate-500 text-sm focus:border-yellow-500 focus:outline-none"/>
+                  <button onClick={()=>{const ws=JSON.parse(JSON.stringify(data.weeks));const a=ws[weekNum-1].aActivities||[];a.splice(ai,1);ws[weekNum-1].aActivities=a;updateField('weeks',ws);}} className="flex-shrink-0 w-8 h-8 rounded-lg text-slate-600 hover:text-red-400 hover:bg-red-500/10 transition-all flex items-center justify-center text-lg">✕</button>
                 </div>
-                {/* Reminder time */}
-                {task.text?.trim() && (
-                  <div className="flex items-center gap-2 pl-8">
-                    <span className="text-xs text-slate-500">🔔</span>
-                    <input type="time" value={task.reminder||''} onChange={e=>{const t=JSON.parse(JSON.stringify(day.tasks||[]));t[ti]={...t[ti],reminder:e.target.value};updateDay('tasks',t);}}
-                      className="bg-slate-700/30 border border-slate-600/30 rounded-lg px-2 py-1 text-xs text-slate-400 focus:border-indigo-500 focus:outline-none focus:text-white"/>
-                    {task.reminder && <span className="text-xs text-indigo-400">Reminder set for {task.reminder}</span>}
+                {act.name && (
+                  <div className="flex justify-around">
+                    {['M','T','W','T','F','S','S'].map((d,di)=>(
+                      <button key={di} onClick={()=>{const ws=JSON.parse(JSON.stringify(data.weeks));const a=ws[weekNum-1].aActivities;const days=[...(a[ai].days||[false,false,false,false,false,false,false])];days[di]=!days[di];a[ai]={...a[ai],days};ws[weekNum-1].aActivities=a;updateField('weeks',ws);}}
+                        className={`w-9 h-9 rounded-full text-xs font-bold transition-all ${(act.days||[])[di]?'text-white scale-110':'bg-slate-700/50 text-slate-500'}`}
+                        style={(act.days||[])[di]?{background:'linear-gradient(135deg,#f59e0b,#f97316)'}:{}}>
+                        {d}
+                      </button>
+                    ))}
                   </div>
                 )}
               </div>
             ))}
-            {(day.tasks||[]).length === 0 && (
-              <p className="text-center text-slate-500 text-sm py-2">No tasks yet — tap Add Task</p>
+            {(data.weeks[weekNum-1].aActivities||[]).length === 0 && (
+              <p className="text-center text-slate-500 text-sm py-2">No habits yet — tap Add Habit to get started</p>
             )}
           </div>
-          {/* Progress bar */}
-          {(day.tasks||[]).some(t=>t.text?.trim()) && (()=>{
-            const total = (day.tasks||[]).filter(t=>t.text?.trim()).length;
-            const done = (day.tasks||[]).filter(t=>t.text?.trim()&&t.done).length;
-            const pct = total > 0 ? Math.round((done/total)*100) : 0;
-            return (
-              <div className="mt-4 pt-4 border-t border-slate-700">
-                <div className="flex justify-between text-xs mb-1.5">
-                  <span className="text-slate-400">{done} of {total} completed</span>
-                  <span className="font-bold text-indigo-400">{pct}%</span>
-                </div>
-                <div className="h-2 bg-slate-700 rounded-full overflow-hidden">
-                  <div className="h-full rounded-full transition-all" style={{width:`${pct}%`,background:pct===100?'linear-gradient(90deg,#10b981,#059669)':'linear-gradient(90deg,#6366f1,#8b5cf6)'}}/>
-                </div>
-              </div>
-            );
-          })()}
         </div>
-
-        {/* Notes */}
-        <Section id="notes" label="📝 Notes" color="text-slate-300" open={isOpen("notes")} onToggle={toggle} badge={day.notes?.trim()?'✓':null}>
-          <textarea value={day.notes||''} onChange={e=>updateDay('notes',e.target.value)} placeholder="Thoughts, ideas, observations..." rows={3} className="w-full bg-slate-700/50 border border-slate-600/50 rounded-xl p-3 text-white placeholder-slate-500 text-sm resize-none focus:border-slate-400 focus:outline-none"/>
-        </Section>
 
         {/* Evening Review */}
         <Section id="evening" label="🌙 Evening Review" color="text-orange-400" open={isOpen("evening")} onToggle={toggle}>
@@ -1671,7 +1745,7 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
   };
 
   // ── WEEK VIEW ──────────────────────────────────────────────────────────────
-  const WeekView = ({ data, updateField, weekNum, setWeekNum, openCoach, onPrint, onMilestone }) => {
+  const WeekView = ({ data, updateField, weekNum, setWeekNum, openCoach, onPrint, onMilestone, onBack }) => {
     const [ritualStep, setRitualStep] = useState(0);
     const [showConfetti, setShowConfetti] = useState(false);
     const week = data.weeks[weekNum-1];
@@ -1686,7 +1760,7 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
       return `${s.toLocaleDateString('en-US',{month:'short',day:'numeric'})} – ${e.toLocaleDateString('en-US',{month:'short',day:'numeric'})}`;
     };
 
-    const RITUAL_STEPS = ['Wins','Improve','Focus + Wheel','Goals','Priorities'];
+    const RITUAL_STEPS = ['Wins','Improve','Focus + Wheel','Goals','Habits','Messes','Priorities'];
     const isRitualComplete = week.wins.some(x=>x.trim()) && week.focus?.trim() && week.goalPriorities.some(x=>x.trim());
 
     const completeRitual = () => {
@@ -1704,6 +1778,7 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
+            {onBack && <button onClick={onBack} className="flex items-center gap-1 text-slate-400 hover:text-white text-sm mb-2 transition-colors"><ChevLeft/> Back</button>}
             <div className="flex items-center gap-3">
               <button onClick={()=>setWeekNum(Math.max(1,weekNum-1))} disabled={weekNum===1} className="p-2 bg-slate-800 rounded-xl disabled:opacity-30"><ChevLeft/></button>
               <div>
@@ -1714,7 +1789,7 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <button onClick={onPrint} className="no-print p-2.5 rounded-xl bg-slate-800/60 border border-slate-700 hover:border-slate-500 text-slate-400 hover:text-white transition-all" title="Print Week"><PrintIcon/></button>
+            {onPrint && <button onClick={onPrint} className="no-print p-2.5 rounded-xl bg-slate-800/60 border border-slate-700 hover:border-slate-500 text-slate-400 hover:text-white transition-all" title="Print Week"><PrintIcon/></button>}
             <button onClick={()=>openCoach({section:'weekly',week:weekNum})} className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium" style={{background:'linear-gradient(135deg,#3b82f6,#8b5cf6)'}}>
               <BotIcon/><span>Coach</span>
             </button>
@@ -1727,7 +1802,7 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
             <h3 className="text-sm font-bold text-white">Weekly Ritual</h3>
             {isRitualComplete && <span className="text-xs text-green-400 font-bold">✓ Complete!</span>}
           </div>
-          <div className="flex gap-2 mb-4">
+          <div className="flex gap-1.5 mb-3">
             {RITUAL_STEPS.map((s,i)=>(
               <button key={i} onClick={()=>setRitualStep(i)} className={`flex-1 py-2 rounded-xl text-xs font-medium transition-all ${ritualStep===i?'text-white':'text-slate-500 hover:text-slate-300'}`} style={ritualStep===i?{background:'linear-gradient(135deg,#3b82f6,#8b5cf6)'}:{background:'rgba(30,41,59,0.8)'}}>{i+1}</button>
             ))}
@@ -1841,8 +1916,78 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
           </div>
         )}
 
-        {/* Step 4: Priorities */}
+        {/* Step 4: Habits */}
         {ritualStep===4 && (
+          <div className="bg-slate-800/60 rounded-2xl p-5 border border-slate-700 slide-up">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-sm font-bold text-yellow-400 uppercase tracking-wide">Habit Tracker</h3>
+              <button onClick={()=>{const a=JSON.parse(JSON.stringify(week.aActivities||[]));a.push({name:'',days:[false,false,false,false,false,false,false]});updateWeek('aActivities',a);}} className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-yellow-400 border border-yellow-500/30 hover:bg-yellow-500/10 transition-all">+ Add</button>
+            </div>
+            <div className="space-y-4 mb-4">
+              {(week.aActivities||[]).map((act,ai)=>(
+                <div key={ai} className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <input value={act.name||''} onChange={e=>{const a=JSON.parse(JSON.stringify(week.aActivities||[]));a[ai]={...a[ai],name:e.target.value};updateWeek('aActivities',a);}} placeholder={`Habit ${ai+1}`} className="flex-1 bg-slate-700/50 border border-slate-600/50 rounded-xl p-2.5 text-white placeholder-slate-500 text-sm focus:border-yellow-500 focus:outline-none"/>
+                    <button onClick={()=>{const a=JSON.parse(JSON.stringify(week.aActivities||[]));a.splice(ai,1);updateWeek('aActivities',a);}} className="w-8 h-8 rounded-lg text-slate-600 hover:text-red-400 hover:bg-red-500/10 transition-all flex items-center justify-center text-lg">✕</button>
+                  </div>
+                  {act.name && (
+                    <div className="flex justify-around">
+                      {['M','T','W','T','F','S','S'].map((d,di)=>(
+                        <button key={di} onClick={()=>{const a=JSON.parse(JSON.stringify(week.aActivities));const days=[...(a[ai].days||[false,false,false,false,false,false,false])];days[di]=!days[di];a[ai]={...a[ai],days};updateWeek('aActivities',a);}}
+                          className={`w-9 h-9 rounded-full text-xs font-bold transition-all ${(act.days||[])[di]?'text-white scale-110':'bg-slate-700/50 text-slate-500'}`}
+                          style={(act.days||[])[di]?{background:'linear-gradient(135deg,#f59e0b,#f97316)'}:{}}>
+                          {d}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))}
+              {(week.aActivities||[]).length===0&&<p className="text-center text-slate-500 text-sm py-2">No habits yet — tap Add to get started</p>}
+            </div>
+            <div className="flex gap-3">
+              <button onClick={()=>setRitualStep(3)} className="px-4 py-3 bg-slate-700 rounded-xl text-white text-sm">← Back</button>
+              <button onClick={()=>setRitualStep(5)} className="flex-1 py-3 rounded-xl font-semibold text-white text-sm" style={{background:'linear-gradient(135deg,#3b82f6,#8b5cf6)'}}>Next →</button>
+            </div>
+          </div>
+        )}
+
+        {/* Step 5: Messes */}
+        {ritualStep===5 && (
+          <div className="bg-slate-800/60 rounded-2xl p-5 border border-slate-700 slide-up">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-sm font-bold text-red-400 uppercase tracking-wide">Messes to Clean Up</h3>
+              <button onClick={()=>{const m=JSON.parse(JSON.stringify(week.messes||[]));m.push({description:'',nextSteps:'',byWhen:'',completed:false});updateWeek('messes',m);}} className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-red-400 border border-red-500/30 hover:bg-red-500/10 transition-all">+ Add</button>
+            </div>
+            <div className="space-y-3 mb-4">
+              {(week.messes||[]).length===0&&<p className="text-center text-slate-500 text-sm py-2">No messes — nice! Add one if needed.</p>}
+              {(week.messes||[]).map((mess,mi)=>{
+                const upd=(f,v)=>{const m=JSON.parse(JSON.stringify(week.messes||[]));m[mi]={...m[mi],[f]:v};updateWeek('messes',m);};
+                const remove=()=>{const m=JSON.parse(JSON.stringify(week.messes||[]));m.splice(mi,1);updateWeek('messes',m);};
+                return(
+                  <div key={mi} className={`rounded-xl p-3 border ${mess.completed?'border-green-500/30 opacity-60':'border-slate-600'} bg-slate-700/30`}>
+                    <div className="flex gap-2 mb-2">
+                      <input value={mess.description||''} onChange={e=>upd('description',e.target.value)} placeholder={`Mess ${mi+1}`} className="flex-1 bg-slate-700/50 border border-slate-600/50 rounded-xl p-2 text-white placeholder-slate-500 text-sm focus:outline-none"/>
+                      <button onClick={()=>upd('completed',!mess.completed)} className={`w-9 h-9 rounded-xl flex items-center justify-center border transition-all flex-shrink-0 ${mess.completed?'border-green-500 bg-green-500/20 text-green-400':'border-slate-600 text-slate-500'}`}><CheckIcon/></button>
+                      <button onClick={remove} className="w-9 h-9 rounded-xl flex items-center justify-center text-slate-600 hover:text-red-400 transition-all text-lg flex-shrink-0">✕</button>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <input value={mess.nextSteps||''} onChange={e=>upd('nextSteps',e.target.value)} placeholder="Next step" className="bg-slate-700/50 border border-slate-600/50 rounded-lg p-2 text-white placeholder-slate-500 text-xs focus:outline-none"/>
+                      <input type="date" value={mess.byWhen||''} onChange={e=>upd('byWhen',e.target.value)} className="bg-slate-700/50 border border-slate-600/50 rounded-lg p-2 text-white text-xs focus:outline-none"/>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            <div className="flex gap-3">
+              <button onClick={()=>setRitualStep(4)} className="px-4 py-3 bg-slate-700 rounded-xl text-white text-sm">← Back</button>
+              <button onClick={()=>setRitualStep(6)} className="flex-1 py-3 rounded-xl font-semibold text-white text-sm" style={{background:'linear-gradient(135deg,#3b82f6,#8b5cf6)'}}>Next →</button>
+            </div>
+          </div>
+        )}
+
+        {/* Step 6: Priorities */}
+        {ritualStep===6 && (
           <div className="bg-slate-800/60 rounded-2xl p-5 border border-slate-700 slide-up">
             <h3 className="text-sm font-bold text-blue-400 uppercase tracking-wide mb-3">This Week's Priorities</h3>
             {[0,1,2,3].map(i=>(
@@ -1852,68 +1997,13 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
               </div>
             ))}
             <div className="flex gap-3 mt-4">
-              <button onClick={()=>setRitualStep(4)} className="px-4 py-3 bg-slate-700 rounded-xl text-white text-sm">← Back</button>
+              <button onClick={()=>setRitualStep(5)} className="px-4 py-3 bg-slate-700 rounded-xl text-white text-sm">← Back</button>
               <button onClick={()=>{if(!isRitualComplete){alert('Fill in at least Wins, Focus, and one Priority to complete the ritual!');}else{completeRitual();}}} className="flex-1 py-3 rounded-xl font-bold text-white text-sm" style={{background:'linear-gradient(135deg,#10b981,#059669)'}}>
                 {isRitualComplete?'Week Planned ✓':'Complete Ritual'}
               </button>
             </div>
           </div>
         )}
-
-        {/* Habit Tracker — always visible */}
-        <div className="bg-slate-800/60 rounded-2xl p-5 border border-slate-700">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-sm font-bold text-yellow-400 uppercase tracking-wide">Habit Tracker</h3>
-            <button onClick={()=>{const a=JSON.parse(JSON.stringify(week.aActivities||[]));a.push({name:'',days:[false,false,false,false,false,false,false]});updateWeek('aActivities',a);}} className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-yellow-400 border border-yellow-500/30 hover:bg-yellow-500/10 transition-all">
-              + Add Habit
-            </button>
-          </div>
-          <div className="space-y-5">
-            {(week.aActivities||[]).map((act,ai)=>(
-              <div key={ai} className="space-y-2">
-                <div className="flex items-center gap-2">
-                  <input value={act.name||''} onChange={e=>{const a=JSON.parse(JSON.stringify(week.aActivities||[]));a[ai]={...a[ai],name:e.target.value};updateWeek('aActivities',a);}} placeholder={`Habit ${ai+1}`} className="flex-1 bg-slate-700/50 border border-slate-600/50 rounded-xl p-3 text-white placeholder-slate-500 text-sm focus:border-yellow-500 focus:outline-none"/>
-                  <button onClick={()=>{const a=JSON.parse(JSON.stringify(week.aActivities||[]));a.splice(ai,1);updateWeek('aActivities',a);}} className="flex-shrink-0 w-8 h-8 rounded-lg text-slate-600 hover:text-red-400 hover:bg-red-500/10 transition-all flex items-center justify-center text-lg">✕</button>
-                </div>
-                {act.name && (
-                  <div className="flex justify-around">
-                    {['M','T','W','T','F','S','S'].map((d,di)=>(
-                      <button key={di} onClick={()=>{const a=JSON.parse(JSON.stringify(week.aActivities));const days=[...(a[ai].days||[false,false,false,false,false,false,false])];days[di]=!days[di];a[ai]={...a[ai],days};updateWeek('aActivities',a);}}
-                        className={`w-9 h-9 rounded-full text-xs font-bold transition-all ${(act.days||[])[di]?'text-white scale-110':'bg-slate-700/50 text-slate-500'}`}
-                        style={(act.days||[])[di]?{background:'linear-gradient(135deg,#f59e0b,#f97316)'}:{}}>
-                        {d}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            ))}
-            {(week.aActivities||[]).length === 0 && (
-              <p className="text-center text-slate-500 text-sm py-2">No habits yet — tap Add Habit to get started</p>
-            )}
-          </div>
-        </div>
-
-        {/* Messes */}
-        <div className="bg-slate-800/60 rounded-2xl p-5 border border-slate-700">
-          <h3 className="text-sm font-bold text-red-400 uppercase tracking-wide mb-3">Messes to Clean Up</h3>
-          {[0,1,2].map(mi=>{
-            const mess=(week.messes||[])[mi]||{description:'',nextSteps:'',byWhen:'',completed:false};
-            const upd=(f,v)=>{const m=JSON.parse(JSON.stringify(week.messes||[{},{},{}]));m[mi]={...m[mi],[f]:v};updateWeek('messes',m);};
-            return(
-              <div key={mi} className="mb-3 pb-3 border-b border-slate-700 last:border-0">
-                <div className="flex gap-2 mb-2">
-                  <input value={mess.description||''} onChange={e=>upd('description',e.target.value)} placeholder={`Mess ${mi+1}`} className="flex-1 bg-slate-700/50 border border-slate-600/50 rounded-xl p-2 text-white placeholder-slate-500 text-sm focus:outline-none"/>
-                  <button onClick={()=>upd('completed',!mess.completed)} className={`w-10 h-10 rounded-xl flex items-center justify-center border transition-all flex-shrink-0 ${mess.completed?'border-green-500 bg-green-500/20 text-green-400':'border-slate-600 text-slate-500'}`}><CheckIcon/></button>
-                </div>
-                <div className="grid grid-cols-2 gap-2">
-                  <input value={mess.nextSteps||''} onChange={e=>upd('nextSteps',e.target.value)} placeholder="Next step" className="bg-slate-700/50 border border-slate-600/50 rounded-lg p-2 text-white placeholder-slate-500 text-xs focus:outline-none"/>
-                  <input type="date" value={mess.byWhen||''} onChange={e=>upd('byWhen',e.target.value)} className="bg-slate-700/50 border border-slate-600/50 rounded-lg p-2 text-white text-xs focus:outline-none"/>
-                </div>
-              </div>
-            );
-          })}
-        </div>
       </div>
     );
   };
@@ -2417,7 +2507,7 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
       </div>
     );
   };
-  const MoreView = ({ data, updateField, saveData, openCoach, personality, setPersonality, onReopenOnboarding, onMilestone }) => {
+  const MoreView = ({ data, updateField, saveData, openCoach, personality, setPersonality, onReopenOnboarding, onMilestone, weekNum, setWeekNum }) => {
     const [section, setSection] = useState(null);
     const [newNote, setNewNote] = useState('');
     const [noteTitle, setNoteTitle] = useState('');
@@ -2504,8 +2594,10 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
     const TAG_COLORS = {Business:'bg-blue-900/50 text-blue-300',Personal:'bg-purple-900/50 text-purple-300',Ideas:'bg-yellow-900/50 text-yellow-300',Goals:'bg-green-900/50 text-green-300',Reflection:'bg-indigo-900/50 text-indigo-300'};
 
     const SECTIONS = [
+      {id:'weekly',label:'Weekly Ritual',icon:'📋',desc:'Your 7-step weekly planning ritual'},
       {id:'vision',label:'Vision & Goals',icon:'🎯',desc:'3-year, 1-year, 120-day vision + 4 goals'},
-      {id:'anvil',label:'Anvil Project',icon:'🔨',desc:anvil.project?`"${anvil.project}" — ${(anvil.log||[]).length} sessions logged`:'Set your Anvil project'},
+      {id:'gratitude',label:'Gratitude',icon:'🌱',desc:'What are you grateful for today?'},
+      {id:'messes',label:'Messes to Clean Up',icon:'🧹',desc:`${(data.weeks[weekNum-1]?.messes||[]).filter(m=>m.description?.trim()&&!m.completed).length} active messes`},
       {id:'profile',label:'Coach Profile',icon:'🧠',desc:'Help your coach know you better — takes 3 minutes'},
       {id:'setup',label:'Setup & Settings',icon:'⚙️',desc:'Coach personality, start date, routines'},
     ];
@@ -2558,6 +2650,74 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
         </button>
 
         {/* Vision & Goals */}
+        {/* Weekly Ritual */}
+        {section==='weekly' && (
+          <WeekView data={data} updateField={updateField} weekNum={weekNum} setWeekNum={setWeekNum} openCoach={openCoach} onPrint={()=>window.print()} onMilestone={onMilestone} onBack={()=>setSection(null)}/>
+        )}
+
+        {/* Gratitude */}
+        {section==='gratitude' && (
+          <div className="space-y-4">
+            <h2 className="text-xl font-bold text-white">🌱 Gratitude</h2>
+            <p className="text-sm text-slate-400">Three things you're grateful for today</p>
+            {(()=>{
+              const todayDi = new Date().getDay()===0?6:new Date().getDay()-1;
+              const wNum = weekNum;
+              const day = data.dailyPlans[wNum-1]?.[todayDi]||{grateful:['','','']};
+              const updateGratitude = (i,val) => {
+                const p=JSON.parse(JSON.stringify(data.dailyPlans));
+                if(!p[wNum-1][todayDi].grateful) p[wNum-1][todayDi].grateful=['','',''];
+                p[wNum-1][todayDi].grateful[i]=val;
+                updateField('dailyPlans',p);
+              };
+              return (
+                <div className="bg-slate-800/60 rounded-2xl p-5 border border-slate-700 space-y-3">
+                  {[0,1,2].map(i=>(
+                    <div key={i} className="flex items-center gap-3">
+                      <span className="text-green-400 text-sm flex-shrink-0">✦</span>
+                      <input value={day.grateful?.[i]||''} onChange={e=>updateGratitude(i,e.target.value)} placeholder={`Gratitude ${i+1}`} className="flex-1 bg-slate-700/50 border border-slate-600/50 rounded-xl p-3 text-white placeholder-slate-500 text-sm focus:border-green-500 focus:outline-none"/>
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
+          </div>
+        )}
+
+        {/* Messes */}
+        {section==='messes' && (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="text-xl font-bold text-white">🧹 Messes</h2>
+              <button onClick={()=>{const ws=JSON.parse(JSON.stringify(data.weeks));const m=ws[weekNum-1].messes||[];m.push({description:'',nextSteps:'',byWhen:'',completed:false});ws[weekNum-1].messes=m;updateField('weeks',ws);}} className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-red-400 border border-red-500/30 hover:bg-red-500/10 transition-all">
+                + Add Mess
+              </button>
+            </div>
+            <div className="space-y-3">
+              {(data.weeks[weekNum-1].messes||[]).length===0&&(
+                <div className="text-center py-8 text-slate-500"><div className="text-4xl mb-2">✨</div><p className="text-sm">No messes — nice work!</p></div>
+              )}
+              {(data.weeks[weekNum-1].messes||[]).map((mess,mi)=>{
+                const upd=(f,v)=>{const ws=JSON.parse(JSON.stringify(data.weeks));const m=ws[weekNum-1].messes||[];m[mi]={...m[mi],[f]:v};ws[weekNum-1].messes=m;updateField('weeks',ws);};
+                const remove=()=>{const ws=JSON.parse(JSON.stringify(data.weeks));ws[weekNum-1].messes.splice(mi,1);updateField('weeks',ws);};
+                return(
+                  <div key={mi} className={`bg-slate-800/60 rounded-2xl p-4 border transition-all ${mess.completed?'border-green-500/30 opacity-60':'border-slate-700'}`}>
+                    <div className="flex gap-2 mb-2">
+                      <input value={mess.description||''} onChange={e=>upd('description',e.target.value)} placeholder="Describe the mess..." className={`flex-1 bg-slate-700/50 border border-slate-600/50 rounded-xl p-2.5 text-white placeholder-slate-500 text-sm focus:outline-none ${mess.completed?'line-through text-slate-500':''}`}/>
+                      <button onClick={()=>upd('completed',!mess.completed)} className={`w-10 h-10 rounded-xl flex items-center justify-center border transition-all flex-shrink-0 ${mess.completed?'border-green-500 bg-green-500/20 text-green-400':'border-slate-600 text-slate-500'}`}><CheckIcon/></button>
+                      <button onClick={remove} className="w-10 h-10 rounded-xl flex items-center justify-center text-slate-600 hover:text-red-400 hover:bg-red-500/10 transition-all flex-shrink-0 text-lg">✕</button>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <input value={mess.nextSteps||''} onChange={e=>upd('nextSteps',e.target.value)} placeholder="Next step" className="bg-slate-700/50 border border-slate-600/50 rounded-lg p-2 text-white placeholder-slate-500 text-xs focus:outline-none"/>
+                      <input type="date" value={mess.byWhen||''} onChange={e=>upd('byWhen',e.target.value)} className="bg-slate-700/50 border border-slate-600/50 rounded-lg p-2 text-white text-xs focus:outline-none"/>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         {section==='vision' && (
           <div className="space-y-5">
             <h2 className="text-xl font-bold text-white">Vision & Goals</h2>
@@ -2604,66 +2764,6 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
         )}
 
         {/* Anvil */}
-        {section==='anvil' && (
-          <div className="space-y-5">
-            <div className="flex items-center justify-between">
-              <h2 className="text-xl font-bold text-white">Anvil Project</h2>
-              <button onClick={()=>openCoach({section:'anvil',anvil})} className="flex items-center gap-1 text-xs text-purple-300 px-3 py-2 rounded-xl" style={{background:'rgba(139,92,246,0.1)'}}>
-                <BotIcon/> Coach
-              </button>
-            </div>
-            <div className="grid grid-cols-3 gap-3">
-              {[{label:'Streak',val:(()=>{if(!(anvil.log||[]).length)return 0;const now=new Date();now.setHours(0,0,0,0);const u=[...new Set(anvil.log.map(e=>{const d=new Date(e.date);d.setHours(0,0,0,0);return d.toDateString();}))].map(s=>new Date(s)).sort((a,b)=>b-a);let str=0;for(let i=0;i<u.length;i++){const exp=new Date(now);exp.setDate(now.getDate()-i);if(u[i].toDateString()===exp.toDateString())str++;else break;}return str;})(),icon:'🔥',color:'#f97316'},{label:'Sessions',val:(anvil.log||[]).length,icon:'✓',color:'#10b981'},{label:'This week',val:(()=>{const now=new Date();const monday=new Date(now);monday.setDate(now.getDate()-((now.getDay()+6)%7));monday.setHours(0,0,0,0);return(anvil.log||[]).filter(e=>new Date(e.date)>=monday).length;})(),icon:'📅',color:'#3b82f6'}].map(s=>(
-                <div key={s.label} className="bg-slate-800/60 rounded-2xl p-4 border border-slate-700 text-center">
-                  <p className="text-xs text-slate-400 mb-1">{s.label}</p>
-                  <p className="text-3xl font-black" style={{color:s.color}}>{s.val}</p>
-                </div>
-              ))}
-            </div>
-            <div className="bg-slate-800/60 rounded-2xl p-5 border border-slate-700 space-y-3">
-              <div><label className="text-xs text-slate-400 block mb-1">My Anvil is...</label><input value={anvil.project||''} onChange={e=>updateField('anvilProject',{...anvil,project:e.target.value})} placeholder="e.g. Writing 500 words daily, prospecting calls..." className="w-full bg-slate-700/50 border border-slate-600/50 rounded-xl p-3 text-white placeholder-slate-500 text-sm focus:outline-none"/></div>
-              <div><label className="text-xs text-slate-400 block mb-1">Why this one?</label><textarea value={anvil.why||''} onChange={e=>updateField('anvilProject',{...anvil,why:e.target.value})} rows={2} placeholder="What makes this the most important..." className="w-full bg-slate-700/50 border border-slate-600/50 rounded-xl p-3 text-white placeholder-slate-500 text-sm resize-none focus:outline-none"/></div>
-              <div><label className="text-xs text-slate-400 block mb-1">Cadence</label><input value={anvil.cadence||''} onChange={e=>updateField('anvilProject',{...anvil,cadence:e.target.value})} placeholder="Daily, 5x/week..." className="w-full bg-slate-700/50 border border-slate-600/50 rounded-xl p-3 text-white placeholder-slate-500 text-sm focus:outline-none"/></div>
-            </div>
-            <div className="bg-slate-800/60 rounded-2xl p-5 border border-slate-700">
-              <h3 className="text-sm font-bold text-orange-400 mb-3">Log a Session</h3>
-              <div className="space-y-3">
-                <input value={anvilEntry} onChange={e=>setAnvilEntry(e.target.value)}
-                  onKeyPress={e=>{if(e.key==='Enter'&&anvilEntry.trim()){const dateToLog=anvilLogDate?new Date(anvilLogDate+'T12:00:00').toISOString():new Date().toISOString();const l=[{date:dateToLog,note:anvilEntry.trim()},...(anvil.log||[])];updateField('anvilProject',{...anvil,log:l});setAnvilEntry('');setAnvilLogDate('');}}}
-                  placeholder={anvil.project?`What did you do on "${anvil.project}"?`:'Log your session...'}
-                  className="w-full bg-slate-700/50 border border-slate-600/50 rounded-xl p-3 text-white placeholder-slate-500 text-sm focus:outline-none"/>
-                <div className="flex items-center gap-2">
-                  <label className="text-xs text-slate-400 flex-shrink-0">Date:</label>
-                  <input type="date" value={anvilLogDate} max={new Date().toISOString().split('T')[0]}
-                    onChange={e=>setAnvilLogDate(e.target.value)}
-                    className="flex-1 bg-slate-700/50 border border-slate-600/50 rounded-xl p-2 text-white text-sm focus:border-orange-500 focus:outline-none"/>
-                  <button onClick={()=>setAnvilLogDate('')} className={`text-xs px-2 py-1 rounded-lg transition-colors ${!anvilLogDate?'bg-orange-500/20 text-orange-400 font-bold':'bg-slate-700 text-slate-400 hover:text-white'}`}>Today</button>
-                </div>
-                {anvilLogDate && (
-                  <p className="text-xs text-orange-300 text-center">📅 Logging for {new Date(anvilLogDate+'T12:00:00').toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'})}</p>
-                )}
-                <button onClick={()=>{if(!anvilEntry.trim())return;const dateToLog=anvilLogDate?new Date(anvilLogDate+'T12:00:00').toISOString():new Date().toISOString();const l=[{date:dateToLog,note:anvilEntry.trim()},...(anvil.log||[])];updateField('anvilProject',{...anvil,log:l});setAnvilEntry('');setAnvilLogDate('');}} disabled={!anvilEntry.trim()} className="w-full px-4 py-3 rounded-xl font-bold text-white text-sm disabled:opacity-40 transition-all" style={{background:'linear-gradient(135deg,#f97316,#ef4444)'}}>
-                  {anvilLogDate ? 'Log for Past Date ✓' : 'Log Today ✓'}
-                </button>
-              </div>
-            </div>
-            {(anvil.log||[]).length>0&&(
-              <div className="bg-slate-800/60 rounded-2xl p-5 border border-slate-700">
-                <h3 className="text-sm font-bold text-slate-300 mb-3">Recent Sessions</h3>
-                <div className="space-y-2 max-h-64 overflow-y-auto">
-                  {(anvil.log||[]).map((e,i)=>(
-                    <div key={i} className="flex items-start gap-3 p-3 bg-slate-700/30 rounded-xl">
-                      <span className="text-green-400 text-sm mt-0.5">✓</span>
-                      <div className="flex-1"><p className="text-sm text-white">{e.note}</p><p className="text-xs text-slate-500 mt-0.5">{new Date(e.date).toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'})}</p></div>
-                      <button onClick={()=>{const l=(anvil.log||[]).filter((_,j)=>j!==i);updateField('anvilProject',{...anvil,log:l});}} className="text-slate-600 hover:text-red-400 text-xs">✕</button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
         {/* Notes */}
         {section==='notes' && (
           <div className="space-y-4">
@@ -2933,6 +3033,12 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
     const [showResetModal, setShowResetModal] = useState(false);
     const [resetStep, setResetStep] = useState(1); // 1=reflection, 2=confirm
     const [resetReflection, setResetReflection] = useState({wins:'',lessons:'',proud:'',nextTheme:'',nextVision:'',nextAnvil:''}); // {title, pct}
+    const [showSundayModal, setShowSundayModal] = useState(()=>{
+      const today = new Date();
+      const isSunday = today.getDay() === 0;
+      const lastShown = localStorage.getItem('sunday-modal-shown');
+      return isSunday && lastShown !== today.toDateString();
+    });
     const [coachPersonality, setCoachPersonality] = useState(()=>{try{const s=localStorage.getItem('coach-personality');return s?JSON.parse(s):{style:2,tone:2,approach:2,energy:2};}catch(e){return{style:2,tone:2,approach:2,energy:2};}});
     const saveTimer = useRef(null);
 
@@ -3078,7 +3184,7 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
 
     const TABS=[
       {id:'today',label:'Today',Icon:SunIcon},
-      {id:'week',label:'Week',Icon:CalIcon},
+      {id:'anvil',label:'Anvil',Icon:()=><span style={{fontSize:'18px'}}>🔨</span>},
       {id:'score',label:'Score',Icon:StarIcon},
       {id:'journal',label:'Journal',Icon:JournalIcon},
       {id:'more',label:'More',Icon:MenuIcon},
@@ -3141,7 +3247,22 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
           </div>
         )}
 
-        {/* 120-Day Reset Modal */}
+        {/* Sunday Weekly Ritual Popup */}
+        {showSundayModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center px-5 no-print" style={{backgroundColor:'rgba(0,0,0,0.85)',backdropFilter:'blur(6px)'}}>
+            <div className="bg-slate-900 rounded-3xl p-8 max-w-sm w-full text-center border border-blue-500/40 pop-in">
+              <span className="text-5xl">📋</span>
+              <h2 className="text-2xl font-black text-white mt-4 mb-2">It's Sunday!</h2>
+              <p className="text-slate-300 text-sm mb-6 leading-relaxed">Time for your Weekly Planning Ritual — 10 minutes now saves you hours of drift all week.</p>
+              <button onClick={()=>{setShowSundayModal(false);localStorage.setItem('sunday-modal-shown',new Date().toDateString());setActiveTab('more');}} className="w-full py-4 rounded-2xl font-black text-white text-base mb-3" style={{background:'linear-gradient(135deg,#3b82f6,#8b5cf6)'}}>
+                Start Weekly Ritual →
+              </button>
+              <button onClick={()=>{setShowSundayModal(false);localStorage.setItem('sunday-modal-shown',new Date().toDateString());}} className="w-full py-3 bg-slate-800 text-slate-400 rounded-2xl text-sm">
+                Maybe Later
+              </button>
+            </div>
+          </div>
+        )}
         {showResetModal && (
           <div className="fixed inset-0 z-50 flex flex-col items-center justify-end md:justify-center px-0 md:px-5 no-print" style={{backgroundColor:'rgba(0,0,0,0.9)',backdropFilter:'blur(8px)'}}>
             <div className="w-full max-w-2xl bg-slate-900 rounded-t-3xl md:rounded-3xl shadow-2xl" style={{borderTop:'1px solid rgba(99,102,241,0.4)',maxHeight:'calc(100vh - 80px)',overflowY:'auto'}}>
@@ -3230,66 +3351,12 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
         <div className="content-scroll no-print-scroll">
           <div className="max-w-2xl mx-auto">
             {activeTab==='today'&&<TodayView data={data} updateField={updateField} weekNum={weekNum} dayIdx={dayIdx} setDayIdx={setDayIdx} openCoach={openCoach} score={score} onPrint={printTab}/>}
-            {activeTab==='week'&&<WeekView data={data} updateField={updateField} weekNum={weekNum} setWeekNum={setWeekNum} openCoach={openCoach} onPrint={printTab} onMilestone={setMilestone}/>}
+            {activeTab==='anvil'&&<AnvilView data={data} updateField={updateField} openCoach={openCoach}/>}
             {activeTab==='score'&&<ScoreView data={data} updateField={updateField} weekNum={weekNum} setWeekNum={setWeekNum} setActiveTab={setActiveTab} openCoach={openCoach} onPrint={printTab} onMilestone={setMilestone} setShowResetModal={setShowResetModal}/>}
             {activeTab==='journal'&&<JournalView data={data} updateField={updateField}/>}
-            {activeTab==='more'&&<MoreView data={data} updateField={updateField} saveData={saveData} openCoach={openCoach} personality={coachPersonality} setPersonality={setCoachPersonality} onReopenOnboarding={onReopenOnboarding} onMilestone={setMilestone}/>}
+            {activeTab==='more'&&<MoreView data={data} updateField={updateField} saveData={saveData} openCoach={openCoach} personality={coachPersonality} setPersonality={setCoachPersonality} onReopenOnboarding={onReopenOnboarding} onMilestone={setMilestone} weekNum={weekNum} setWeekNum={setWeekNum}/>}
           </div>
         </div>
-
-        {/* Anvil FAB */}
-        <div className="fixed z-40 no-print" style={{bottom:'90px',right:'20px'}}>
-          <button onClick={()=>setAnvilModal(true)}
-            className="w-14 h-14 rounded-full shadow-2xl flex items-center justify-center transition-all active:scale-95 relative"
-            style={{background:loggedToday()?'linear-gradient(135deg,#10b981,#059669)':'linear-gradient(135deg,#f97316,#ef4444)'}}>
-            <span className="text-2xl">&#x1F528;</span>
-            {getAnvilStreak()>0&&(
-              <span className="absolute -top-1 -right-1 min-w-5 h-5 px-1 rounded-full text-xs font-black text-white flex items-center justify-center" style={{background:'#f59e0b',fontSize:'10px'}}>
-                {getAnvilStreak()}
-              </span>
-            )}
-          </button>
-        </div>
-
-        {/* Anvil Quick-Log Modal */}
-        {anvilModal&&(
-          <div className="fixed inset-0 z-50 flex flex-col items-center justify-end md:justify-center px-0 md:px-5 no-print" style={{backgroundColor:'rgba(0,0,0,0.7)'}} onClick={()=>setAnvilModal(false)}>
-            <div className="w-full max-w-2xl bg-slate-800 rounded-t-3xl md:rounded-3xl p-6 shadow-2xl" style={{borderTop:'1px solid rgba(249,115,22,0.4)',paddingBottom:'var(--modal-bottom)'}} onClick={e=>e.stopPropagation()}>
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center gap-3">
-                  <span className="text-3xl">&#x1F528;</span>
-                  <div>
-                    <h3 className="font-bold text-white">{data.anvilProject?.project||'Anvil Project'}</h3>
-                    <p className="text-xs text-slate-400">
-                      {loggedToday()?'Logged today':'Not logged today'}
-                      {getAnvilStreak()>0&&<span className="ml-2 text-orange-400">&#x1F525; {getAnvilStreak()} day streak</span>}
-                    </p>
-                  </div>
-                </div>
-                <button onClick={()=>setAnvilModal(false)} className="p-2 text-slate-500 hover:text-white text-xl">x</button>
-              </div>
-              <textarea value={anvilEntry} onChange={e=>setAnvilEntry(e.target.value)}
-                placeholder={data.anvilProject?.project?'What did you work on?':'Log your anvil session...'}
-                rows={3}
-                className="w-full bg-slate-700/50 border border-slate-600/50 rounded-2xl p-4 text-white placeholder-slate-500 text-sm resize-none focus:border-orange-500 focus:outline-none mb-3"/>
-              <div className="flex items-center gap-2 mb-4">
-                <label className="text-xs text-slate-400 flex-shrink-0">Date:</label>
-                <input type="date" value={anvilDate} max={new Date().toISOString().split('T')[0]}
-                  onChange={e=>setAnvilDate(e.target.value)}
-                  className="flex-1 bg-slate-700/50 border border-slate-600/50 rounded-xl p-2 text-white text-sm focus:border-orange-500 focus:outline-none"/>
-                <button onClick={()=>setAnvilDate('')} className={`text-xs px-2 py-1 rounded-lg transition-colors ${!anvilDate?'bg-orange-500/20 text-orange-400 font-bold':'bg-slate-700 text-slate-400 hover:text-white'}`}>Today</button>
-              </div>
-              {anvilDate && (
-                <p className="text-xs text-orange-300 mb-3 text-center">📅 Logging for {new Date(anvilDate+'T12:00:00').toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'})}</p>
-              )}
-              <button onClick={logAnvil} disabled={!anvilEntry.trim()}
-                className="w-full py-4 rounded-2xl font-bold text-white text-base disabled:opacity-40 transition-all"
-                style={{background:'linear-gradient(135deg,#f97316,#ef4444)'}}>
-                {anvilDate ? 'Log for Past Date ✓' : 'Log Anvil ✓'}
-              </button>
-            </div>
-          </div>
-        )}
 
         {/* Bottom Nav */}
         <div className="fixed bottom-0 left-0 right-0 z-40 no-print" style={{height:'64px',background:'rgba(15,23,42,0.97)',backdropFilter:'blur(16px)',borderTop:'1px solid rgba(51,65,85,0.5)'}}>
