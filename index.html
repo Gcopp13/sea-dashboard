@@ -1564,8 +1564,8 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
                         </div>
                       ))}
                     </div>
-                    {/* Close button */}
-                    <div className="flex-shrink-0 px-5 pt-3 pb-5 border-t border-slate-800">
+                    {/* Close button — clears tab bar on mobile, normal padding on desktop */}
+                    <div className="flex-shrink-0 px-5 pt-3 border-t border-slate-800 md:pb-5" style={{paddingBottom:'max(20px, calc(64px + env(safe-area-inset-bottom, 0px)))'}}>
                       <button onClick={()=>setShowAll(false)} className="w-full py-3.5 bg-slate-700 hover:bg-slate-600 text-white rounded-2xl text-sm font-bold transition-colors">
                         Close
                       </button>
@@ -1591,18 +1591,6 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
             <p className="text-xs text-slate-500">days</p>
           </div>
         </div>
-
-        {/* Gratitude */}
-        <Section id="gratitude" label="🌱 Gratitude" color="text-green-400" open={isOpen("gratitude")} onToggle={toggle}>
-          <div className="space-y-2">
-            {[0,1,2].map(i=>(
-              <div key={i} className="flex items-center gap-3">
-                <span className="text-green-400 text-sm">✦</span>
-                <input value={day.grateful[i]||''} onChange={e=>{const g=[...day.grateful];g[i]=e.target.value;updateDay('grateful',g);}} placeholder={`Gratitude ${i+1}`} className="flex-1 bg-slate-700/50 border border-slate-600/50 rounded-xl p-3 text-white placeholder-slate-500 text-sm focus:border-green-500 focus:outline-none"/>
-              </div>
-            ))}
-          </div>
-        </Section>
 
         {/* Daily Reflection Prompt */}
         {(()=>{
@@ -2332,9 +2320,6 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
           </div>
         </div>
 
-        {/* Anvil Scoreboard */}
-        <AnvilScoreboard anvilData={data.anvilProject}/>
-
         {/* Wheel */}
         <div className="bg-slate-800/60 rounded-2xl p-5 border border-slate-700">
           <div className="flex items-center justify-between mb-4">
@@ -2378,6 +2363,9 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
             }).filter(Boolean)}
           </div>
         </div>
+
+        {/* Anvil Scoreboard */}
+        <AnvilScoreboard anvilData={data.anvilProject}/>
 
         {/* Week-over-Week Trend Chart */}
         {(()=>{
@@ -3357,6 +3345,58 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
             {activeTab==='more'&&<MoreView data={data} updateField={updateField} saveData={saveData} openCoach={openCoach} personality={coachPersonality} setPersonality={setCoachPersonality} onReopenOnboarding={onReopenOnboarding} onMilestone={setMilestone} weekNum={weekNum} setWeekNum={setWeekNum}/>}
           </div>
         </div>
+
+        {/* Anvil FAB */}
+        <div className="fixed z-40 no-print" style={{bottom:'90px',right:'20px'}}>
+          <button onClick={()=>setAnvilModal(true)}
+            className="w-14 h-14 rounded-full shadow-2xl flex items-center justify-center transition-all active:scale-95 relative"
+            style={{background:loggedToday()?'linear-gradient(135deg,#10b981,#059669)':'linear-gradient(135deg,#f97316,#ef4444)'}}>
+            <span className="text-2xl">&#x1F528;</span>
+            {getAnvilStreak()>0&&(
+              <span className="absolute -top-1 -right-1 min-w-5 h-5 px-1 rounded-full text-xs font-black text-white flex items-center justify-center" style={{background:'#f59e0b',fontSize:'10px'}}>
+                {getAnvilStreak()}
+              </span>
+            )}
+          </button>
+        </div>
+
+        {/* Anvil Quick-Log Modal */}
+        {anvilModal&&(
+          <div className="fixed inset-0 z-50 flex flex-col items-center justify-end md:justify-center px-0 md:px-5 no-print" style={{backgroundColor:'rgba(0,0,0,0.7)'}} onClick={()=>setAnvilModal(false)}>
+            <div className="w-full max-w-2xl bg-slate-800 rounded-t-3xl md:rounded-3xl p-6 shadow-2xl" style={{borderTop:'1px solid rgba(249,115,22,0.4)',paddingBottom:'var(--modal-bottom)'}} onClick={e=>e.stopPropagation()}>
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-3">
+                  <span className="text-3xl">&#x1F528;</span>
+                  <div>
+                    <h3 className="font-bold text-white">{data.anvilProject?.project||'Anvil Project'}</h3>
+                    <p className="text-xs text-slate-400">
+                      {loggedToday()?'Logged today':'Not logged today'}
+                      {getAnvilStreak()>0&&<span className="ml-2 text-orange-400">&#x1F525; {getAnvilStreak()} day streak</span>}
+                    </p>
+                  </div>
+                </div>
+                <button onClick={()=>setAnvilModal(false)} className="p-2 text-slate-500 hover:text-white text-xl">✕</button>
+              </div>
+              <textarea value={anvilEntry} onChange={e=>setAnvilEntry(e.target.value)}
+                placeholder={data.anvilProject?.project?`What did you work on for "${data.anvilProject.project}"?`:'Log your anvil session...'}
+                rows={3}
+                className="w-full bg-slate-700/50 border border-slate-600/50 rounded-2xl p-4 text-white placeholder-slate-500 text-sm resize-none focus:border-orange-500 focus:outline-none mb-3"/>
+              <div className="flex items-center gap-2 mb-4">
+                <label className="text-xs text-slate-400 flex-shrink-0">Date:</label>
+                <input type="date" value={anvilDate} max={new Date().toISOString().split('T')[0]}
+                  onChange={e=>setAnvilDate(e.target.value)}
+                  className="flex-1 bg-slate-700/50 border border-slate-600/50 rounded-xl p-2 text-white text-sm focus:border-orange-500 focus:outline-none"/>
+                <button onClick={()=>setAnvilDate('')} className={`text-xs px-2 py-1 rounded-lg transition-colors ${!anvilDate?'bg-orange-500/20 text-orange-400 font-bold':'bg-slate-700 text-slate-400 hover:text-white'}`}>Today</button>
+              </div>
+              {anvilDate&&<p className="text-xs text-orange-300 mb-3 text-center">📅 Logging for {new Date(anvilDate+'T12:00:00').toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'})}</p>}
+              <button onClick={logAnvil} disabled={!anvilEntry.trim()}
+                className="w-full py-4 rounded-2xl font-bold text-white text-base disabled:opacity-40 transition-all"
+                style={{background:'linear-gradient(135deg,#f97316,#ef4444)'}}>
+                {anvilDate?'Log for Past Date ✓':'Log Anvil ✓'}
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Bottom Nav */}
         <div className="fixed bottom-0 left-0 right-0 z-40 no-print" style={{height:'64px',background:'rgba(15,23,42,0.97)',backdropFilter:'blur(16px)',borderTop:'1px solid rgba(51,65,85,0.5)'}}>
