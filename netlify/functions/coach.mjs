@@ -8,7 +8,7 @@ const CORS = {
   "Access-Control-Allow-Headers": "Content-Type",
 };
 
-const ok  = (data)      => new Response(JSON.stringify(data), { status: 200, headers: CORS });
+const ok  = (data) => new Response(JSON.stringify(data), { status: 200, headers: CORS });
 const err = (msg, code) => new Response(JSON.stringify({ error: msg }), { status: code || 400, headers: CORS });
 
 export default async (req) => {
@@ -17,90 +17,84 @@ export default async (req) => {
   const url    = new URL(req.url);
   const action = url.searchParams.get("action");
 
-  const advisorStore = getStore("sea-advisors");
-  const messageStore = getStore("sea-messages");
-
-  // ── POST ?action=share ─────────────────────────────────────────────────────
-  // Advisor pushes their snapshot so the coach can see them.
-  if (action === "share" && req.method === "POST") {
-    let body;
-    try { body = await req.json(); } catch { return err("Invalid JSON"); }
-    if (!body?.advisorId || !body?.coachId) return err("Missing advisorId or coachId");
-
-    const key = `${body.coachId}__${body.advisorId}`;
-    const record = {
-      advisorId:   body.advisorId,
-      coachId:     body.coachId,
-      advisorData: body.advisorData || {},
-      lastUpdated: Date.now(),
-    };
-    await advisorStore.setJSON(key, record);
-    return ok({ success: true });
+  // Diagnostic ping — open in browser to test blobs
+  if (action === "ping") {
+    try {
+      const store = getStore("sea-advisors");
+      await store.setJSON("__ping__", { ts: Date.now() });
+      const back = await store.get("__ping__", { type: "json" });
+      return ok({ ping: "ok", blobs: "working", echo: back });
+    } catch (e) {
+      return ok({ ping: "ok", blobs: "ERROR", message: e.message });
+    }
   }
 
-  // ── GET ?action=get-advisors&coachId=XXX ───────────────────────────────────
-  // Coach fetches all advisors linked to their ID.
+  // POST share
+  if (action === "share" && req.method === "POST") {
+    try {
+      const body = await req.json();
+      if (!body?.advisorId || !body?.coachId) return err("Missing advisorId or coachId");
+      const store = getStore("sea-advisors");
+      await store.setJSON(`${body.coachId}__${body.advisorId}`, {
+        advisorId: body.advisorId, coachId: body.coachId,
+        advisorData: body.advisorData || {}, lastUpdated: Date.now(),
+      });
+      return ok({ success: true });
+    } catch (e) { return err("share error: " + e.message, 500); }
+  }
+
+  // GET get-advisors
   if (action === "get-advisors" && req.method === "GET") {
     const coachId = url.searchParams.get("coachId");
     if (!coachId) return err("Missing coachId");
-
-    const { blobs } = await advisorStore.list({ prefix: `${coachId}__` });
-
-    const advisors = await Promise.all(
-      blobs.map(async (blob) => {
-        const result = await advisorStore.get(blob.key, { type: "json" });
-        return result;
-      })
-    );
-
-    const valid = advisors.filter(Boolean).sort((a, b) => (b.lastUpdated || 0) - (a.lastUpdated || 0));
-    return ok(valid);
+    try {
+      const store = getStore("sea-advisors");
+      const { blobs } = await store.list({ prefix: `${coachId}__` });
+      if (!blobs || blobs.length === 0) return ok([]);
+      const advisors = await Promise.all(blobs.map(async (b) => {
+        try { return await store.get(b.key, { type: "json" }); } catch { return null; }
+      }));
+      return ok(advisors.filter(Boolean).sort((a, b) => (b.lastUpdated||0) - (a.lastUpdated||0)));
+    } catch (e) { return err("get-advisors error: " + e.message, 500); }
   }
 
-  // ── POST ?action=send-message ──────────────────────────────────────────────
-  // Coach sends a message to a specific advisor.
+  // POST send-message
   if (action === "send-message" && req.method === "POST") {
-    let body;
-    try { body = await req.json(); } catch { return err("Invalid JSON"); }
-    if (!body?.advisorId || !body?.message) return err("Missing advisorId or message");
-
-    const key      = `msg__${body.advisorId}`;
-    const existing = (await messageStore.get(key, { type: "json" })) || [];
-
-    existing.push({
-      id:        crypto.randomUUID(),
-      coachId:   body.coachId   || "coach",
-      coachName: body.coachName || "Your Coach",
-      message:   body.message,
-      timestamp: Date.now(),
-      read:      false,
-    });
-
-    await messageStore.setJSON(key, existing.slice(-50));
-    return ok({ success: true });
+    try {
+      const body = await req.json();
+      if (!body?.advisorId || !body?.message) return err("Missing advisorId or message");
+      const store = getStore("sea-messages");
+      const key = `msg__${body.advisorId}`;
+      const existing = (await store.get(key, { type: "json" })) || [];
+      existing.push({ id: crypto.randomUUID(), coachId: body.coachId||"coach",
+        coachName: body.coachName||"Your Coach", message: body.message,
+        timestamp: Date.now(), read: false });
+      await store.setJSON(key, existing.slice(-50));
+      return ok({ success: true });
+    } catch (e) { return err("send-message error: " + e.message, 500); }
   }
 
-  // ── GET ?action=get-messages&advisorId=XXX ─────────────────────────────────
-  // Advisor polls for messages from their coach.
+  // GET get-messages
   if (action === "get-messages" && req.method === "GET") {
     const advisorId = url.searchParams.get("advisorId");
     if (!advisorId) return err("Missing advisorId");
-
-    const messages = (await messageStore.get(`msg__${advisorId}`, { type: "json" })) || [];
-    return ok(messages);
+    try {
+      const store = getStore("sea-messages");
+      return ok((await store.get(`msg__${advisorId}`, { type: "json" })) || []);
+    } catch { return ok([]); }
   }
 
-  // ── POST ?action=mark-read ─────────────────────────────────────────────────
-  // Mark all messages as read for an advisor.
+  // POST mark-read
   if (action === "mark-read" && req.method === "POST") {
-    let body;
-    try { body = await req.json(); } catch { return err("Invalid JSON"); }
-    if (!body?.advisorId) return err("Missing advisorId");
-
-    const key      = `msg__${body.advisorId}`;
-    const messages = (await messageStore.get(key, { type: "json" })) || [];
-    await messageStore.setJSON(key, messages.map(m => ({ ...m, read: true })));
-    return ok({ success: true });
+    try {
+      const body = await req.json();
+      if (!body?.advisorId) return err("Missing advisorId");
+      const store = getStore("sea-messages");
+      const key = `msg__${body.advisorId}`;
+      const msgs = (await store.get(key, { type: "json" })) || [];
+      await store.setJSON(key, msgs.map(m => ({ ...m, read: true })));
+      return ok({ success: true });
+    } catch (e) { return err("mark-read error: " + e.message, 500); }
   }
 
   return err("Unknown action", 404);
