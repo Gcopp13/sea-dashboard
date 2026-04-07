@@ -3845,88 +3845,155 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
   };
 
   // ── COACH DASHBOARD (shown at ?coach=ID) ──────────────────────────────────
+  // ── CoachMessageModal — top-level modal, completely isolated from advisor list ──
+  const CoachMessageModal = ({ advisorId, advisorName, coachId, coachName, onClose }) => {
+    const [msg, setMsg] = useState('');
+    const [sending, setSending] = useState(false);
+    const [sent, setSent] = useState(false);
+    const textareaRef = useRef(null);
+
+    useEffect(() => {
+      // Auto-focus when modal opens
+      setTimeout(() => textareaRef.current?.focus(), 50);
+    }, []);
+
+    const send = async () => {
+      const text = msg.trim();
+      if (!text) return;
+      setSending(true);
+      try {
+        const res = await fetch(`${COACH_API}?action=send-message`, {
+          method: 'POST', headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({ advisorId, coachId, coachName: coachName||'Your Coach', message: text })
+        });
+        const d = await res.json();
+        if (d.success) { setSent(true); setTimeout(onClose, 1200); return; }
+      } catch(e) {}
+      setSending(false);
+      alert('Failed to send. Please try again.');
+    };
+
+    return (
+      <div style={{position:'fixed',inset:0,zIndex:9999,display:'flex',alignItems:'flex-end',justifyContent:'center',background:'rgba(0,0,0,0.7)',backdropFilter:'blur(4px)'}}
+        onClick={onClose}>
+        <div style={{width:'100%',maxWidth:'600px',background:'#1e293b',borderRadius:'20px 20px 0 0',padding:'24px',border:'1px solid #334155',borderBottom:'none'}}
+          onClick={e=>e.stopPropagation()}>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'16px'}}>
+            <div>
+              <div style={{fontWeight:'700',fontSize:'16px',color:'#f8fafc'}}>Message to {advisorName}</div>
+              <div style={{fontSize:'12px',color:'#64748b',marginTop:'2px'}}>From: {coachName||'Your Coach'}</div>
+            </div>
+            <button onClick={onClose} style={{background:'#334155',border:'none',borderRadius:'8px',color:'#94a3b8',cursor:'pointer',padding:'8px 12px',fontSize:'13px'}}>✕ Cancel</button>
+          </div>
+          <textarea
+            ref={textareaRef}
+            value={msg}
+            onChange={e=>setMsg(e.target.value)}
+            placeholder={`Write your coaching message to ${advisorName.split(' ')[0]}...`}
+            rows={4}
+            style={{width:'100%',padding:'14px',borderRadius:'12px',border:'1px solid #334155',background:'#0f172a',color:'#f8fafc',fontSize:'16px',resize:'none',fontFamily:'inherit',boxSizing:'border-box'}}
+          />
+          <button onClick={send} disabled={sending||!msg.trim()}
+            style={{marginTop:'12px',width:'100%',padding:'14px',borderRadius:'12px',border:'none',cursor:'pointer',fontWeight:'700',fontSize:'15px',
+                    background:sent?'#22c55e':msg.trim()?'#6366f1':'#334155',
+                    color:msg.trim()||sent?'white':'#475569',transition:'background 0.2s'}}>
+            {sent?'✓ Sent!':sending?'Sending...':'Send Message'}
+          </button>
+        </div>
+      </div>
+    );
+  };
+
   const CoachDashboard = ({ coachId, embedded = false }) => {
     const [advisors, setAdvisors] = useState([]);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState(null);
+    const [loading, setLoading]   = useState(true);
+    const [error, setError]       = useState(null);
     const [coachName, setCoachName] = useState(() => localStorage.getItem(`coach_name_${coachId}`) || '');
     const [editingName, setEditingName] = useState(false);
-    const nameRef = useRef(null);
+    const [messaging, setMessaging] = useState(null); // { advisorId, name }
+    const nameInputRef = useRef(null);
 
     const fetchAdvisors = useCallback(async () => {
       setLoading(true); setError(null);
       try {
         const res = await fetch(`${COACH_API}?action=get-advisors&coachId=${encodeURIComponent(coachId)}`);
         const data = await res.json();
-        if (Array.isArray(data)) {
-          setAdvisors(data.sort((a,b) => (b.lastUpdated||0) - (a.lastUpdated||0)));
-        } else { setError('Could not load advisors.'); }
-      } catch(e) { setError('Network error. Is the app deployed to Netlify?'); }
+        if (Array.isArray(data)) setAdvisors(data.sort((a,b)=>(b.lastUpdated||0)-(a.lastUpdated||0)));
+        else setError('Could not load advisors.');
+      } catch(e) { setError('Network error.'); }
       setLoading(false);
     }, [coachId]);
 
     useEffect(() => { fetchAdvisors(); }, [fetchAdvisors]);
 
     const saveCoachName = () => {
-      const name = nameRef.current?.value?.trim() || '';
-      localStorage.setItem(`coach_name_${coachId}`, name);
-      setCoachName(name); setEditingName(false);
+      const n = nameInputRef.current?.value?.trim() || '';
+      localStorage.setItem(`coach_name_${coachId}`, n);
+      setCoachName(n); setEditingName(false);
     };
-
 
     const copyCoachLink = () => {
       const url = `${window.location.origin}${window.location.pathname}?coach=${encodeURIComponent(coachId)}`;
-      navigator.clipboard.writeText(url).then(() => {}).catch(() => {});
+      navigator.clipboard.writeText(url).catch(()=>{});
     };
 
-
-
-
-
     return (
-      <div style={embedded?{color:'#f8fafc'}:{minHeight:'100vh',background:'#0f172a',color:'#f8fafc',fontFamily:'system-ui,sans-serif'}}>
-        {/* Header — only shown standalone */}
-        {!embedded && <div style={{background:'#1e293b',padding:'16px 20px',borderBottom:'1px solid #334155',display:'flex',alignItems:'center',justifyContent:'space-between',flexWrap:'wrap',gap:'12px'}}>
-          <div>
-            <div style={{display:'flex',alignItems:'center',gap:'8px'}}>
-              <span style={{fontSize:'22px'}}>⚓</span>
-              <span style={{fontSize:'18px',fontWeight:'800',color:'#f8fafc'}}>Coach Dashboard</span>
-            </div>
-            <div style={{fontSize:'12px',color:'#64748b',marginTop:'2px'}}>S.E.A. Accelerator · Getting Results Inc.</div>
-          </div>
-          <div style={{textAlign:'right'}}>
-            {editingName ? (
-              <div style={{display:'flex',gap:'6px',alignItems:'center'}}>
-                <input ref={nameRef} defaultValue={coachName} placeholder="Your name"
-                  style={{padding:'7px 10px',borderRadius:'8px',border:'1px solid #334155',background:'#0f172a',color:'#f8fafc',fontSize:'13px',width:'130px'}}
-                  onKeyDown={e=>e.key==='Enter'&&saveCoachName()}/>
-                <button onClick={saveCoachName} style={{padding:'7px 12px',borderRadius:'8px',background:'#6366f1',color:'white',border:'none',cursor:'pointer',fontSize:'12px',fontWeight:'600'}}>Save</button>
+      <div style={embedded?{color:'#f8fafc',paddingBottom:'16px'}:{minHeight:'100vh',background:'#0f172a',color:'#f8fafc',fontFamily:'system-ui,sans-serif'}}>
+
+        {/* Message Modal — rendered at top level, completely isolated from advisor list */}
+        {messaging && <CoachMessageModal
+          advisorId={messaging.advisorId}
+          advisorName={messaging.name}
+          coachId={coachId}
+          coachName={coachName}
+          onClose={() => setMessaging(null)}
+        />}
+
+        {/* Header — standalone only */}
+        {!embedded && (
+          <div style={{background:'#1e293b',padding:'16px 20px',borderBottom:'1px solid #334155',display:'flex',alignItems:'center',justifyContent:'space-between',flexWrap:'wrap',gap:'12px'}}>
+            <div>
+              <div style={{display:'flex',alignItems:'center',gap:'8px'}}>
+                <span style={{fontSize:'22px'}}>⚓</span>
+                <span style={{fontSize:'18px',fontWeight:'800'}}>Coach Dashboard</span>
               </div>
-            ) : (
-              <button onClick={()=>setEditingName(true)} style={{background:'transparent',border:'1px solid #334155',borderRadius:'8px',padding:'7px 14px',color:coachName?'#f8fafc':'#94a3b8',cursor:'pointer',fontSize:'13px'}}>
-                {coachName || '✏️ Set your name'}
-              </button>
-            )}
-            <div style={{fontSize:'11px',color:'#475569',marginTop:'4px'}}>Coach ID: {coachId}</div>
+              <div style={{fontSize:'12px',color:'#64748b',marginTop:'2px'}}>S.E.A. Accelerator · Getting Results Inc.</div>
+            </div>
+            <div style={{textAlign:'right'}}>
+              {editingName ? (
+                <div style={{display:'flex',gap:'6px',alignItems:'center'}}>
+                  <input ref={nameInputRef} defaultValue={coachName} placeholder="Your name"
+                    style={{padding:'7px 10px',borderRadius:'8px',border:'1px solid #334155',background:'#0f172a',color:'#f8fafc',fontSize:'13px',width:'130px'}}
+                    onKeyDown={e=>e.key==='Enter'&&saveCoachName()}/>
+                  <button onClick={saveCoachName} style={{padding:'7px 12px',borderRadius:'8px',background:'#6366f1',color:'white',border:'none',cursor:'pointer',fontSize:'12px',fontWeight:'600'}}>Save</button>
+                </div>
+              ) : (
+                <button onClick={()=>setEditingName(true)} style={{background:'transparent',border:'1px solid #334155',borderRadius:'8px',padding:'7px 14px',color:coachName?'#f8fafc':'#94a3b8',cursor:'pointer',fontSize:'13px'}}>
+                  {coachName || '✏️ Set your name'}
+                </button>
+              )}
+              <div style={{fontSize:'11px',color:'#475569',marginTop:'4px'}}>Coach ID: {coachId}</div>
+            </div>
           </div>
-        </div>}
+        )}
 
         {/* Coach link banner */}
-        <div style={{background:embedded?'rgba(99,102,241,0.08)':'#151d2e',padding:'10px 16px',borderRadius:embedded?'12px':'0',marginBottom:embedded?'16px':'0',border:embedded?'1px solid rgba(99,102,241,0.2)':'none',borderBottom:embedded?'':'1px solid #1e293b',display:'flex',alignItems:'center',justifyContent:'space-between',flexWrap:'wrap',gap:'8px'}}>
-          <span style={{fontSize:'12px',color:'#64748b'}}>📎 Share your coach link with advisors</span>
-          <button onClick={copyCoachLink} style={{background:'#6366f1',color:'white',border:'none',borderRadius:'8px',padding:'7px 16px',cursor:'pointer',fontSize:'12px',fontWeight:'700'}}>
-            📋 Copy Coach Link
-          </button>
-        </div>
+        {embedded && (
+          <div style={{background:'rgba(99,102,241,0.08)',padding:'10px 16px',borderRadius:'12px',marginBottom:'16px',border:'1px solid rgba(99,102,241,0.2)',display:'flex',alignItems:'center',justifyContent:'space-between',flexWrap:'wrap',gap:'8px'}}>
+            <span style={{fontSize:'12px',color:'#64748b'}}>📎 Share your coach link with advisors</span>
+            <button onClick={copyCoachLink} style={{background:'#6366f1',color:'white',border:'none',borderRadius:'8px',padding:'7px 16px',cursor:'pointer',fontSize:'12px',fontWeight:'700'}}>📋 Copy Coach Link</button>
+          </div>
+        )}
+        {!embedded && (
+          <div style={{background:'#151d2e',padding:'10px 20px',borderBottom:'1px solid #1e293b',display:'flex',alignItems:'center',justifyContent:'space-between',flexWrap:'wrap',gap:'8px'}}>
+            <span style={{fontSize:'12px',color:'#64748b'}}>📎 Share your coach link with advisors</span>
+            <button onClick={copyCoachLink} style={{background:'#6366f1',color:'white',border:'none',borderRadius:'8px',padding:'7px 16px',cursor:'pointer',fontSize:'12px',fontWeight:'700'}}>📋 Copy Coach Link</button>
+          </div>
+        )}
 
         {/* Content */}
         <div style={{padding:embedded?'0':'20px',maxWidth:'720px',margin:'0 auto'}}>
-          {loading && (
-            <div style={{textAlign:'center',padding:'60px',color:'#64748b'}}>
-              <div style={{fontSize:'36px',marginBottom:'12px'}}>⏳</div>
-              <div>Loading your advisors...</div>
-            </div>
-          )}
+          {loading && <div style={{textAlign:'center',padding:'60px',color:'#64748b'}}><div style={{fontSize:'36px',marginBottom:'12px'}}>⏳</div><div>Loading advisors...</div></div>}
           {error && (
             <div style={{background:'#450a0a',border:'1px solid #ef4444',borderRadius:'12px',padding:'16px',color:'#fca5a5',marginBottom:'16px'}}>
               ⚠️ {error}
@@ -3937,7 +4004,7 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
             <div style={{textAlign:'center',padding:'60px 20px',color:'#64748b'}}>
               <div style={{fontSize:'52px',marginBottom:'16px'}}>👥</div>
               <div style={{fontSize:'17px',fontWeight:'700',color:'#94a3b8',marginBottom:'8px'}}>No advisors yet</div>
-              <div style={{fontSize:'14px',lineHeight:'1.6'}}>Copy your coach link above and share it with your advisors.<br/>When they enter your Coach ID and share their score, they'll appear here.</div>
+              <div style={{fontSize:'14px',lineHeight:'1.6'}}>Copy your coach link above and share it.<br/>Advisors appear here after they share their score.</div>
             </div>
           )}
           {!loading && advisors.length > 0 && (
@@ -3953,11 +4020,10 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
             const name = (d.n ?? d.name) || 'Unnamed Advisor';
             const goals = d.g ?? d.goals ?? [];
             const habits = d.hp ?? d.habitPct ?? d.habitCompletion ?? 0;
-            const lastUpdated = advisor.lastUpdated ? new Date(advisor.lastUpdated).toLocaleDateString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}) : 'Unknown';
+            const lastUpdated = advisor.lastUpdated ? new Date(advisor.lastUpdated).toLocaleDateString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}) : '';
             const scoreColor = score>=80?'#22c55e':score>=50?'#f59e0b':'#ef4444';
             return (
               <div key={advisor.advisorId} style={{background:'#1e293b',borderRadius:'16px',padding:'20px',marginBottom:'16px',border:'1px solid #334155'}}>
-                {/* Advisor header */}
                 <div style={{display:'flex',alignItems:'center',gap:'16px',marginBottom:'16px'}}>
                   <CoachScoreRing score={score}/>
                   <div style={{flex:1,minWidth:0}}>
@@ -3966,20 +4032,18 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
                       <span style={{fontSize:'12px',color:'#94a3b8'}}>🔥 {streak}-day streak</span>
                       <span style={{fontSize:'12px',color:'#94a3b8'}}>✅ {habits}% habits</span>
                     </div>
-                    <div style={{fontSize:'11px',color:'#475569',marginTop:'3px'}}>Updated {lastUpdated}</div>
+                    {lastUpdated && <div style={{fontSize:'11px',color:'#475569',marginTop:'3px'}}>Updated {lastUpdated}</div>}
                   </div>
                   <div style={{textAlign:'right',flexShrink:0}}>
                     <div style={{fontSize:'10px',color:'#64748b',marginBottom:'2px',textTransform:'uppercase',letterSpacing:'0.05em'}}>S.E.A. Score</div>
                     <div style={{fontSize:'30px',fontWeight:'900',color:scoreColor}}>{Math.round(score)}</div>
                   </div>
                 </div>
-                {/* Goals */}
-                <div style={{borderTop:'1px solid #334155',paddingTop:'12px',marginBottom:'14px'}}>
-                  <div style={{fontSize:'10px',color:'#64748b',marginBottom:'7px',fontWeight:'700',textTransform:'uppercase',letterSpacing:'0.06em'}}>Goal Progress</div>
-                  <CoachGoalBar goals={goals}/>
-                </div>
-                {/* Message composer */}
-                <CoachMessageBox advisorId={advisor.advisorId} coachId={coachId} coachName={coachName}/>
+                <CoachGoalBar goals={goals}/>
+                <button onClick={()=>setMessaging({advisorId:advisor.advisorId, name})}
+                  style={{marginTop:'14px',width:'100%',padding:'10px',borderRadius:'10px',border:'1px solid #6366f1',background:'rgba(99,102,241,0.1)',color:'#a78bfa',cursor:'pointer',fontSize:'13px',fontWeight:'600'}}>
+                  💬 Send Message to {name.split(' ')[0]}
+                </button>
               </div>
             );
           })}
@@ -3988,7 +4052,7 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
     );
   };
 
-  // ── COACH MESSAGES PANEL (shown to advisor in More tab) ────────────────────
+
   const CoachMessages = ({ advisorId }) => {
     const [messages, setMessages] = useState([]);
     const [loading, setLoading] = useState(false);
