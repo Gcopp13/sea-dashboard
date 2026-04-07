@@ -1,7 +1,4 @@
 // netlify/functions/coach.mjs
-// S.E.A. Dashboard — Coach Communication Layer
-// Handles: advisor share-to-coach, coach fetch advisors, coach send message, advisor fetch messages
-
 import { getStore } from "@netlify/blobs";
 
 const CORS = {
@@ -11,75 +8,64 @@ const CORS = {
   "Access-Control-Allow-Headers": "Content-Type",
 };
 
-const ok = (data) => new Response(JSON.stringify(data), { headers: CORS });
-const err = (msg, status = 400) =>
-  new Response(JSON.stringify({ error: msg }), { status, headers: CORS });
+const ok  = (data)      => new Response(JSON.stringify(data), { status: 200, headers: CORS });
+const err = (msg, code) => new Response(JSON.stringify({ error: msg }), { status: code || 400, headers: CORS });
 
 export default async (req) => {
-  // Preflight
   if (req.method === "OPTIONS") return new Response("", { headers: CORS });
 
-  const url = new URL(req.url);
+  const url    = new URL(req.url);
   const action = url.searchParams.get("action");
 
   const advisorStore = getStore("sea-advisors");
   const messageStore = getStore("sea-messages");
 
-  // ─────────────────────────────────────────────
-  // POST /api/coach?action=share
-  // Advisor pushes their snapshot to Blobs so coach can see them.
-  // Body: { advisorId, coachId, advisorData: { name, score, streak, goals, habits } }
-  // ─────────────────────────────────────────────
+  // ── POST ?action=share ─────────────────────────────────────────────────────
+  // Advisor pushes their snapshot so the coach can see them.
   if (action === "share" && req.method === "POST") {
-    const body = await req.json().catch(() => null);
+    let body;
+    try { body = await req.json(); } catch { return err("Invalid JSON"); }
     if (!body?.advisorId || !body?.coachId) return err("Missing advisorId or coachId");
 
+    const key = `${body.coachId}__${body.advisorId}`;
     const record = {
-      advisorId: body.advisorId,
-      coachId:   body.coachId,
+      advisorId:   body.advisorId,
+      coachId:     body.coachId,
       advisorData: body.advisorData || {},
       lastUpdated: Date.now(),
     };
-
-    const key = `coach:${body.coachId}:advisor:${body.advisorId}`;
-    await advisorStore.set(key, JSON.stringify(record));
+    await advisorStore.setJSON(key, record);
     return ok({ success: true });
   }
 
-  // ─────────────────────────────────────────────
-  // GET /api/coach?action=get-advisors&coachId=XXX
+  // ── GET ?action=get-advisors&coachId=XXX ───────────────────────────────────
   // Coach fetches all advisors linked to their ID.
-  // ─────────────────────────────────────────────
   if (action === "get-advisors" && req.method === "GET") {
     const coachId = url.searchParams.get("coachId");
     if (!coachId) return err("Missing coachId");
 
-    const { blobs } = await advisorStore.list({ prefix: `coach:${coachId}:advisor:` });
+    const { blobs } = await advisorStore.list({ prefix: `${coachId}__` });
 
     const advisors = await Promise.all(
       blobs.map(async (blob) => {
-        try {
-          return await advisorStore.get(blob.key, { type: "json" });
-        } catch {
-          return null;
-        }
+        const result = await advisorStore.get(blob.key, { type: "json" });
+        return result;
       })
     );
 
-    return ok(advisors.filter(Boolean));
+    const valid = advisors.filter(Boolean).sort((a, b) => (b.lastUpdated || 0) - (a.lastUpdated || 0));
+    return ok(valid);
   }
 
-  // ─────────────────────────────────────────────
-  // POST /api/coach?action=send-message
+  // ── POST ?action=send-message ──────────────────────────────────────────────
   // Coach sends a message to a specific advisor.
-  // Body: { advisorId, coachId, coachName, message }
-  // ─────────────────────────────────────────────
   if (action === "send-message" && req.method === "POST") {
-    const body = await req.json().catch(() => null);
+    let body;
+    try { body = await req.json(); } catch { return err("Invalid JSON"); }
     if (!body?.advisorId || !body?.message) return err("Missing advisorId or message");
 
-    const key = `messages:${body.advisorId}`;
-    const existing = (await messageStore.get(key, { type: "json" }).catch(() => null)) || [];
+    const key      = `msg__${body.advisorId}`;
+    const existing = (await messageStore.get(key, { type: "json" })) || [];
 
     existing.push({
       id:        crypto.randomUUID(),
@@ -90,37 +76,30 @@ export default async (req) => {
       read:      false,
     });
 
-    // Keep last 50 messages
-    const trimmed = existing.slice(-50);
-    await messageStore.set(key, JSON.stringify(trimmed));
+    await messageStore.setJSON(key, existing.slice(-50));
     return ok({ success: true });
   }
 
-  // ─────────────────────────────────────────────
-  // GET /api/coach?action=get-messages&advisorId=XXX
-  // Advisor polls for messages from coach.
-  // ─────────────────────────────────────────────
+  // ── GET ?action=get-messages&advisorId=XXX ─────────────────────────────────
+  // Advisor polls for messages from their coach.
   if (action === "get-messages" && req.method === "GET") {
     const advisorId = url.searchParams.get("advisorId");
     if (!advisorId) return err("Missing advisorId");
 
-    const messages = (await messageStore.get(`messages:${advisorId}`, { type: "json" }).catch(() => null)) || [];
+    const messages = (await messageStore.get(`msg__${advisorId}`, { type: "json" })) || [];
     return ok(messages);
   }
 
-  // ─────────────────────────────────────────────
-  // POST /api/coach?action=mark-read
-  // Marks all messages as read for an advisor.
-  // Body: { advisorId }
-  // ─────────────────────────────────────────────
+  // ── POST ?action=mark-read ─────────────────────────────────────────────────
+  // Mark all messages as read for an advisor.
   if (action === "mark-read" && req.method === "POST") {
-    const { advisorId } = await req.json().catch(() => ({}));
-    if (!advisorId) return err("Missing advisorId");
+    let body;
+    try { body = await req.json(); } catch { return err("Invalid JSON"); }
+    if (!body?.advisorId) return err("Missing advisorId");
 
-    const key = `messages:${advisorId}`;
-    const messages = (await messageStore.get(key, { type: "json" }).catch(() => null)) || [];
-    const updated = messages.map((m) => ({ ...m, read: true }));
-    await messageStore.set(key, JSON.stringify(updated));
+    const key      = `msg__${body.advisorId}`;
+    const messages = (await messageStore.get(key, { type: "json" })) || [];
+    await messageStore.setJSON(key, messages.map(m => ({ ...m, read: true })));
     return ok({ success: true });
   }
 
