@@ -2523,6 +2523,7 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
     const saveCoachId = () => {
       localStorage.setItem('sea_coach_id', coachIdInput.trim());
       setCoachSaved(true);
+      window.dispatchEvent(new Event('sea-coach-id-changed'));
       setTimeout(()=>setCoachSaved(false), 2000);
     };
     const copyAdvisorId = () => navigator.clipboard.writeText(advisorId).catch(()=>{});
@@ -3204,12 +3205,20 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
     };
     const score = loading?{total:0,stars:1}:calcSEAScore(data,weekNum-1);
 
+    const [myCoachId, setMyCoachId] = useState(()=>localStorage.getItem('sea_coach_id')||'');
+    useEffect(()=>{
+      const refresh = () => setMyCoachId(localStorage.getItem('sea_coach_id')||'');
+      window.addEventListener('sea-coach-id-changed', refresh);
+      return () => window.removeEventListener('sea-coach-id-changed', refresh);
+    },[]);
+
     const TABS=[
-      {id:'today',label:'Today',Icon:SunIcon},
-      {id:'anvil',label:'Anvil',Icon:()=><span style={{fontSize:'18px'}}>🔨</span>},
-      {id:'score',label:'Score',Icon:StarIcon},
+      {id:'today',  label:'Today',  Icon:SunIcon},
+      {id:'anvil',  label:'Anvil',  Icon:()=><span style={{fontSize:'18px'}}>🔨</span>},
+      {id:'score',  label:'Score',  Icon:StarIcon},
       {id:'journal',label:'Journal',Icon:JournalIcon},
-      {id:'more',label:'More',Icon:MenuIcon},
+      {id:'more',   label:'More',   Icon:MenuIcon},
+      ...(myCoachId?[{id:'coach',label:'Coach',Icon:()=><span style={{fontSize:'18px'}}>⚓</span>}]:[]),
     ];
 
     if(loading)return(<div className="flex items-center justify-center h-screen" style={{background:'#0f172a'}}><div className="text-center"><div className="text-4xl mb-3">🌊</div><p className="text-white font-semibold">Loading S.E.A. Dashboard...</p><p className="text-slate-400 text-sm mt-1">Getting Results Inc.</p></div></div>);
@@ -3377,6 +3386,7 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
             {activeTab==='score'&&<ScoreView data={data} updateField={updateField} weekNum={weekNum} setWeekNum={setWeekNum} setActiveTab={setActiveTab} openCoach={openCoach} onPrint={printTab} onMilestone={setMilestone} setShowResetModal={setShowResetModal}/>}
             {activeTab==='journal'&&<JournalView data={data} updateField={updateField}/>}
             {activeTab==='more'&&<MoreView data={data} updateField={updateField} saveData={saveData} openCoach={openCoach} personality={coachPersonality} setPersonality={setCoachPersonality} onReopenOnboarding={onReopenOnboarding} onMilestone={setMilestone} weekNum={weekNum} setWeekNum={setWeekNum}/>}
+            {activeTab==='coach'&&myCoachId&&<CoachDashboard coachId={myCoachId} embedded={true}/>}
           </div>
         </div>
 
@@ -3742,7 +3752,7 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
   };
 
   // ── COACH DASHBOARD (shown at ?coach=ID) ──────────────────────────────────
-  const CoachDashboard = ({ coachId }) => {
+  const CoachDashboard = ({ coachId, embedded = false }) => {
     const [advisors, setAdvisors] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
@@ -3835,10 +3845,15 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
       );
     };
 
+    // In embedded mode, skip the full-page wrapper — the app shell handles it
+    const Wrapper = ({children}) => embedded
+      ? <div className="page-content px-4 py-5" style={{color:'#f8fafc'}}>{children}</div>
+      : <div style={{minHeight:'100vh',background:'#0f172a',color:'#f8fafc',fontFamily:'system-ui,sans-serif'}}>{children}</div>;
+
     return (
-      <div style={{minHeight:'100vh',background:'#0f172a',color:'#f8fafc',fontFamily:'system-ui,sans-serif'}}>
-        {/* Header */}
-        <div style={{background:'#1e293b',padding:'16px 20px',borderBottom:'1px solid #334155',display:'flex',alignItems:'center',justifyContent:'space-between',flexWrap:'wrap',gap:'12px'}}>
+      <Wrapper>
+        {/* Header — only shown standalone */}
+        {!embedded && <div style={{background:'#1e293b',padding:'16px 20px',borderBottom:'1px solid #334155',display:'flex',alignItems:'center',justifyContent:'space-between',flexWrap:'wrap',gap:'12px'}}>
           <div>
             <div style={{display:'flex',alignItems:'center',gap:'8px'}}>
               <span style={{fontSize:'22px'}}>⚓</span>
@@ -3861,18 +3876,18 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
             )}
             <div style={{fontSize:'11px',color:'#475569',marginTop:'4px'}}>Coach ID: {coachId}</div>
           </div>
-        </div>
+        </div>}
 
         {/* Coach link banner */}
-        <div style={{background:'#151d2e',padding:'10px 20px',borderBottom:'1px solid #1e293b',display:'flex',alignItems:'center',justifyContent:'space-between',flexWrap:'wrap',gap:'8px'}}>
-          <span style={{fontSize:'12px',color:'#64748b'}}>📎 Share this link with your advisors so they can connect to you</span>
+        <div style={{background:embedded?'rgba(99,102,241,0.08)':'#151d2e',padding:'10px 16px',borderRadius:embedded?'12px':'0',marginBottom:embedded?'16px':'0',border:embedded?'1px solid rgba(99,102,241,0.2)':'none',borderBottom:embedded?'':'1px solid #1e293b',display:'flex',alignItems:'center',justifyContent:'space-between',flexWrap:'wrap',gap:'8px'}}>
+          <span style={{fontSize:'12px',color:'#64748b'}}>📎 Share your coach link with advisors</span>
           <button onClick={copyCoachLink} style={{background:'#6366f1',color:'white',border:'none',borderRadius:'8px',padding:'7px 16px',cursor:'pointer',fontSize:'12px',fontWeight:'700'}}>
             📋 Copy Coach Link
           </button>
         </div>
 
         {/* Content */}
-        <div style={{padding:'20px',maxWidth:'720px',margin:'0 auto'}}>
+        <div style={{padding:embedded?'0':'20px',maxWidth:'720px',margin:'0 auto'}}>
           {loading && (
             <div style={{textAlign:'center',padding:'60px',color:'#64748b'}}>
               <div style={{fontSize:'36px',marginBottom:'12px'}}>⏳</div>
@@ -3950,7 +3965,7 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
             );
           })}
         </div>
-      </div>
+      </Wrapper>
     );
   };
 
