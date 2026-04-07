@@ -3387,7 +3387,9 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
             {activeTab==='score'&&<ScoreView data={data} updateField={updateField} weekNum={weekNum} setWeekNum={setWeekNum} setActiveTab={setActiveTab} openCoach={openCoach} onPrint={printTab} onMilestone={setMilestone} setShowResetModal={setShowResetModal}/>}
             {activeTab==='journal'&&<JournalView data={data} updateField={updateField}/>}
             {activeTab==='more'&&<MoreView data={data} updateField={updateField} saveData={saveData} openCoach={openCoach} personality={coachPersonality} setPersonality={setCoachPersonality} onReopenOnboarding={onReopenOnboarding} onMilestone={setMilestone} weekNum={weekNum} setWeekNum={setWeekNum}/>}
-            {activeTab==='coach'&&myCoachId&&<CoachDashboard coachId={myCoachId} embedded={true}/>}
+            <div style={{display:activeTab==='coach'&&myCoachId?'block':'none'}}>
+              {myCoachId&&<CoachDashboard coachId={myCoachId} embedded={true}/>}
+            </div>
           </div>
         </div>
 
@@ -3752,56 +3754,59 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
     );
   };
 
-  // ── CoachMessageBox — fully uncontrolled (ref-based) so React NEVER touches the textarea value ──
+  // ── CoachMessageBox — pure vanilla JS textarea, React never touches it after mount ──
   const CoachMessageBox = ({ advisorId, coachId, coachName }) => {
-    const taRef = useRef(null);
-    const btnRef = useRef(null);
-    const handleInput = () => {
-      const hasText = !!(taRef.current && taRef.current.value.trim());
-      if (btnRef.current) {
-        btnRef.current.disabled = !hasText;
-        btnRef.current.style.background = hasText ? '#6366f1' : '#1e293b';
-        btnRef.current.style.color = hasText ? 'white' : '#475569';
-      }
-    };
-    const send = async () => {
-      const msg = taRef.current ? taRef.current.value.trim() : '';
-      if (!msg) return;
-      if (btnRef.current) { btnRef.current.disabled = true; btnRef.current.textContent = '...'; }
-      try {
-        const res = await fetch(`${COACH_API}?action=send-message`, {
-          method: 'POST', headers: {'Content-Type':'application/json'},
-          body: JSON.stringify({ advisorId, coachId, coachName: coachName||'Your Coach', message: msg })
-        });
-        const d = await res.json();
-        if (d.success) {
-          if (taRef.current) taRef.current.value = '';
-          if (btnRef.current) { btnRef.current.textContent = '✓ Sent'; btnRef.current.style.background = '#22c55e'; btnRef.current.style.color = 'white'; }
-          setTimeout(() => {
-            if (btnRef.current) { btnRef.current.textContent = 'Send'; btnRef.current.style.background = '#1e293b'; btnRef.current.style.color = '#475569'; btnRef.current.disabled = true; }
-          }, 2500);
-          return;
-        }
-      } catch(e) { alert('Failed to send. Please try again.'); }
-      if (btnRef.current) { btnRef.current.disabled = false; btnRef.current.textContent = 'Send'; }
-    };
+    const wrapRef = useRef(null);
+    useEffect(() => {
+      const wrap = wrapRef.current;
+      if (!wrap) return;
+      // Build textarea and button purely in vanilla JS — immune to React re-renders
+      const ta = document.createElement('textarea');
+      ta.placeholder = 'Write a coaching message...';
+      ta.rows = 2;
+      ta.style.cssText = 'flex:1;padding:10px 12px;border-radius:10px;border:1px solid #334155;background:#0f172a;color:#f8fafc;font-size:16px;resize:none;font-family:inherit;min-width:0;width:100%;';
+      const btn = document.createElement('button');
+      btn.textContent = 'Send';
+      btn.disabled = true;
+      btn.style.cssText = 'padding:10px 16px;border-radius:10px;border:none;cursor:pointer;font-weight:700;font-size:13px;align-self:stretch;min-width:70px;background:#1e293b;color:#475569;transition:all 0.2s;flex-shrink:0;';
+      ta.addEventListener('input', () => {
+        const has = !!ta.value.trim();
+        btn.disabled = !has;
+        btn.style.background = has ? '#6366f1' : '#1e293b';
+        btn.style.color = has ? 'white' : '#475569';
+      });
+      btn.addEventListener('click', async () => {
+        const msg = ta.value.trim();
+        if (!msg || btn.disabled) return;
+        btn.disabled = true; btn.textContent = '...';
+        try {
+          const res = await fetch('/api/coach?action=send-message', {
+            method: 'POST', headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({ advisorId, coachId, coachName: coachName||'Your Coach', message: msg })
+          });
+          const d = await res.json();
+          if (d.success) {
+            ta.value = ''; ta.dispatchEvent(new Event('input'));
+            btn.textContent = '✓ Sent'; btn.style.background = '#22c55e'; btn.style.color = 'white';
+            setTimeout(() => { btn.textContent = 'Send'; btn.style.background = '#1e293b'; btn.style.color = '#475569'; btn.disabled = true; }, 2500);
+            return;
+          }
+        } catch(e) { alert('Failed to send. Please try again.'); }
+        btn.disabled = !ta.value.trim(); btn.textContent = 'Send';
+      });
+      wrap.appendChild(ta);
+      wrap.appendChild(btn);
+      return () => { wrap.innerHTML = ''; };
+    }, []); // eslint-disable-line — intentionally empty, props are stable for lifetime of card
     return (
       <div style={{borderTop:'1px solid #334155',paddingTop:'12px'}}>
         <div style={{fontSize:'10px',color:'#64748b',marginBottom:'8px',fontWeight:'700',textTransform:'uppercase',letterSpacing:'0.06em'}}>Send Message</div>
-        <div style={{display:'flex',gap:'8px'}}>
-          <textarea ref={taRef} onInput={handleInput}
-            placeholder="Write a coaching message..." rows={2}
-            style={{flex:1,padding:'10px 12px',borderRadius:'10px',border:'1px solid #334155',background:'#0f172a',color:'#f8fafc',fontSize:'13px',resize:'none',fontFamily:'inherit'}}/>
-          <button ref={btnRef} onClick={send} disabled={true}
-            style={{padding:'10px 16px',borderRadius:'10px',border:'none',cursor:'pointer',fontWeight:'700',fontSize:'13px',alignSelf:'stretch',minWidth:'70px',background:'#1e293b',color:'#475569',transition:'all 0.2s'}}>
-            Send
-          </button>
-        </div>
+        <div ref={wrapRef} style={{display:'flex',gap:'8px',alignItems:'flex-start'}}/>
       </div>
     );
   };
 
-  // ── Coach sub-components (defined at module level to prevent remount on keypress) ──
+    // ── Coach sub-components (defined at module level to prevent remount on keypress) ──
   const CoachScoreRing = ({ score }) => {
     const pct = Math.min(100, Math.max(0, score||0));
     const r=28, cx=32, cy=32, circ=2*Math.PI*r, dash=(pct/100)*circ;
