@@ -3751,6 +3751,43 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
     );
   };
 
+  // ── CoachMessageBox — self-contained so typing never re-renders parent ──────
+  const CoachMessageBox = ({ advisorId, coachId, coachName }) => {
+    const [draft, setDraft] = useState('');
+    const [sending, setSending] = useState(false);
+    const [sent, setSent] = useState(false);
+    const send = async () => {
+      const msg = draft.trim();
+      if (!msg) return;
+      setSending(true);
+      try {
+        const res = await fetch(`${COACH_API}?action=send-message`, {
+          method: 'POST', headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({ advisorId, coachId, coachName: coachName||'Your Coach', message: msg })
+        });
+        const d = await res.json();
+        if (d.success) { setDraft(''); setSent(true); setTimeout(()=>setSent(false), 2500); }
+      } catch(e) { alert('Failed to send. Please try again.'); }
+      setSending(false);
+    };
+    return (
+      <div style={{borderTop:'1px solid #334155',paddingTop:'12px'}}>
+        <div style={{fontSize:'10px',color:'#64748b',marginBottom:'8px',fontWeight:'700',textTransform:'uppercase',letterSpacing:'0.06em'}}>Send Message</div>
+        <div style={{display:'flex',gap:'8px'}}>
+          <textarea value={draft} onChange={e=>setDraft(e.target.value)}
+            placeholder="Write a coaching message..." rows={2}
+            style={{flex:1,padding:'10px 12px',borderRadius:'10px',border:'1px solid #334155',background:'#0f172a',color:'#f8fafc',fontSize:'13px',resize:'none',fontFamily:'inherit'}}/>
+          <button onClick={send} disabled={sending||!draft.trim()}
+            style={{padding:'10px 16px',borderRadius:'10px',border:'none',cursor:'pointer',fontWeight:'700',fontSize:'13px',alignSelf:'stretch',minWidth:'70px',
+                    background:sent?'#22c55e':draft.trim()?'#6366f1':'#1e293b',
+                    color:draft.trim()?'white':'#475569',transition:'all 0.2s'}}>
+            {sent?'✓ Sent':sending?'...':'Send'}
+          </button>
+        </div>
+      </div>
+    );
+  };
+
   // ── Coach sub-components (defined at module level to prevent remount on keypress) ──
   const CoachScoreRing = ({ score }) => {
     const pct = Math.min(100, Math.max(0, score||0));
@@ -3794,9 +3831,6 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
     const [advisors, setAdvisors] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
-    const [drafts, setDrafts] = useState({});
-    const [sending, setSending] = useState({});
-    const [sent, setSent] = useState({});
     const [coachName, setCoachName] = useState(() => localStorage.getItem(`coach_name_${coachId}`) || '');
     const [editingName, setEditingName] = useState(false);
     const nameRef = useRef(null);
@@ -3821,24 +3855,6 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
       setCoachName(name); setEditingName(false);
     };
 
-    const sendMessage = async (advisorId) => {
-      const msg = (drafts[advisorId] || '').trim();
-      if (!msg) return;
-      setSending(s => ({...s, [advisorId]: true}));
-      try {
-        const res = await fetch(`${COACH_API}?action=send-message`, {
-          method: 'POST', headers: {'Content-Type':'application/json'},
-          body: JSON.stringify({ advisorId, coachId, coachName: coachName || 'Your Coach', message: msg })
-        });
-        const d = await res.json();
-        if (d.success) {
-          setDrafts(m => ({...m, [advisorId]: ''}));
-          setSent(s => ({...s, [advisorId]: true}));
-          setTimeout(() => setSent(s => ({...s, [advisorId]: false})), 2500);
-        }
-      } catch(e) { alert('Failed to send. Please try again.'); }
-      setSending(s => ({...s, [advisorId]: false}));
-    };
 
     const copyCoachLink = () => {
       const url = `${window.location.origin}${window.location.pathname}?coach=${encodeURIComponent(coachId)}`;
@@ -3945,21 +3961,7 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
                   <CoachGoalBar goals={goals}/>
                 </div>
                 {/* Message composer */}
-                <div style={{borderTop:'1px solid #334155',paddingTop:'12px'}}>
-                  <div style={{fontSize:'10px',color:'#64748b',marginBottom:'8px',fontWeight:'700',textTransform:'uppercase',letterSpacing:'0.06em'}}>Send Message to {name.split(' ')[0]}</div>
-                  <div style={{display:'flex',gap:'8px'}}>
-                    <textarea value={drafts[advisor.advisorId]||''} onChange={e=>setDrafts(m=>({...m,[advisor.advisorId]:e.target.value}))}
-                      placeholder="Write a coaching message..." rows={2}
-                      style={{flex:1,padding:'10px 12px',borderRadius:'10px',border:'1px solid #334155',background:'#0f172a',color:'#f8fafc',fontSize:'13px',resize:'none',fontFamily:'inherit'}}/>
-                    <button onClick={()=>sendMessage(advisor.advisorId)}
-                      disabled={sending[advisor.advisorId]||!drafts[advisor.advisorId]?.trim()}
-                      style={{padding:'10px 16px',borderRadius:'10px',border:'none',cursor:'pointer',fontWeight:'700',fontSize:'13px',alignSelf:'stretch',minWidth:'70px',
-                              background:sent[advisor.advisorId]?'#22c55e':drafts[advisor.advisorId]?.trim()?'#6366f1':'#1e293b',
-                              color:drafts[advisor.advisorId]?.trim()?'white':'#475569',transition:'all 0.2s'}}>
-                      {sent[advisor.advisorId]?'✓ Sent':sending[advisor.advisorId]?'...':'Send'}
-                    </button>
-                  </div>
-                </div>
+                <CoachMessageBox advisorId={advisor.advisorId} coachId={coachId} coachName={coachName}/>
               </div>
             );
           })}
