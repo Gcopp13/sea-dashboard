@@ -102,6 +102,20 @@
 <script type="text/babel">
   const { useState, useEffect, useRef, useCallback } = React;
 
+  // ── Coach API ──────────────────────────────────────────────────────────────
+  const COACH_API = '/api/coach';
+
+  const getOrCreateAdvisorId = () => {
+    let id = localStorage.getItem('sea_advisor_id');
+    if (!id) {
+      const arr = new Uint8Array(8);
+      crypto.getRandomValues(arr);
+      id = 'adv_' + Array.from(arr).map(b=>b.toString(16).padStart(2,'0')).join('');
+      localStorage.setItem('sea_advisor_id', id);
+    }
+    return id;
+  };
+
   // ── Icons ──────────────────────────────────────────────────────────────────
   const Icon = ({ d, size = 22, stroke = 2, fill = "none" }) => (
     <svg width={size} height={size} viewBox="0 0 24 24" fill={fill} stroke="currentColor" strokeWidth={stroke} strokeLinecap="round" strokeLinejoin="round">
@@ -372,46 +386,35 @@
     // iOS keyboard fix — reliable viewport-based approach
     useEffect(() => {
       if (!isOpen || !window.visualViewport) return;
-      let lastHeight = window.visualViewport.height;
 
       const handleViewportResize = () => {
         const panel = document.querySelector('.coach-panel');
         if (!panel || window.innerWidth > 768) return;
         const vvh = window.visualViewport.height;
         const vvTop = window.visualViewport.offsetTop;
-        // Keyboard height = how much the viewport shrank from its natural size
-        const keyboardHeight = Math.max(0, lastHeight - vvh + vvTop);
-        if (keyboardHeight > 80) {
-          // Keyboard is open — push panel above it
-          panel.style.bottom = `${keyboardHeight}px`;
-          panel.style.maxHeight = `${vvh * 0.90}px`;
-          // Scroll input into view after short delay
-          setTimeout(() => {
-            const input = panel.querySelector('input[type="text"], textarea');
-            if (input) input.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-          }, 100);
-        } else {
-          // Keyboard closed — restore
-          panel.style.bottom = '0px';
-          panel.style.maxHeight = '';
-        }
+        panel.style.top = vvTop + 'px';
+        panel.style.height = vvh + 'px';
+        panel.style.maxHeight = vvh + 'px';
+        panel.style.bottom = 'auto';
       };
 
-      // Also handle focus events directly on the input
-      const handleFocus = () => {
-        setTimeout(handleViewportResize, 300);
+      const handleBlur = () => {
+        setTimeout(() => {
+          const panel = document.querySelector('.coach-panel');
+          if (panel) { panel.style.top = ''; panel.style.height = ''; panel.style.maxHeight = ''; panel.style.bottom = ''; }
+        }, 100);
       };
 
       window.visualViewport.addEventListener('resize', handleViewportResize);
       window.visualViewport.addEventListener('scroll', handleViewportResize);
-      document.addEventListener('focusin', handleFocus);
+      document.addEventListener('focusout', handleBlur);
 
       return () => {
         window.visualViewport.removeEventListener('resize', handleViewportResize);
         window.visualViewport.removeEventListener('scroll', handleViewportResize);
-        document.removeEventListener('focusin', handleFocus);
+        document.removeEventListener('focusout', handleBlur);
         const panel = document.querySelector('.coach-panel');
-        if (panel) { panel.style.bottom = ''; panel.style.maxHeight = ''; }
+        if (panel) { panel.style.top = ''; panel.style.height = ''; panel.style.maxHeight = ''; panel.style.bottom = ''; }
       };
     }, [isOpen]);
 
@@ -2252,6 +2255,23 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
       const firstName = shareData.n?.split(' ')[0] || '';
       const shareText = `${firstName ? firstName + "'s " : ''}S.E.A. Score this week: ${score.total}/100${score.anvilStreak > 0 ? ' 🔥 ' + score.anvilStreak + ' day streak' : ''}`;
 
+      // Also push snapshot to Netlify Blobs if a coach ID is configured
+      const coachId = localStorage.getItem('sea_coach_id');
+      const advisorId = getOrCreateAdvisorId();
+      if (coachId?.trim()) {
+        fetch(`${COACH_API}?action=share`, {
+          method: 'POST', headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({
+            advisorId,
+            coachId: coachId.trim(),
+            advisorData: {
+              n: shareData.n, s: score.total, as: score.anvilStreak,
+              hp: score.habitPct, g: shareData.g
+            }
+          })
+        }).catch(()=>{}); // fire-and-forget
+      }
+
       if (navigator.share) {
         navigator.share({ title: 'My S.E.A. Dashboard Score', text: shareText, url }).catch(()=>{});
         localStorage.setItem('share-used','true');
@@ -2495,6 +2515,47 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
       </div>
     );
   };
+  // ── COACH SETUP (inside Setup section of MoreView) ────────────────────────
+  const CoachSetup = () => {
+    const advisorId = getOrCreateAdvisorId();
+    const [coachIdInput, setCoachIdInput] = useState(()=>localStorage.getItem('sea_coach_id')||'');
+    const [coachSaved, setCoachSaved] = useState(false);
+    const saveCoachId = () => {
+      localStorage.setItem('sea_coach_id', coachIdInput.trim());
+      setCoachSaved(true);
+      window.dispatchEvent(new Event('sea-coach-id-changed'));
+      setTimeout(()=>setCoachSaved(false), 2000);
+    };
+    const copyAdvisorId = () => navigator.clipboard.writeText(advisorId).catch(()=>{});
+    return (
+      <div className="bg-slate-800/60 rounded-2xl p-5 border border-slate-700">
+        <h3 className="text-sm font-bold text-purple-400 mb-1">⚓ Coach Connection</h3>
+        <p className="text-xs text-slate-400 mb-4">Connect to your GRI coach so they can see your progress and send you messages.</p>
+        <div className="space-y-4">
+          <div>
+            <label className="text-xs font-bold text-slate-400 uppercase tracking-wide block mb-2">Your Advisor ID</label>
+            <div className="flex gap-2">
+              <div className="flex-1 bg-slate-700/50 border border-slate-600/50 rounded-xl p-3 text-slate-400 text-xs font-mono overflow-hidden" style={{textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{advisorId}</div>
+              <button onClick={copyAdvisorId} className="bg-slate-700 text-slate-300 px-3 rounded-xl text-sm hover:bg-slate-600 transition-colors">📋</button>
+            </div>
+            <p className="text-xs text-slate-500 mt-1.5">Share this with your coach if they need it.</p>
+          </div>
+          <div>
+            <label className="text-xs font-bold text-slate-400 uppercase tracking-wide block mb-2">Coach ID</label>
+            <div className="flex gap-2">
+              <input value={coachIdInput} onChange={e=>setCoachIdInput(e.target.value)} placeholder="Paste your coach's ID here..."
+                className="flex-1 bg-slate-700/50 border border-slate-600/50 rounded-xl p-3 text-white placeholder-slate-500 text-sm focus:border-purple-500 focus:outline-none"/>
+              <button onClick={saveCoachId} className="px-4 rounded-xl font-bold text-sm text-white transition-all" style={{background:coachSaved?'#10b981':'linear-gradient(135deg,#6366f1,#8b5cf6)',minWidth:'64px'}}>
+                {coachSaved?'✓':'Save'}
+              </button>
+            </div>
+            <p className="text-xs text-slate-500 mt-1.5">Your coach gets this from their Coach Dashboard link. When you tap "Share Score", your data goes straight to their dashboard.</p>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   const MoreView = ({ data, updateField, saveData, openCoach, personality, setPersonality, onReopenOnboarding, onMilestone, weekNum, setWeekNum }) => {
     const [section, setSection] = useState(null);
     const [newNote, setNewNote] = useState('');
@@ -2584,7 +2645,6 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
     const SECTIONS = [
       {id:'weekly',label:'Weekly Ritual',icon:'📋',desc:'Your 7-step weekly planning ritual'},
       {id:'vision',label:'Vision & Goals',icon:'🎯',desc:'3-year, 1-year, 120-day vision + 4 goals'},
-      {id:'gratitude',label:'Gratitude',icon:'🌱',desc:'What are you grateful for today?'},
       {id:'messes',label:'Messes to Clean Up',icon:'🧹',desc:`${(data.weeks[weekNum-1]?.messes||[]).filter(m=>m.description?.trim()&&!m.completed).length} active messes`},
       {id:'profile',label:'Coach Profile',icon:'🧠',desc:'Help your coach know you better — takes 3 minutes'},
       {id:'setup',label:'Setup & Settings',icon:'⚙️',desc:'Coach personality, start date, routines'},
@@ -2606,6 +2666,7 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
             <ChevRight/>
           </button>
         ))}
+        <CoachMessages advisorId={getOrCreateAdvisorId()}/>
         <button onClick={onReopenOnboarding} className="w-full flex items-center gap-4 p-4 rounded-2xl border transition-all text-left" style={{background:'linear-gradient(135deg,rgba(59,130,246,0.1),rgba(139,92,246,0.1))',borderColor:'rgba(99,102,241,0.3)'}}>
           <span className="text-3xl">🔄</span>
           <div className="flex-1">
@@ -2641,35 +2702,6 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
         {/* Weekly Ritual */}
         {section==='weekly' && (
           <WeekView data={data} updateField={updateField} weekNum={weekNum} setWeekNum={setWeekNum} openCoach={openCoach} onPrint={()=>window.print()} onMilestone={onMilestone} onBack={()=>setSection(null)}/>
-        )}
-
-        {/* Gratitude */}
-        {section==='gratitude' && (
-          <div className="space-y-4">
-            <h2 className="text-xl font-bold text-white">🌱 Gratitude</h2>
-            <p className="text-sm text-slate-400">Three things you're grateful for today</p>
-            {(()=>{
-              const todayDi = new Date().getDay()===0?6:new Date().getDay()-1;
-              const wNum = weekNum;
-              const day = data.dailyPlans[wNum-1]?.[todayDi]||{grateful:['','','']};
-              const updateGratitude = (i,val) => {
-                const p=JSON.parse(JSON.stringify(data.dailyPlans));
-                if(!p[wNum-1][todayDi].grateful) p[wNum-1][todayDi].grateful=['','',''];
-                p[wNum-1][todayDi].grateful[i]=val;
-                updateField('dailyPlans',p);
-              };
-              return (
-                <div className="bg-slate-800/60 rounded-2xl p-5 border border-slate-700 space-y-3">
-                  {[0,1,2].map(i=>(
-                    <div key={i} className="flex items-center gap-3">
-                      <span className="text-green-400 text-sm flex-shrink-0">✦</span>
-                      <input value={day.grateful?.[i]||''} onChange={e=>updateGratitude(i,e.target.value)} placeholder={`Gratitude ${i+1}`} className="flex-1 bg-slate-700/50 border border-slate-600/50 rounded-xl p-3 text-white placeholder-slate-500 text-sm focus:border-green-500 focus:outline-none"/>
-                    </div>
-                  ))}
-                </div>
-              );
-            })()}
-          </div>
         )}
 
         {/* Messes */}
@@ -2985,6 +3017,9 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
                 <p className="text-xs text-slate-500 text-center">Backup includes all goals, habits, Anvil log, reflections, notes, and settings</p>
               </div>
             </div>
+
+            {/* Coach Connection */}
+            <CoachSetup/>
           </div>
         )}
       </div>
@@ -3170,12 +3205,20 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
     };
     const score = loading?{total:0,stars:1}:calcSEAScore(data,weekNum-1);
 
+    const [myCoachId, setMyCoachId] = useState(()=>localStorage.getItem('sea_coach_id')||'');
+    useEffect(()=>{
+      const refresh = () => setMyCoachId(localStorage.getItem('sea_coach_id')||'');
+      window.addEventListener('sea-coach-id-changed', refresh);
+      return () => window.removeEventListener('sea-coach-id-changed', refresh);
+    },[]);
+
     const TABS=[
-      {id:'today',label:'Today',Icon:SunIcon},
-      {id:'anvil',label:'Anvil',Icon:()=><span style={{fontSize:'18px'}}>🔨</span>},
-      {id:'score',label:'Score',Icon:StarIcon},
+      {id:'today',  label:'Today',  Icon:SunIcon},
+      {id:'anvil',  label:'Anvil',  Icon:()=><span style={{fontSize:'18px'}}>🔨</span>},
+      {id:'score',  label:'Score',  Icon:StarIcon},
       {id:'journal',label:'Journal',Icon:JournalIcon},
-      {id:'more',label:'More',Icon:MenuIcon},
+      {id:'more',   label:'More',   Icon:MenuIcon},
+      ...(myCoachId?[{id:'coach',label:'Coach',Icon:()=><span style={{fontSize:'18px'}}>⚓</span>}]:[]),
     ];
 
     if(loading)return(<div className="flex items-center justify-center h-screen" style={{background:'#0f172a'}}><div className="text-center"><div className="text-4xl mb-3">🌊</div><p className="text-white font-semibold">Loading S.E.A. Dashboard...</p><p className="text-slate-400 text-sm mt-1">Getting Results Inc.</p></div></div>);
@@ -3343,6 +3386,7 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
             {activeTab==='score'&&<ScoreView data={data} updateField={updateField} weekNum={weekNum} setWeekNum={setWeekNum} setActiveTab={setActiveTab} openCoach={openCoach} onPrint={printTab} onMilestone={setMilestone} setShowResetModal={setShowResetModal}/>}
             {activeTab==='journal'&&<JournalView data={data} updateField={updateField}/>}
             {activeTab==='more'&&<MoreView data={data} updateField={updateField} saveData={saveData} openCoach={openCoach} personality={coachPersonality} setPersonality={setCoachPersonality} onReopenOnboarding={onReopenOnboarding} onMilestone={setMilestone} weekNum={weekNum} setWeekNum={setWeekNum}/>}
+            {activeTab==='coach'&&myCoachId&&<CoachDashboard coachId={myCoachId} embedded={true}/>}
           </div>
         </div>
 
@@ -3707,6 +3751,299 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
     );
   };
 
+  // ── COACH DASHBOARD (shown at ?coach=ID) ──────────────────────────────────
+  const CoachDashboard = ({ coachId, embedded = false }) => {
+    const [advisors, setAdvisors] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState(null);
+    const [drafts, setDrafts] = useState({});
+    const [sending, setSending] = useState({});
+    const [sent, setSent] = useState({});
+    const [coachName, setCoachName] = useState(() => localStorage.getItem(`coach_name_${coachId}`) || '');
+    const [editingName, setEditingName] = useState(false);
+    const nameRef = useRef(null);
+
+    const fetchAdvisors = useCallback(async () => {
+      setLoading(true); setError(null);
+      try {
+        const res = await fetch(`${COACH_API}?action=get-advisors&coachId=${encodeURIComponent(coachId)}`);
+        const data = await res.json();
+        if (Array.isArray(data)) {
+          setAdvisors(data.sort((a,b) => (b.lastUpdated||0) - (a.lastUpdated||0)));
+        } else { setError('Could not load advisors.'); }
+      } catch(e) { setError('Network error. Is the app deployed to Netlify?'); }
+      setLoading(false);
+    }, [coachId]);
+
+    useEffect(() => { fetchAdvisors(); }, [fetchAdvisors]);
+
+    const saveCoachName = () => {
+      const name = nameRef.current?.value?.trim() || '';
+      localStorage.setItem(`coach_name_${coachId}`, name);
+      setCoachName(name); setEditingName(false);
+    };
+
+    const sendMessage = async (advisorId) => {
+      const msg = (drafts[advisorId] || '').trim();
+      if (!msg) return;
+      setSending(s => ({...s, [advisorId]: true}));
+      try {
+        const res = await fetch(`${COACH_API}?action=send-message`, {
+          method: 'POST', headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({ advisorId, coachId, coachName: coachName || 'Your Coach', message: msg })
+        });
+        const d = await res.json();
+        if (d.success) {
+          setDrafts(m => ({...m, [advisorId]: ''}));
+          setSent(s => ({...s, [advisorId]: true}));
+          setTimeout(() => setSent(s => ({...s, [advisorId]: false})), 2500);
+        }
+      } catch(e) { alert('Failed to send. Please try again.'); }
+      setSending(s => ({...s, [advisorId]: false}));
+    };
+
+    const copyCoachLink = () => {
+      const url = `${window.location.origin}${window.location.pathname}?coach=${encodeURIComponent(coachId)}`;
+      navigator.clipboard.writeText(url).then(() => {}).catch(() => {});
+    };
+
+    const ScoreRing = ({ score }) => {
+      const pct = Math.min(100, Math.max(0, score||0));
+      const r=28, cx=32, cy=32, circ=2*Math.PI*r, dash=(pct/100)*circ;
+      const color = pct>=80?'#22c55e':pct>=50?'#f59e0b':'#ef4444';
+      return (
+        <svg width="64" height="64" viewBox="0 0 64 64" style={{flexShrink:0}}>
+          <circle cx={cx} cy={cy} r={r} fill="none" stroke="#1e293b" strokeWidth="6"/>
+          <circle cx={cx} cy={cy} r={r} fill="none" stroke={color} strokeWidth="6"
+            strokeDasharray={`${dash} ${circ-dash}`} strokeLinecap="round"
+            transform="rotate(-90 32 32)" style={{transition:'stroke-dasharray 0.5s'}}/>
+          <text x="32" y="37" textAnchor="middle" fill={color} fontSize="13" fontWeight="bold">{Math.round(pct)}</text>
+        </svg>
+      );
+    };
+
+    const GoalBar = ({ goals }) => {
+      if (!goals?.length) return <span style={{color:'#64748b',fontSize:'12px'}}>No goals shared</span>;
+      return (
+        <div style={{display:'flex',flexDirection:'column',gap:'5px'}}>
+          {goals.slice(0,4).map((g,i) => {
+            const pct = g.target>0 ? Math.min(100,(g.current/g.target)*100) : (g.completion||0);
+            const colors = ['#f97316','#3b82f6','#10b981','#a855f7'];
+            return (
+              <div key={i}>
+                <div style={{display:'flex',justifyContent:'space-between',fontSize:'11px',color:'#94a3b8',marginBottom:'2px'}}>
+                  <span style={{maxWidth:'170px',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{g.t || g.name}</span>
+                  <span style={{fontWeight:'bold',color:colors[i%4]}}>{Math.round(pct)}%</span>
+                </div>
+                <div style={{height:'4px',background:'#1e293b',borderRadius:'2px'}}>
+                  <div style={{height:'100%',width:`${pct}%`,background:colors[i%4],borderRadius:'2px',transition:'width 0.5s'}}/>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      );
+    };
+
+    // In embedded mode, skip the full-page wrapper — the app shell handles it
+    const Wrapper = ({children}) => embedded
+      ? <div className="page-content px-4 py-5" style={{color:'#f8fafc'}}>{children}</div>
+      : <div style={{minHeight:'100vh',background:'#0f172a',color:'#f8fafc',fontFamily:'system-ui,sans-serif'}}>{children}</div>;
+
+    return (
+      <Wrapper>
+        {/* Header — only shown standalone */}
+        {!embedded && <div style={{background:'#1e293b',padding:'16px 20px',borderBottom:'1px solid #334155',display:'flex',alignItems:'center',justifyContent:'space-between',flexWrap:'wrap',gap:'12px'}}>
+          <div>
+            <div style={{display:'flex',alignItems:'center',gap:'8px'}}>
+              <span style={{fontSize:'22px'}}>⚓</span>
+              <span style={{fontSize:'18px',fontWeight:'800',color:'#f8fafc'}}>Coach Dashboard</span>
+            </div>
+            <div style={{fontSize:'12px',color:'#64748b',marginTop:'2px'}}>S.E.A. Accelerator · Getting Results Inc.</div>
+          </div>
+          <div style={{textAlign:'right'}}>
+            {editingName ? (
+              <div style={{display:'flex',gap:'6px',alignItems:'center'}}>
+                <input ref={nameRef} defaultValue={coachName} placeholder="Your name"
+                  style={{padding:'7px 10px',borderRadius:'8px',border:'1px solid #334155',background:'#0f172a',color:'#f8fafc',fontSize:'13px',width:'130px'}}
+                  onKeyDown={e=>e.key==='Enter'&&saveCoachName()}/>
+                <button onClick={saveCoachName} style={{padding:'7px 12px',borderRadius:'8px',background:'#6366f1',color:'white',border:'none',cursor:'pointer',fontSize:'12px',fontWeight:'600'}}>Save</button>
+              </div>
+            ) : (
+              <button onClick={()=>setEditingName(true)} style={{background:'transparent',border:'1px solid #334155',borderRadius:'8px',padding:'7px 14px',color:coachName?'#f8fafc':'#94a3b8',cursor:'pointer',fontSize:'13px'}}>
+                {coachName || '✏️ Set your name'}
+              </button>
+            )}
+            <div style={{fontSize:'11px',color:'#475569',marginTop:'4px'}}>Coach ID: {coachId}</div>
+          </div>
+        </div>}
+
+        {/* Coach link banner */}
+        <div style={{background:embedded?'rgba(99,102,241,0.08)':'#151d2e',padding:'10px 16px',borderRadius:embedded?'12px':'0',marginBottom:embedded?'16px':'0',border:embedded?'1px solid rgba(99,102,241,0.2)':'none',borderBottom:embedded?'':'1px solid #1e293b',display:'flex',alignItems:'center',justifyContent:'space-between',flexWrap:'wrap',gap:'8px'}}>
+          <span style={{fontSize:'12px',color:'#64748b'}}>📎 Share your coach link with advisors</span>
+          <button onClick={copyCoachLink} style={{background:'#6366f1',color:'white',border:'none',borderRadius:'8px',padding:'7px 16px',cursor:'pointer',fontSize:'12px',fontWeight:'700'}}>
+            📋 Copy Coach Link
+          </button>
+        </div>
+
+        {/* Content */}
+        <div style={{padding:embedded?'0':'20px',maxWidth:'720px',margin:'0 auto'}}>
+          {loading && (
+            <div style={{textAlign:'center',padding:'60px',color:'#64748b'}}>
+              <div style={{fontSize:'36px',marginBottom:'12px'}}>⏳</div>
+              <div>Loading your advisors...</div>
+            </div>
+          )}
+          {error && (
+            <div style={{background:'#450a0a',border:'1px solid #ef4444',borderRadius:'12px',padding:'16px',color:'#fca5a5',marginBottom:'16px'}}>
+              ⚠️ {error}
+              <button onClick={fetchAdvisors} style={{marginLeft:'12px',background:'#ef4444',color:'white',border:'none',borderRadius:'6px',padding:'4px 10px',cursor:'pointer',fontSize:'12px'}}>Retry</button>
+            </div>
+          )}
+          {!loading && !error && advisors.length === 0 && (
+            <div style={{textAlign:'center',padding:'60px 20px',color:'#64748b'}}>
+              <div style={{fontSize:'52px',marginBottom:'16px'}}>👥</div>
+              <div style={{fontSize:'17px',fontWeight:'700',color:'#94a3b8',marginBottom:'8px'}}>No advisors yet</div>
+              <div style={{fontSize:'14px',lineHeight:'1.6'}}>Copy your coach link above and share it with your advisors.<br/>When they enter your Coach ID and share their score, they'll appear here.</div>
+            </div>
+          )}
+          {!loading && advisors.length > 0 && (
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'16px'}}>
+              <span style={{color:'#64748b',fontSize:'13px'}}>{advisors.length} advisor{advisors.length!==1?'s':''}</span>
+              <button onClick={fetchAdvisors} style={{background:'#1e293b',color:'#94a3b8',border:'1px solid #334155',borderRadius:'8px',padding:'6px 14px',cursor:'pointer',fontSize:'12px'}}>🔄 Refresh</button>
+            </div>
+          )}
+          {advisors.map(advisor => {
+            const d = advisor.advisorData || {};
+            const score = d.s ?? d.score ?? 0;
+            const streak = d.as ?? d.anvilStreak ?? d.streak ?? 0;
+            const name = (d.n ?? d.name) || 'Unnamed Advisor';
+            const goals = d.g ?? d.goals ?? [];
+            const habits = d.hp ?? d.habitPct ?? d.habitCompletion ?? 0;
+            const lastUpdated = advisor.lastUpdated ? new Date(advisor.lastUpdated).toLocaleDateString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}) : 'Unknown';
+            const scoreColor = score>=80?'#22c55e':score>=50?'#f59e0b':'#ef4444';
+            return (
+              <div key={advisor.advisorId} style={{background:'#1e293b',borderRadius:'16px',padding:'20px',marginBottom:'16px',border:'1px solid #334155'}}>
+                {/* Advisor header */}
+                <div style={{display:'flex',alignItems:'center',gap:'16px',marginBottom:'16px'}}>
+                  <ScoreRing score={score}/>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{fontWeight:'700',fontSize:'17px',color:'#f8fafc',marginBottom:'4px'}}>{name}</div>
+                    <div style={{display:'flex',gap:'14px',flexWrap:'wrap'}}>
+                      <span style={{fontSize:'12px',color:'#94a3b8'}}>🔥 {streak}-day streak</span>
+                      <span style={{fontSize:'12px',color:'#94a3b8'}}>✅ {habits}% habits</span>
+                    </div>
+                    <div style={{fontSize:'11px',color:'#475569',marginTop:'3px'}}>Updated {lastUpdated}</div>
+                  </div>
+                  <div style={{textAlign:'right',flexShrink:0}}>
+                    <div style={{fontSize:'10px',color:'#64748b',marginBottom:'2px',textTransform:'uppercase',letterSpacing:'0.05em'}}>S.E.A. Score</div>
+                    <div style={{fontSize:'30px',fontWeight:'900',color:scoreColor}}>{Math.round(score)}</div>
+                  </div>
+                </div>
+                {/* Goals */}
+                <div style={{borderTop:'1px solid #334155',paddingTop:'12px',marginBottom:'14px'}}>
+                  <div style={{fontSize:'10px',color:'#64748b',marginBottom:'7px',fontWeight:'700',textTransform:'uppercase',letterSpacing:'0.06em'}}>Goal Progress</div>
+                  <GoalBar goals={goals}/>
+                </div>
+                {/* Message composer */}
+                <div style={{borderTop:'1px solid #334155',paddingTop:'12px'}}>
+                  <div style={{fontSize:'10px',color:'#64748b',marginBottom:'8px',fontWeight:'700',textTransform:'uppercase',letterSpacing:'0.06em'}}>Send Message to {name.split(' ')[0]}</div>
+                  <div style={{display:'flex',gap:'8px'}}>
+                    <textarea value={drafts[advisor.advisorId]||''} onChange={e=>setDrafts(m=>({...m,[advisor.advisorId]:e.target.value}))}
+                      placeholder="Write a coaching message..." rows={2}
+                      style={{flex:1,padding:'10px 12px',borderRadius:'10px',border:'1px solid #334155',background:'#0f172a',color:'#f8fafc',fontSize:'13px',resize:'none',fontFamily:'inherit'}}/>
+                    <button onClick={()=>sendMessage(advisor.advisorId)}
+                      disabled={sending[advisor.advisorId]||!drafts[advisor.advisorId]?.trim()}
+                      style={{padding:'10px 16px',borderRadius:'10px',border:'none',cursor:'pointer',fontWeight:'700',fontSize:'13px',alignSelf:'stretch',minWidth:'70px',
+                              background:sent[advisor.advisorId]?'#22c55e':drafts[advisor.advisorId]?.trim()?'#6366f1':'#1e293b',
+                              color:drafts[advisor.advisorId]?.trim()?'white':'#475569',transition:'all 0.2s'}}>
+                      {sent[advisor.advisorId]?'✓ Sent':sending[advisor.advisorId]?'...':'Send'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </Wrapper>
+    );
+  };
+
+  // ── COACH MESSAGES PANEL (shown to advisor in More tab) ────────────────────
+  const CoachMessages = ({ advisorId }) => {
+    const [messages, setMessages] = useState([]);
+    const [loading, setLoading] = useState(false);
+    const [open, setOpen] = useState(false);
+    const [unread, setUnread] = useState(0);
+
+    const fetchMessages = useCallback(async () => {
+      if (!advisorId) return;
+      setLoading(true);
+      try {
+        const res = await fetch(`${COACH_API}?action=get-messages&advisorId=${encodeURIComponent(advisorId)}`);
+        const data = await res.json();
+        if (Array.isArray(data)) {
+          setMessages([...data].reverse());
+          setUnread(data.filter(m=>!m.read).length);
+        }
+      } catch(e) { /* silent — bonus feature */ }
+      setLoading(false);
+    }, [advisorId]);
+
+    useEffect(() => {
+      fetchMessages();
+      const t = setInterval(fetchMessages, 5*60*1000);
+      return () => clearInterval(t);
+    }, [fetchMessages]);
+
+    const markAllRead = async () => {
+      if (unread===0) return;
+      setUnread(0);
+      setMessages(m=>m.map(msg=>({...msg,read:true})));
+      fetch(`${COACH_API}?action=mark-read`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({advisorId})}).catch(()=>{});
+    };
+
+    const toggle = () => { if (!open && unread>0) markAllRead(); setOpen(o=>!o); };
+    const fmt = ts => { const d=new Date(ts),now=new Date(); return (now-d)<86400000?d.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'}):d.toLocaleDateString('en-US',{month:'short',day:'numeric'}); };
+
+    return (
+      <div className={`bg-slate-800/60 rounded-2xl border overflow-hidden ${unread>0?'border-purple-500/50':'border-slate-700'}`} style={{transition:'border-color 0.3s'}}>
+        <button onClick={toggle} className="w-full p-4 flex items-center justify-between text-left" style={{background:'transparent',border:'none',cursor:'pointer',color:'#f8fafc'}}>
+          <div className="flex items-center gap-3">
+            <span className="text-2xl">💬</span>
+            <div>
+              <p className="font-bold text-white text-sm">Messages from Coach</p>
+              <p className="text-xs text-slate-400 mt-0.5">{loading?'Checking...':(messages.length===0?'No messages yet':`${messages.length} message${messages.length!==1?'s':''}`)}</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            {unread>0&&<span className="bg-purple-600 text-white text-xs font-bold rounded-full px-2 py-0.5">{unread} new</span>}
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{transform:open?'rotate(180deg)':'rotate(0deg)',transition:'transform 0.2s',color:'#64748b'}}><polyline points="6 9 12 15 18 9"/></svg>
+          </div>
+        </button>
+        {open && (
+          <div className="border-t border-slate-700 p-4 space-y-3">
+            {messages.length===0 ? (
+              <div className="text-center py-6 text-slate-500">
+                <div className="text-3xl mb-2">📭</div>
+                <p className="text-sm">Your coach hasn't sent any messages yet.</p>
+              </div>
+            ) : messages.map(msg => (
+              <div key={msg.id||msg.timestamp} className="rounded-xl p-3" style={{background:msg.read?'rgba(15,23,42,0.8)':'rgba(99,102,241,0.08)',borderLeft:`3px solid ${msg.read?'#334155':'#8b5cf6'}`}}>
+                <div className="flex justify-between items-center mb-1">
+                  <span className="text-xs font-bold text-purple-400">{msg.coachName||'Your Coach'}</span>
+                  <span className="text-xs text-slate-500">{fmt(msg.timestamp)}</span>
+                </div>
+                <p className="text-sm text-slate-200 leading-relaxed">{msg.message}</p>
+              </div>
+            ))}
+            <button onClick={fetchMessages} className="w-full py-2 text-xs text-slate-500 hover:text-slate-300 border border-slate-700 rounded-xl transition-colors">🔄 Refresh messages</button>
+          </div>
+        )}
+      </div>
+    );
+  };
+
   // ── APP ROOT ───────────────────────────────────────────────────────────────
   const AppRoot = () => {
     // Check for share link first
@@ -3720,6 +4057,12 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
       } catch(e) {
         // Bad share link — fall through to normal app
       }
+    }
+
+    // Check for coach dashboard
+    const coachParam = urlParams.get('coach');
+    if (coachParam) {
+      return <CoachDashboard coachId={coachParam}/>;
     }
 
     const [onboardingDone, setOnboardingDone] = useState(false);
