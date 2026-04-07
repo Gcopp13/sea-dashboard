@@ -3845,13 +3845,8 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
       );
     };
 
-    // In embedded mode, skip the full-page wrapper — the app shell handles it
-    const Wrapper = ({children}) => embedded
-      ? <div className="page-content px-4 py-5" style={{color:'#f8fafc'}}>{children}</div>
-      : <div style={{minHeight:'100vh',background:'#0f172a',color:'#f8fafc',fontFamily:'system-ui,sans-serif'}}>{children}</div>;
-
     return (
-      <Wrapper>
+      <div style={embedded?{color:'#f8fafc'}:{minHeight:'100vh',background:'#0f172a',color:'#f8fafc',fontFamily:'system-ui,sans-serif'}}>
         {/* Header — only shown standalone */}
         {!embedded && <div style={{background:'#1e293b',padding:'16px 20px',borderBottom:'1px solid #334155',display:'flex',alignItems:'center',justifyContent:'space-between',flexWrap:'wrap',gap:'12px'}}>
           <div>
@@ -3965,7 +3960,7 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
             );
           })}
         </div>
-      </Wrapper>
+      </div>
     );
   };
 
