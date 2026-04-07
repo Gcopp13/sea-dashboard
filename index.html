@@ -122,6 +122,7 @@
       {Array.isArray(d) ? d.map((p, i) => <path key={i} d={p}/>) : <path d={d}/>}
     </svg>
   );
+  const CoachTabIcon = () => <span style={{fontSize:'18px'}}>⚓</span>;
   const SunIcon    = () => <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>;
   const CalIcon    = () => <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>;
   const StarIcon   = () => <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>;
@@ -3218,7 +3219,7 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
       {id:'score',  label:'Score',  Icon:StarIcon},
       {id:'journal',label:'Journal',Icon:JournalIcon},
       {id:'more',   label:'More',   Icon:MenuIcon},
-      ...(myCoachId?[{id:'coach',label:'Coach',Icon:()=><span style={{fontSize:'18px'}}>⚓</span>}]:[]),
+      ...(myCoachId?[{id:'coach',label:'Coach',Icon:CoachTabIcon}]:[]),
     ];
 
     if(loading)return(<div className="flex items-center justify-center h-screen" style={{background:'#0f172a'}}><div className="text-center"><div className="text-4xl mb-3">🌊</div><p className="text-white font-semibold">Loading S.E.A. Dashboard...</p><p className="text-slate-400 text-sm mt-1">Getting Results Inc.</p></div></div>);
@@ -3751,37 +3752,49 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
     );
   };
 
-  // ── CoachMessageBox — self-contained so typing never re-renders parent ──────
+  // ── CoachMessageBox — fully uncontrolled (ref-based) so React NEVER touches the textarea value ──
   const CoachMessageBox = ({ advisorId, coachId, coachName }) => {
-    const [draft, setDraft] = useState('');
-    const [sending, setSending] = useState(false);
-    const [sent, setSent] = useState(false);
+    const taRef = useRef(null);
+    const btnRef = useRef(null);
+    const handleInput = () => {
+      const hasText = !!(taRef.current && taRef.current.value.trim());
+      if (btnRef.current) {
+        btnRef.current.disabled = !hasText;
+        btnRef.current.style.background = hasText ? '#6366f1' : '#1e293b';
+        btnRef.current.style.color = hasText ? 'white' : '#475569';
+      }
+    };
     const send = async () => {
-      const msg = draft.trim();
+      const msg = taRef.current ? taRef.current.value.trim() : '';
       if (!msg) return;
-      setSending(true);
+      if (btnRef.current) { btnRef.current.disabled = true; btnRef.current.textContent = '...'; }
       try {
         const res = await fetch(`${COACH_API}?action=send-message`, {
           method: 'POST', headers: {'Content-Type':'application/json'},
           body: JSON.stringify({ advisorId, coachId, coachName: coachName||'Your Coach', message: msg })
         });
         const d = await res.json();
-        if (d.success) { setDraft(''); setSent(true); setTimeout(()=>setSent(false), 2500); }
+        if (d.success) {
+          if (taRef.current) taRef.current.value = '';
+          if (btnRef.current) { btnRef.current.textContent = '✓ Sent'; btnRef.current.style.background = '#22c55e'; btnRef.current.style.color = 'white'; }
+          setTimeout(() => {
+            if (btnRef.current) { btnRef.current.textContent = 'Send'; btnRef.current.style.background = '#1e293b'; btnRef.current.style.color = '#475569'; btnRef.current.disabled = true; }
+          }, 2500);
+          return;
+        }
       } catch(e) { alert('Failed to send. Please try again.'); }
-      setSending(false);
+      if (btnRef.current) { btnRef.current.disabled = false; btnRef.current.textContent = 'Send'; }
     };
     return (
       <div style={{borderTop:'1px solid #334155',paddingTop:'12px'}}>
         <div style={{fontSize:'10px',color:'#64748b',marginBottom:'8px',fontWeight:'700',textTransform:'uppercase',letterSpacing:'0.06em'}}>Send Message</div>
         <div style={{display:'flex',gap:'8px'}}>
-          <textarea value={draft} onChange={e=>setDraft(e.target.value)}
+          <textarea ref={taRef} onInput={handleInput}
             placeholder="Write a coaching message..." rows={2}
             style={{flex:1,padding:'10px 12px',borderRadius:'10px',border:'1px solid #334155',background:'#0f172a',color:'#f8fafc',fontSize:'13px',resize:'none',fontFamily:'inherit'}}/>
-          <button onClick={send} disabled={sending||!draft.trim()}
-            style={{padding:'10px 16px',borderRadius:'10px',border:'none',cursor:'pointer',fontWeight:'700',fontSize:'13px',alignSelf:'stretch',minWidth:'70px',
-                    background:sent?'#22c55e':draft.trim()?'#6366f1':'#1e293b',
-                    color:draft.trim()?'white':'#475569',transition:'all 0.2s'}}>
-            {sent?'✓ Sent':sending?'...':'Send'}
+          <button ref={btnRef} onClick={send} disabled={true}
+            style={{padding:'10px 16px',borderRadius:'10px',border:'none',cursor:'pointer',fontWeight:'700',fontSize:'13px',alignSelf:'stretch',minWidth:'70px',background:'#1e293b',color:'#475569',transition:'all 0.2s'}}>
+            Send
           </button>
         </div>
       </div>
