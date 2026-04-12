@@ -91,6 +91,12 @@ function buildEmail(name, data, score) {
 <body style="margin:0;padding:0;background:#0f172a;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
 <div style="max-width:560px;margin:0 auto;padding:32px 16px;">
 
+  <!-- Sunday Banner -->
+  <div style="background:linear-gradient(135deg,#1e1b4b,#312e81);border:1px solid rgba(99,102,241,0.5);border-radius:16px;padding:20px;text-align:center;margin-bottom:20px;">
+    <p style="color:#a78bfa;font-size:13px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;margin:0 0 6px;">It's Sunday</p>
+    <p style="color:#f8fafc;font-size:22px;font-weight:900;margin:0;">Time to Plan Your Week! 📋</p>
+  </div>
+
   <!-- Header -->
   <div style="text-align:center;margin-bottom:32px;">
     <p style="color:#60a5fa;font-size:12px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;margin:0 0 8px;">Getting Results Inc.</p>
