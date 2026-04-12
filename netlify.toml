@@ -4,7 +4,7 @@
   command = "npm install"
 
 [build.environment]
-  NODE_VERSION = "18"
+  NODE_VERSION = "20"
   NPM_FLAGS = "--prefer-offline"
 
 [dev]
