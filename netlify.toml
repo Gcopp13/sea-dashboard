@@ -3,9 +3,16 @@
   functions = "netlify/functions"
   command = "npm install"
 
+[build.environment]
+  NODE_VERSION = "18"
+  NPM_FLAGS = "--prefer-offline"
+
 [dev]
   port = 8888
   targetPort = 3000
+
+[functions]
+  node_bundler = "esbuild"
 
 [[redirects]]
   from = "/*"
