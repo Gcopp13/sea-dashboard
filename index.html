@@ -103,7 +103,7 @@
   const { useState, useEffect, useRef, useCallback } = React;
 
   // ── Coach API ──────────────────────────────────────────────────────────────
-  const COACH_API = '/api/coach';
+  const COACH_API = '/.netlify/functions/coach';
 
   const getOrCreateAdvisorId = () => {
     let id = localStorage.getItem('sea_advisor_id');
@@ -309,7 +309,6 @@
     const [messages, setMessages] = useState([]);
     const [input, setInput] = useState('');
     const [loading, setLoading] = useState(false);
-    const [apiKey, setApiKey] = useState('');
     const [showSettings, setShowSettings] = useState(false);
     const [unread, setUnread] = useState(0);
     const endRef = useRef(null);
@@ -322,8 +321,6 @@
     useEffect(() => { plannerDataRef.current = plannerData; }, [plannerData]);
 
     useEffect(() => {
-      const k = localStorage.getItem('claude-api-key');
-      if (k) setApiKey(k);
       const saved = localStorage.getItem('ai-coach-messages');
       if (saved) { setMessages(JSON.parse(saved)); setupCheckDone.current = true; }
       checkAccountabilityTriggers();
@@ -356,7 +353,7 @@
     }, [plannerData]);
 
     useEffect(() => {
-      if (isOpen && currentContext?.test && apiKey) {
+      if (isOpen && currentContext?.test) {
         const testMsg = { role:'user', content:"Introduce yourself briefly as my coach and ask what's on my mind today — keep it warm, short, and direct like Gino would." };
         setMessages(prev=>{
           const already = prev.some(m=>m.content===testMsg.content);
@@ -366,7 +363,7 @@
         setTimeout(async ()=>{
           setLoading(true);
           try {
-            const res = await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json','x-api-key':apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:200,system:buildSystemPrompt(),messages:[{role:'user',content:"Introduce yourself briefly as my coach and ask what's on my mind today — keep it warm, short, and direct like Gino would."}]})});
+            const res = await fetch('/.netlify/functions/ai-coach',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({systemPrompt:buildSystemPrompt(),maxTokens:200,messages:[{role:'user',content:"Introduce yourself briefly as my coach and ask what's on my mind today — keep it warm, short, and direct like Gino would."}]})});
             if(!res.ok) throw new Error(await res.text());
             const d=await res.json();
             if(d.content?.[0]) setMessages(prev=>[...prev,{role:'assistant',content:d.content[0].text}]);
@@ -556,7 +553,7 @@
         const summaryEmail = localStorage.getItem('summary-email');
         if (summaryEmail && localStorage.getItem('summary-optin')==='true' && localStorage.getItem('last-summary-sent')!==today.toDateString()) {
           localStorage.setItem('last-summary-sent', today.toDateString());
-          fetch('/api/send-summary',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:summaryEmail,name:localStorage.getItem('summary-name')||'',plannerData})}).catch(()=>{});
+          fetch('/.netlify/functions/send-summary',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:summaryEmail,name:localStorage.getItem('summary-name')||'',plannerData})}).catch(()=>{});
         }
       }
 
@@ -906,7 +903,7 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
     };
 
     const send = async () => {
-      if (!input.trim() || !apiKey) { if (!apiKey) alert('Add your API key in settings (⚙️)'); return; }
+      if (!input.trim()) return;
       const userMsg = { role:'user', content:input };
 
       // Commitment capture — detect "I will..." or "I'll..." statements
@@ -920,10 +917,10 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
       setMessages(prev=>[...prev, userMsg]);
       setInput(''); setLoading(true);
       try {
-        const res = await fetch('https://api.anthropic.com/v1/messages', {
+        const res = await fetch('/.netlify/functions/ai-coach', {
           method:'POST',
-          headers:{'Content-Type':'application/json','x-api-key':apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
-          body: JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:1024,system:buildSystemPrompt(),messages:buildApiMessages(messages,userMsg)})
+          headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({systemPrompt:buildSystemPrompt(),maxTokens:1024,messages:buildApiMessages(messages,userMsg)})
         });
         if (!res.ok) throw new Error(`${res.status} - ${await res.text()}`);
         const d = await res.json();
@@ -940,19 +937,10 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
           <div className="bg-gradient-to-r from-blue-600 to-purple-600 p-4 flex items-center justify-between" style={{borderRadius:'1.5rem 1.5rem 0 0'}}>
             <div className="flex items-center gap-2"><BotIcon/><span className="font-bold text-white">AI Coach</span></div>
             <div className="flex items-center gap-2">
-              <button onClick={()=>setShowSettings(!showSettings)} className="p-1.5 hover:bg-white/20 rounded-lg"><SetIcon/></button>
               <button onClick={()=>{if(confirm('Clear conversation?')){setMessages([]);localStorage.removeItem('ai-coach-messages');}}} className="text-xs text-white/70 hover:text-white px-2 py-1 hover:bg-white/20 rounded">Clear</button>
               <button onClick={onClose} className="p-1.5 hover:bg-white/20 rounded-lg"><XIcon/></button>
             </div>
           </div>
-          {showSettings && (
-            <div className="bg-slate-800 p-4 border-b border-slate-700">
-              <label className="text-xs text-slate-400 block mb-1">Claude API Key</label>
-              <input type="password" value={apiKey} onChange={e=>setApiKey(e.target.value)} placeholder="sk-ant-..." className="w-full bg-slate-700 border border-slate-600 rounded-lg p-2 text-sm text-white mb-2"/>
-              <button onClick={()=>{localStorage.setItem('claude-api-key',apiKey);setShowSettings(false);}} className="w-full bg-blue-600 text-white py-2 rounded-lg text-sm font-semibold">Save</button>
-              <p className="text-xs text-slate-500 mt-2">Get key at console.anthropic.com</p>
-            </div>
-          )}
           <div className="flex-1 overflow-y-auto p-4 space-y-3 chat-messages coach-messages">
             {messages.length === 0 && <div className="text-center text-slate-500 mt-12"><div className="text-4xl mb-3">🤖</div><p className="text-sm">Your accountability coach is ready.<br/>Ask anything about your S.E.A. plan.</p></div>}
             {messages.map((m,i)=>(
@@ -988,7 +976,6 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
       anvil: initialData.anvil||{project:'',cadence:'',why:''},
       personality: initialData.personality||{style:2,tone:2,approach:2,energy:2},
       startDate: initialData.startDate||'',
-      apiKey: initialData.apiKey||'',
       coachProfile: initialData.coachProfile||{years:'',production:'',need:'',obstacle:'',style:'',why:'',drift:'',family:'',niche:'',fear:'',successDef:'',avoiding:'',proud:'',fiveYear:'',holdingBack:''}
     });
     const STEPS = [
@@ -1001,7 +988,6 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
       {id:'anvil',title:'Your Anvil',subtitle:'The one activity that changes everything',type:'anvil'},
       {id:'personality',title:'Your Coach',subtitle:'Set up your coaching style',type:'personality'},
       {id:'startDate',title:'Your 120-Day Start Date',subtitle:'When does your journey begin?',type:'startDate',hasInfo:true},
-      {id:'apiKey',title:'Activate Your AI Coach',subtitle:'Connect Claude to power your coaching',type:'apiKey'},
       {id:'coachProfile',title:'Help Your Coach Know You',subtitle:'Quick answers — makes coaching personal from day one',type:'coachProfile'},
       {id:'complete',isComplete:true}
     ];
@@ -1134,38 +1120,6 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
                       </div>
                     );
                   })()}
-                  {cur.type==='apiKey' && (
-                    <div className="space-y-4">
-                      <div className="p-4 rounded-2xl" style={{background:'rgba(99,102,241,0.1)',border:'1px solid rgba(99,102,241,0.3)'}}>
-                        <p className="text-sm text-slate-200 leading-relaxed">Your AI Coach is powered by Claude — it knows your goals, tracks your patterns, and checks in with you daily. To activate it you need a Claude API key.</p>
-                      </div>
-                      <div className="space-y-3 text-sm text-slate-300">
-                        <div className="flex items-start gap-3">
-                          <span className="w-6 h-6 rounded-full bg-indigo-500/20 text-indigo-400 font-bold text-xs flex items-center justify-center flex-shrink-0 mt-0.5">1</span>
-                          <p>Go to <span className="text-indigo-400 font-semibold">console.anthropic.com</span> and sign up for a free account</p>
-                        </div>
-                        <div className="flex items-start gap-3">
-                          <span className="w-6 h-6 rounded-full bg-indigo-500/20 text-indigo-400 font-bold text-xs flex items-center justify-center flex-shrink-0 mt-0.5">2</span>
-                          <p>Click <span className="text-white font-semibold">API Keys</span> in the left sidebar → <span className="text-white font-semibold">Create Key</span></p>
-                        </div>
-                        <div className="flex items-start gap-3">
-                          <span className="w-6 h-6 rounded-full bg-indigo-500/20 text-indigo-400 font-bold text-xs flex items-center justify-center flex-shrink-0 mt-0.5">3</span>
-                          <p>Copy your key and paste it below — it starts with <span className="text-white font-mono text-xs">sk-ant-</span></p>
-                        </div>
-                      </div>
-                      <div>
-                        <label className="text-xs text-slate-500 block mb-2">Claude API Key</label>
-                        <input type="password" value={form.apiKey} onChange={e=>setForm(p=>({...p,apiKey:e.target.value}))} placeholder="sk-ant-..." className="w-full bg-slate-700 border border-slate-600 rounded-xl p-4 text-white placeholder-slate-500 text-sm focus:border-indigo-500 focus:outline-none font-mono"/>
-                      </div>
-                      {form.apiKey && form.apiKey.startsWith('sk-ant-') && (
-                        <div className="flex items-center gap-2 p-3 rounded-xl" style={{background:'rgba(16,185,129,0.1)',border:'1px solid rgba(16,185,129,0.3)'}}>
-                          <span className="text-green-400">✓</span>
-                          <p className="text-xs text-green-400 font-semibold">Valid key format detected — your coach is ready!</p>
-                        </div>
-                      )}
-                      <p className="text-xs text-slate-500 text-center">You can skip this and add it later in More → Setup. Your key is stored only on your device.</p>
-                    </div>
-                  )}
                   {cur.type==='coachProfile' && (()=>{
                     const cp = form.coachProfile;
                     const upCP = (key, val) => setForm(p=>({...p, coachProfile:{...p.coachProfile,[key]:val}}));
@@ -2696,7 +2650,6 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
           plannerData: data,
           settings: {
             coachPersonality: localStorage.getItem('coach-personality'),
-            apiKey: localStorage.getItem('claude-api-key'),
             coachProfile: localStorage.getItem('coach-profile'),
             summaryEmail: localStorage.getItem('summary-email'),
             summaryName: localStorage.getItem('summary-name'),
@@ -2735,7 +2688,6 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
           if (backup.settings) {
             const s = backup.settings;
             if (s.coachPersonality) localStorage.setItem('coach-personality', s.coachPersonality);
-            if (s.apiKey) localStorage.setItem('claude-api-key', s.apiKey);
             if (s.coachProfile) localStorage.setItem('coach-profile', s.coachProfile);
             if (s.summaryEmail) localStorage.setItem('summary-email', s.summaryEmail);
             if (s.summaryName) localStorage.setItem('summary-name', s.summaryName);
@@ -3210,7 +3162,7 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
                   if (!emailInput.trim()) { setStatus('⚠️ Enter your email first'); setTimeout(()=>setStatus(''),3000); return; }
                   setSending(true); setStatus('Sending...');
                   try {
-                    const res = await fetch('/api/send-summary', {
+                    const res = await fetch('/.netlify/functions/send-summary', {
                       method: 'POST',
                       headers: {'Content-Type':'application/json'},
                       body: JSON.stringify({email:emailInput.trim(), name:nameInput.trim(), plannerData:data})
@@ -3363,9 +3315,6 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
         if (onboardingData.personality) {
           setCoachPersonality(onboardingData.personality);
           localStorage.setItem('coach-personality', JSON.stringify(onboardingData.personality));
-        }
-        if (onboardingData.apiKey) {
-          localStorage.setItem('claude-api-key', onboardingData.apiKey);
         }
         if (onboardingData.coachProfile && Object.values(onboardingData.coachProfile).some(v=>v?.trim())) {
           localStorage.setItem('coach-profile', JSON.stringify(onboardingData.coachProfile));
@@ -4041,7 +3990,7 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
         if (!msg || btn.disabled) return;
         btn.disabled = true; btn.textContent = '...';
         try {
-          const res = await fetch('/api/coach?action=send-message', {
+          const res = await fetch('/.netlify/functions/coach?action=send-message', {
             method: 'POST', headers: {'Content-Type':'application/json'},
             body: JSON.stringify({ advisorId, coachId, coachName: coachName||'Your Coach', message: msg })
           });
@@ -4427,7 +4376,6 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
           wheelOfJohn: p.weeks?.[0]?.wheelOfJohn||{family:5,fun:5,fitness:5,finance:5,faith:5},
           anvil: p.anvilProject ? {project:p.anvilProject.project||'',cadence:p.anvilProject.cadence||'',why:p.anvilProject.why||''} : {project:'',cadence:'',why:''},
           personality: pers ? JSON.parse(pers) : {style:2,tone:2,approach:2,energy:2},
-          apiKey: localStorage.getItem('claude-api-key')||'',
           coachProfile: (() => { try { const s=localStorage.getItem('coach-profile'); return s?JSON.parse(s):{years:'',production:'',need:'',obstacle:'',style:'',why:'',drift:'',family:'',niche:'',fear:'',successDef:'',avoiding:'',proud:'',fiveYear:'',holdingBack:''}; } catch(e) { return {years:'',production:'',need:'',obstacle:'',style:'',why:'',drift:'',family:'',niche:'',fear:'',successDef:'',avoiding:'',proud:'',fiveYear:'',holdingBack:''}; } })()
         };
       } catch(e) { return {slightEdge:'',yearTheme:'',vision120Day:'',startDate:'',goals:[{title:'',impact:'',measurement:''},{title:'',impact:'',measurement:''},{title:'',impact:'',measurement:''},{title:'',impact:'',measurement:''}],anvil:{project:'',cadence:'',why:''},personality:{style:2,tone:2,approach:2,energy:2}}; }
