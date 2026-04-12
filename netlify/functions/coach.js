@@ -1,6 +1,6 @@
 /**
  * coach.js — Main backend API for S.E.A. Dashboard
- * Handles advisor data sharing, messaging, and read receipts via Supabase.
+ * Uses Supabase REST API directly via fetch (no npm dependencies needed).
  *
  * Actions (via ?action= query param):
  *   POST  ?action=share         — Upsert advisor scores
@@ -10,9 +10,6 @@
  *   POST  ?action=mark-read     — Mark messages as read
  */
 
-const { createClient } = require('@supabase/supabase-js');
-
-// ── CORS headers ────────────────────────────────────────────────────────────
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'Content-Type, Authorization',
@@ -20,193 +17,127 @@ const CORS_HEADERS = {
   'Content-Type': 'application/json',
 };
 
-// ── Supabase client (uses service role key — never exposed to browser) ──────
-function getSupabase() {
-  const url = process.env.SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_KEY;
-  if (!url || !key) {
-    throw new Error('SUPABASE_URL and SUPABASE_SERVICE_KEY environment variables are required');
-  }
-  return createClient(url, key);
-}
-
-// ── Response helpers ─────────────────────────────────────────────────────────
-function ok(data, statusCode = 200) {
-  return {
-    statusCode,
-    headers: CORS_HEADERS,
-    body: JSON.stringify(data),
-  };
+function ok(data) {
+  return { statusCode: 200, headers: CORS_HEADERS, body: JSON.stringify(data) };
 }
 
 function err(message, statusCode = 500) {
-  return {
-    statusCode,
-    headers: CORS_HEADERS,
-    body: JSON.stringify({ error: message }),
-  };
+  return { statusCode, headers: CORS_HEADERS, body: JSON.stringify({ error: message }) };
 }
 
-// ── Action handlers ──────────────────────────────────────────────────────────
+// Supabase REST helper
+async function supabase(method, table, { query = '', body = null } = {}) {
+  const url = `${process.env.SUPABASE_URL}/rest/v1/${table}${query}`;
+  const res = await fetch(url, {
+    method,
+    headers: {
+      'apikey': process.env.SUPABASE_SERVICE_KEY,
+      'Authorization': `Bearer ${process.env.SUPABASE_SERVICE_KEY}`,
+      'Content-Type': 'application/json',
+      'Prefer': method === 'POST' ? 'return=representation' : '',
+    },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const text = await res.text();
+  const data = text ? JSON.parse(text) : null;
+  return { data, status: res.status, ok: res.ok };
+}
 
-/**
- * POST ?action=share
- * Body: { advisorId, coachId, advisorData }
- * Upserts advisor scores into the `advisor_scores` table.
- */
+// POST ?action=share
 async function handleShare(body) {
   const { advisorId, coachId, advisorData } = body;
+  if (!advisorId || !coachId) return err('advisorId and coachId are required', 400);
 
-  if (!advisorId || !coachId) {
-    return err('advisorId and coachId are required', 400);
+  const { data, ok: success, status } = await supabase('POST', 'advisor_scores', {
+    query: '?on_conflict=advisor_id,coach_id',
+    body: {
+      advisor_id: advisorId,
+      coach_id: coachId,
+      advisor_data: advisorData,
+      last_updated: new Date().toISOString(),
+    },
+  });
+
+  if (!success) {
+    console.error('[share] error:', data);
+    return err(data?.message || 'Failed to save score', status);
   }
-
-  const supabase = getSupabase();
-
-  const { data, error } = await supabase
-    .from('advisor_scores')
-    .upsert(
-      {
-        advisor_id: advisorId,
-        coach_id: coachId,
-        advisor_data: advisorData,
-        updated_at: new Date().toISOString(),
-      },
-      { onConflict: 'advisor_id,coach_id' }
-    )
-    .select()
-    .single();
-
-  if (error) {
-    console.error('[coach] share error:', error);
-    return err(error.message);
-  }
-
-  return ok({ success: true, data });
+  return ok({ success: true });
 }
 
-/**
- * GET ?action=get-advisors&coachId=<id>
- * Returns all advisor records for the given coach.
- */
-async function handleGetAdvisors(queryParams) {
-  const coachId = queryParams.coachId;
+// GET ?action=get-advisors&coachId=
+async function handleGetAdvisors(params) {
+  const coachId = params.coachId;
+  if (!coachId) return err('coachId is required', 400);
 
-  if (!coachId) {
-    return err('coachId query parameter is required', 400);
+  const { data, ok: success, status } = await supabase('GET', 'advisor_scores', {
+    query: `?coach_id=eq.${encodeURIComponent(coachId)}&order=last_updated.desc`,
+  });
+
+  if (!success) {
+    console.error('[get-advisors] error:', data);
+    return err(data?.message || 'Failed to load advisors', status);
   }
-
-  const supabase = getSupabase();
-
-  const { data, error } = await supabase
-    .from('advisor_scores')
-    .select('*')
-    .eq('coach_id', coachId)
-    .order('updated_at', { ascending: false });
-
-  if (error) {
-    console.error('[coach] get-advisors error:', error);
-    return err(error.message);
-  }
-
-  // Return plain array — front-end expects Array.isArray(response)
   return ok(data || []);
 }
 
-/**
- * POST ?action=send-message
- * Body: { coachId, coachName, advisorId, message }
- * Inserts a new message into the `coach_messages` table.
- */
+// POST ?action=send-message
 async function handleSendMessage(body) {
   const { coachId, coachName, advisorId, message } = body;
+  if (!coachId || !advisorId || !message) return err('coachId, advisorId, and message are required', 400);
 
-  if (!coachId || !advisorId || !message) {
-    return err('coachId, advisorId, and message are required', 400);
-  }
-
-  const supabase = getSupabase();
-
-  const { data, error } = await supabase
-    .from('coach_messages')
-    .insert({
+  const { data, ok: success, status } = await supabase('POST', 'coach_messages', {
+    body: {
       coach_id: coachId,
       coach_name: coachName || '',
       advisor_id: advisorId,
       message,
       read: false,
-      created_at: new Date().toISOString(),
-    })
-    .select()
-    .single();
+      timestamp: new Date().toISOString(),
+    },
+  });
 
-  if (error) {
-    console.error('[coach] send-message error:', error);
-    return err(error.message);
+  if (!success) {
+    console.error('[send-message] error:', data);
+    return err(data?.message || 'Failed to send message', status);
   }
-
-  return ok({ success: true, data });
-}
-
-/**
- * GET ?action=get-messages&advisorId=<id>
- * Returns all messages for the given advisor, ordered oldest first.
- */
-async function handleGetMessages(queryParams) {
-  const advisorId = queryParams.advisorId;
-
-  if (!advisorId) {
-    return err('advisorId query parameter is required', 400);
-  }
-
-  const supabase = getSupabase();
-
-  const { data, error } = await supabase
-    .from('coach_messages')
-    .select('*')
-    .eq('advisor_id', advisorId)
-    .order('created_at', { ascending: true });
-
-  if (error) {
-    console.error('[coach] get-messages error:', error);
-    return err(error.message);
-  }
-
-  // Return plain array — front-end expects Array.isArray(response)
-  return ok(data || []);
-}
-
-/**
- * POST ?action=mark-read
- * Body: { advisorId }
- * Marks all unread messages for the advisor as read.
- */
-async function handleMarkRead(body) {
-  const { advisorId } = body;
-
-  if (!advisorId) {
-    return err('advisorId is required', 400);
-  }
-
-  const supabase = getSupabase();
-
-  const { error } = await supabase
-    .from('coach_messages')
-    .update({ read: true })
-    .eq('advisor_id', advisorId)
-    .eq('read', false);
-
-  if (error) {
-    console.error('[coach] mark-read error:', error);
-    return err(error.message);
-  }
-
   return ok({ success: true });
 }
 
-// ── Main handler ─────────────────────────────────────────────────────────────
+// GET ?action=get-messages&advisorId=
+async function handleGetMessages(params) {
+  const advisorId = params.advisorId;
+  if (!advisorId) return err('advisorId is required', 400);
+
+  const { data, ok: success, status } = await supabase('GET', 'coach_messages', {
+    query: `?advisor_id=eq.${encodeURIComponent(advisorId)}&order=timestamp.asc`,
+  });
+
+  if (!success) {
+    console.error('[get-messages] error:', data);
+    return err(data?.message || 'Failed to load messages', status);
+  }
+  return ok(data || []);
+}
+
+// POST ?action=mark-read
+async function handleMarkRead(body) {
+  const { advisorId } = body;
+  if (!advisorId) return err('advisorId is required', 400);
+
+  const { data, ok: success, status } = await supabase('PATCH', 'coach_messages', {
+    query: `?advisor_id=eq.${encodeURIComponent(advisorId)}&read=eq.false`,
+    body: { read: true },
+  });
+
+  if (!success) {
+    console.error('[mark-read] error:', data);
+    return err(data?.message || 'Failed to mark read', status);
+  }
+  return ok({ success: true });
+}
+
 exports.handler = async (event) => {
-  // Handle CORS preflight
   if (event.httpMethod === 'OPTIONS') {
     return { statusCode: 204, headers: CORS_HEADERS, body: '' };
   }
@@ -216,40 +147,20 @@ exports.handler = async (event) => {
 
   let body = {};
   if (method === 'POST' && event.body) {
-    try {
-      body = JSON.parse(event.body);
-    } catch {
-      return err('Invalid JSON body', 400);
-    }
+    try { body = JSON.parse(event.body); } catch { return err('Invalid JSON', 400); }
   }
 
   try {
     switch (action) {
-      case 'share':
-        if (method !== 'POST') return err('Method not allowed', 405);
-        return await handleShare(body);
-
-      case 'get-advisors':
-        if (method !== 'GET') return err('Method not allowed', 405);
-        return await handleGetAdvisors(event.queryStringParameters || {});
-
-      case 'send-message':
-        if (method !== 'POST') return err('Method not allowed', 405);
-        return await handleSendMessage(body);
-
-      case 'get-messages':
-        if (method !== 'GET') return err('Method not allowed', 405);
-        return await handleGetMessages(event.queryStringParameters || {});
-
-      case 'mark-read':
-        if (method !== 'POST') return err('Method not allowed', 405);
-        return await handleMarkRead(body);
-
-      default:
-        return err(`Unknown action: ${action || '(none)'}`, 400);
+      case 'share':         return method === 'POST' ? await handleShare(body) : err('Method not allowed', 405);
+      case 'get-advisors':  return method === 'GET'  ? await handleGetAdvisors(event.queryStringParameters || {}) : err('Method not allowed', 405);
+      case 'send-message':  return method === 'POST' ? await handleSendMessage(body) : err('Method not allowed', 405);
+      case 'get-messages':  return method === 'GET'  ? await handleGetMessages(event.queryStringParameters || {}) : err('Method not allowed', 405);
+      case 'mark-read':     return method === 'POST' ? await handleMarkRead(body) : err('Method not allowed', 405);
+      default:              return err(`Unknown action: ${action || '(none)'}`, 400);
     }
   } catch (e) {
-    console.error('[coach] Unhandled error:', e);
+    console.error('[coach] unhandled error:', e);
     return err(e.message || 'Internal server error');
   }
 };
