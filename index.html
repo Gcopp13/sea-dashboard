@@ -635,25 +635,139 @@ WHO THIS USER IS (Coach Profile — use naturally, never recite back):
 - Family: ${cp.family||'Not specified'}
 - Drift pattern (how they go off track): ${cp.drift||'Not specified'}
 - Why they became an advisor: ${cp.why||'Not shared yet'}
-Use the drift pattern to name avoidance when you see it in their data. Use their WHY to anchor big conversations. Use family context when connecting business to what really matters.` : '';
+Use the drift pattern to name avoidance when you see it in their data. Use their WHY to anchor big conversations. Use family context when connecting business to what really matters.
+- Biggest fear: ${cp.fear||'Not shared'}
+- Their definition of success: ${cp.successDef||'Not shared'}
+- What they are avoiding: ${cp.avoiding||'Not shared'}
+- What they are most proud of: ${cp.proud||'Not shared'}
+- 5-year life vision beyond money: ${cp.fiveYear||'Not shared'}
+- What is really holding them back: ${cp.holdingBack||'Not shared'}
+
+DEEP COACHING — use these directly, never as trivia:
+Reference their fear when they play it safe. Anchor success conversations to THEIR definition not a generic one. Name what they are avoiding by name. Use their proud moment as a proof point when confidence is low. Test decisions against their 5-year vision. Name their holding-back pattern when you see it showing up.` : '';
+
+      // ── Deep user data — actual written words from the app ──────────────────
+      const recentReflections = (()=>{
+        const allDays = (plannerData.dailyPlans||[]).flat();
+        return allDays
+          .filter(d=>d?.reflection?.trim())
+          .slice(-5)
+          .map(d=>d.reflection.trim())
+          .join(' | ') || 'None yet';
+      })();
+
+      const recentGratitude = (()=>{
+        const allDays = (plannerData.dailyPlans||[]).flat();
+        const entries = allDays
+          .filter(d=>d?.grateful?.some(x=>x.trim()))
+          .slice(-3)
+          .map(d=>(d.grateful||[]).filter(x=>x.trim()).join(', '));
+        return entries.join(' | ') || 'None logged';
+      })();
+
+      const recentTodaysWins = (()=>{
+        const allDays = (plannerData.dailyPlans||[]).flat();
+        const wins = allDays
+          .filter(d=>d?.todaysWins?.some(x=>x.trim()))
+          .slice(-3)
+          .map(d=>(d.todaysWins||[]).filter(x=>x.trim()).join(', '));
+        return wins.join(' | ') || 'None logged';
+      })();
+
+      const hardThingsLog = (()=>{
+        const allDays = (plannerData.dailyPlans||[]).flat();
+        const hard = allDays
+          .filter(d=>d?.hardThings?.trim())
+          .slice(-3)
+          .map(d=>`"${d.hardThings.trim()}" (${d.hardThingsCompleted?'done':'not done'})`);
+        return hard.join(' | ') || 'None logged';
+      })();
+
+      const weeklyImprovements = (()=>{
+        return (plannerData.weeks||[])
+          .filter(w=>w.improvements?.trim())
+          .slice(-3)
+          .map(w=>w.improvements.trim())
+          .join(' | ') || 'None written';
+      })();
+
+      const recentAnvilNotes = (()=>{
+        const log = plannerData.anvilProject?.log||[];
+        return log.slice(0,3).map(e=>e.note?.trim()).filter(Boolean).join(' | ') || 'No sessions logged';
+      })();
+
+      const weeklyWinsAll = (()=>{
+        return weeksWithData.slice(-3).map(w=>
+          (w.wins||[]).filter(x=>x.trim()).join(', ')
+        ).filter(Boolean).join(' | ') || 'None logged';
+      })();
+
+      const stuckHabits = (()=>{
+        const recent = plannerData.weeks.slice(-4);
+        const issues = {};
+        recent.forEach(w=>(w.aActivities||[]).forEach(a=>{
+          if(!a.name?.trim()) return;
+          const done = (a.days||[]).filter(Boolean).length;
+          if(done < 3) issues[a.name] = (issues[a.name]||0)+1;
+        }));
+        const struggling = Object.entries(issues).filter(([,c])=>c>=2).map(([n])=>n);
+        return struggling.length ? struggling.join(', ') : 'None identified';
+      })();
+
+      const goalTrends = (()=>{
+        return plannerData.goals.filter(g=>g.title?.trim()).map((g,i)=>{
+          const pct = g.completion||0;
+          const trend = pct===0?'not started':pct<25?'just beginning':pct<50?'early progress':pct<75?'halfway':pct<100?'near finish':'complete';
+          return `${i+1}. "${g.title}" — ${pct}% (${trend})`;
+        }).join(', ') || 'No goals set';
+      })();
+
+      const journalNotes = (()=>{
+        return (plannerData.notes||[]).slice(0,3).map(n=>`[${n.tag||'Note'}] ${n.title||''}: ${n.content?.slice(0,80)||''}`).join(' | ') || 'No journal entries';
+      })();
 
       const sessionMemory = `
-SESSION MEMORY (use this to avoid repeating questions you already know the answer to):
-- Weeks planned: ${weeksWithData.length} of 17
-- Latest weekly focus: ${recentFocus}
-- Latest wins logged: ${recentWins}
-- Current Anvil streak: ${anvilStreak} days
-- Latest habits: ${habitSummary}
+SESSION MEMORY — use this to coach specifically, never generically. Reference their actual words back to them:
+
+FOUNDATION:
 - Slight Edge habits: ${plannerData.slightEdge||'Not defined'}
 - Year Theme: ${plannerData.yearTheme||'Not set'}
 - 120-Day Vision: ${plannerData.vision120Day||'Not defined'}
-- Goals: ${goalSummary}
-- Wheel of Life: ${latestWheel}
-- Anvil project: ${plannerData.anvilProject?.project||'Not set'} | Cadence: ${plannerData.anvilProject?.cadence||'Not set'} | Total sessions: ${plannerData.anvilProject?.log?.length||0}
+- Weeks into cycle: ${weeksWithData.length} of 17
+
+GOALS & PROGRESS:
+${goalTrends}
+
+PERFORMANCE DATA:
+- S.E.A. Score this week: based on habits/anvil/wheel/goals
+- Anvil project: ${plannerData.anvilProject?.project||'Not set'} | Cadence: ${plannerData.anvilProject?.cadence||'Not set'} | Streak: ${anvilStreak} days
+- Recent Anvil session notes: ${recentAnvilNotes}
+- Habits tracked: ${habitSummary}
+- Habits they're struggling with (under 3/7 for 2+ weeks): ${stuckHabits}
+- Wheel of Life scores: ${latestWheel}
+
+THEIR ACTUAL WORDS — quote these back, reference them directly:
+- Recent reflections: ${recentReflections}
+- Recent gratitude entries: ${recentGratitude}
+- Recent wins they logged: ${weeklyWinsAll}
+- Today's wins: ${recentTodaysWins}
+- Hard things they're working on: ${hardThingsLog}
+- What they want to improve: ${weeklyImprovements}
+- Latest weekly focus: ${recentFocus}
+- Journal notes: ${journalNotes}
+
+ACCOUNTABILITY:
 ${commitmentContext}
 - Current context: ${currentContext?JSON.stringify(currentContext):'General'}
 
-IMPORTANT: Do NOT ask the user to set up things they have already set up. Do NOT ask generic onboarding questions if the data above shows they have completed setup. If a commitment is logged from today or yesterday, reference it specifically. Instead reference what you know about them specifically.`;
+COACHING INSTRUCTIONS:
+- Reference their actual written words — if they wrote "struggling with prospecting calls", say that back to them specifically
+- Call out stuck habits by name — don't say "some habits are slipping", say "your [habit name] has been under 3 days for two weeks"
+- Connect their gratitude and wins to momentum — "you said X was a win last week, how are you building on that?"
+- If reflections show a pattern (stress, avoidance, excitement), name it
+- If hard things are marked "not done", address it directly
+- Never ask questions you already know the answer to from the data above
+- Do NOT ask generic onboarding questions if setup is complete`;
 
       // Cycle-aware coaching phase
       const weeksIn = weeksWithData.length;
@@ -875,7 +989,7 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
       personality: initialData.personality||{style:2,tone:2,approach:2,energy:2},
       startDate: initialData.startDate||'',
       apiKey: initialData.apiKey||'',
-      coachProfile: initialData.coachProfile||{years:'',production:'',need:'',obstacle:'',style:'',why:'',drift:'',family:'',niche:''}
+      coachProfile: initialData.coachProfile||{years:'',production:'',need:'',obstacle:'',style:'',why:'',drift:'',family:'',niche:'',fear:'',successDef:'',avoiding:'',proud:'',fiveYear:'',holdingBack:''}
     });
     const STEPS = [
       {id:'welcome',isWelcome:true},
@@ -2567,7 +2681,7 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
     const [anvilEntry, setAnvilEntry] = useState('');
     const [anvilLogDate, setAnvilLogDate] = useState('');
     const [backupStatus, setBackupStatus] = useState('');
-    const [coachProfile, setCoachProfile] = useState(()=>{try{const s=localStorage.getItem('coach-profile');return s?JSON.parse(s):{years:'',production:'',need:'',obstacle:'',style:'',why:'',drift:'',family:'',niche:''};}catch(e){return{years:'',production:'',need:'',obstacle:'',style:'',why:'',drift:'',family:'',niche:''};}}); 
+    const [coachProfile, setCoachProfile] = useState(()=>{try{const s=localStorage.getItem('coach-profile');return s?JSON.parse(s):{years:'',production:'',need:'',obstacle:'',style:'',why:'',drift:'',family:'',niche:'',fear:'',successDef:'',avoiding:'',proud:'',fiveYear:'',holdingBack:''};}catch(e){return{years:'',production:'',need:'',obstacle:'',style:'',why:'',drift:'',family:'',niche:'',fear:'',successDef:'',avoiding:'',proud:'',fiveYear:'',holdingBack:''};}}); 
     const updateProfile = (key, val) => {
       const p = {...coachProfile, [key]:val};
       setCoachProfile(p);
@@ -2832,7 +2946,7 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
 
             {(()=>{
               const answered = Object.values(coachProfile).filter(v=>v?.trim()).length;
-              const pct = Math.round((answered/9)*100);
+              const pct = Math.round((answered/15)*100);
               const Pill = ({label, selected, onSelect}) => (
                 <button onClick={onSelect} className={`px-4 py-2 rounded-full text-sm font-semibold transition-all border ${selected?'text-white border-transparent':'border-slate-600 text-slate-400'}`}
                   style={selected?{background:'linear-gradient(135deg,#3b82f6,#8b5cf6)'}:{}}>
@@ -2857,7 +2971,7 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
                   <div className="rounded-2xl p-4 border border-slate-700" style={{background:'rgba(30,41,59,0.8)'}}>
                     <div className="flex items-center justify-between mb-2">
                       <span className="text-xs font-bold text-slate-400 uppercase tracking-wide">Profile Completion</span>
-                      <span className="text-sm font-black" style={{color:pct>=100?'#10b981':pct>=60?'#3b82f6':'#94a3b8'}}>{answered} / 9</span>
+                      <span className="text-sm font-black" style={{color:pct>=100?'#10b981':pct>=60?'#3b82f6':'#94a3b8'}}>{answered} / 15</span>
                     </div>
                     <div className="h-2.5 bg-slate-700 rounded-full overflow-hidden">
                       <div className="h-full rounded-full transition-all duration-500" style={{width:`${pct}%`,background:pct>=100?'linear-gradient(90deg,#10b981,#059669)':pct>=60?'linear-gradient(90deg,#3b82f6,#10b981)':'linear-gradient(90deg,#6366f1,#3b82f6)'}}/>
@@ -2924,6 +3038,46 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
                   <Q num="9" label="What originally drew you to this career?" sub="Optional — this is where great coaching starts">
                     <textarea defaultValue={coachProfile.why||''} onBlur={e=>updateProfile('why',e.target.value)} placeholder="e.g. My parents lost everything and I wanted to help people avoid that..." rows={3} className="w-full bg-slate-700/50 border border-slate-600/50 rounded-xl p-3 text-white placeholder-slate-500 text-sm resize-none focus:border-blue-500 focus:outline-none"/>
                   </Q>
+
+                  <div className="pt-2 pb-1">
+                    <p className="text-xs font-bold text-purple-400 uppercase tracking-widest">Going Deeper</p>
+                    <p className="text-xs text-slate-500 mt-0.5">These unlock the most powerful coaching conversations</p>
+                  </div>
+
+                  <Q num="10" label="What's your biggest fear right now?" sub="In business or life — be honest">
+                    <textarea defaultValue={coachProfile.fear||''} onBlur={e=>updateProfile('fear',e.target.value)} placeholder="e.g. That I'll hit $1M and still feel empty. That I'm building someone else's dream..." rows={3} className="w-full bg-slate-700/50 border border-slate-600/50 rounded-xl p-3 text-white placeholder-slate-500 text-sm resize-none focus:border-purple-500 focus:outline-none"/>
+                  </Q>
+
+                  <Q num="11" label="How do YOU define success?" sub="Not the industry definition — yours">
+                    <textarea defaultValue={coachProfile.successDef||''} onBlur={e=>updateProfile('successDef',e.target.value)} placeholder="e.g. Freedom to coach my kids' games. Never checking my phone at dinner. Clients who trust me completely..." rows={3} className="w-full bg-slate-700/50 border border-slate-600/50 rounded-xl p-3 text-white placeholder-slate-500 text-sm resize-none focus:border-purple-500 focus:outline-none"/>
+                  </Q>
+
+                  <Q num="12" label="What are you avoiding right now?" sub="The thing you know you should do but keep not doing">
+                    <div className="flex flex-wrap gap-2 mb-3">
+                      {['A difficult conversation','Raising my minimums','Firing a C client','Delegating more','Building a real process','Defining my niche'].map(o=>(
+                        <Pill key={o} label={o} selected={coachProfile.avoiding===o} onSelect={()=>updateProfile('avoiding',o)}/>
+                      ))}
+                    </div>
+                    <textarea defaultValue={coachProfile.avoiding||''} onBlur={e=>e.target.value.trim()&&updateProfile('avoiding',e.target.value)} placeholder="Or describe it in your own words..." rows={2} className="w-full bg-slate-700/50 border border-slate-600/50 rounded-xl p-3 text-white placeholder-slate-500 text-sm resize-none focus:border-purple-500 focus:outline-none"/>
+                  </Q>
+
+                  <Q num="13" label="What are you most proud of in your career?" sub="The thing you rarely give yourself credit for">
+                    <textarea defaultValue={coachProfile.proud||''} onBlur={e=>updateProfile('proud',e.target.value)} placeholder="e.g. A client who called me when her husband died and said I was the first person she thought of..." rows={3} className="w-full bg-slate-700/50 border border-slate-600/50 rounded-xl p-3 text-white placeholder-slate-500 text-sm resize-none focus:border-purple-500 focus:outline-none"/>
+                  </Q>
+
+                  <Q num="14" label="In 5 years, what does life look like beyond the money?" sub="The real picture — not the financial plan version">
+                    <textarea defaultValue={coachProfile.fiveYear||''} onBlur={e=>updateProfile('fiveYear',e.target.value)} placeholder="e.g. Working 3 days a week. My team runs the business. Taking my family to Italy every summer..." rows={3} className="w-full bg-slate-700/50 border border-slate-600/50 rounded-xl p-3 text-white placeholder-slate-500 text-sm resize-none focus:border-purple-500 focus:outline-none"/>
+                  </Q>
+
+                  <Q num="15" label="If you're honest — what's really holding you back?" sub="The real answer, not the polished one">
+                    <div className="flex flex-wrap gap-2 mb-3">
+                      {['Fear of rejection','Imposter syndrome','Lack of focus','Perfectionism','Not asking for referrals','Undercharging','Playing it safe'].map(o=>(
+                        <Pill key={o} label={o} selected={coachProfile.holdingBack===o} onSelect={()=>updateProfile('holdingBack',o)}/>
+                      ))}
+                    </div>
+                    <textarea defaultValue={coachProfile.holdingBack||''} onBlur={e=>e.target.value.trim()&&updateProfile('holdingBack',e.target.value)} placeholder="Or describe it honestly..." rows={2} className="w-full bg-slate-700/50 border border-slate-600/50 rounded-xl p-3 text-white placeholder-slate-500 text-sm resize-none focus:border-purple-500 focus:outline-none"/>
+                  </Q>
+
                 </div>
               );
             })()}
@@ -4169,7 +4323,7 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
           anvil: p.anvilProject ? {project:p.anvilProject.project||'',cadence:p.anvilProject.cadence||'',why:p.anvilProject.why||''} : {project:'',cadence:'',why:''},
           personality: pers ? JSON.parse(pers) : {style:2,tone:2,approach:2,energy:2},
           apiKey: localStorage.getItem('claude-api-key')||'',
-          coachProfile: (() => { try { const s=localStorage.getItem('coach-profile'); return s?JSON.parse(s):{years:'',production:'',need:'',obstacle:'',style:'',why:'',drift:'',family:'',niche:''}; } catch(e) { return {years:'',production:'',need:'',obstacle:'',style:'',why:'',drift:'',family:'',niche:''}; } })()
+          coachProfile: (() => { try { const s=localStorage.getItem('coach-profile'); return s?JSON.parse(s):{years:'',production:'',need:'',obstacle:'',style:'',why:'',drift:'',family:'',niche:'',fear:'',successDef:'',avoiding:'',proud:'',fiveYear:'',holdingBack:''}; } catch(e) { return {years:'',production:'',need:'',obstacle:'',style:'',why:'',drift:'',family:'',niche:'',fear:'',successDef:'',avoiding:'',proud:'',fiveYear:'',holdingBack:''}; } })()
         };
       } catch(e) { return {slightEdge:'',yearTheme:'',vision120Day:'',startDate:'',goals:[{title:'',impact:'',measurement:''},{title:'',impact:'',measurement:''},{title:'',impact:'',measurement:''},{title:'',impact:'',measurement:''}],anvil:{project:'',cadence:'',why:''},personality:{style:2,tone:2,approach:2,energy:2}}; }
     };
