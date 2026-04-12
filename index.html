@@ -1401,7 +1401,7 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
   };
 
   // ── TODAY VIEW ─────────────────────────────────────────────────────────────
-  const TodayView = ({ data, updateField, weekNum, dayIdx, setDayIdx, openCoach, score, onPrint }) => {
+  const TodayView = ({ data, updateField, weekNum, dayIdx, setDayIdx, openCoach, score, onPrint, setActiveTab }) => {
     const dayNames = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
     const dayFull  = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
     const day = data.dailyPlans[weekNum-1][dayIdx];
@@ -1583,17 +1583,19 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
 
         {/* Score + Anvil streak */}
         <div className="grid grid-cols-2 gap-3">
-          <div className="bg-slate-800/60 rounded-2xl p-4 border border-slate-700 flex flex-col items-center">
+          <button onClick={()=>setActiveTab&&setActiveTab('score')} className="bg-slate-800/60 rounded-2xl p-4 border border-slate-700 flex flex-col items-center hover:border-blue-500/50 transition-all active:scale-95" style={{cursor:'pointer'}}>
             <p className="text-xs text-slate-400 mb-2">S.E.A. Score</p>
             <StarRating score={score.total} size={24}/>
             <p className="text-2xl font-bold text-white mt-1">{score.total}</p>
-          </div>
-          <div className="bg-slate-800/60 rounded-2xl p-4 border border-slate-700 flex flex-col items-center">
+            <p className="text-xs text-blue-400 mt-1 opacity-60">tap to view →</p>
+          </button>
+          <button onClick={()=>setActiveTab&&setActiveTab('anvil')} className="bg-slate-800/60 rounded-2xl p-4 border border-slate-700 flex flex-col items-center hover:border-orange-500/50 transition-all active:scale-95" style={{cursor:'pointer'}}>
             <p className="text-xs text-slate-400 mb-1">Anvil Streak</p>
             <div className="flex items-center gap-1"><span className="text-3xl">🔥</span></div>
             <p className="text-3xl font-bold text-white">{anvilStreak}</p>
             <p className="text-xs text-slate-500">days</p>
-          </div>
+            <p className="text-xs text-orange-400 mt-1 opacity-60">tap to view →</p>
+          </button>
         </div>
 
         {/* Daily Reflection Prompt */}
@@ -3382,7 +3384,7 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
         {/* Content — scrolls independently between header and tab bar */}
         <div className="content-scroll no-print-scroll">
           <div className="max-w-2xl mx-auto">
-            {activeTab==='today'&&<TodayView data={data} updateField={updateField} weekNum={weekNum} dayIdx={dayIdx} setDayIdx={setDayIdx} openCoach={openCoach} score={score} onPrint={printTab}/>}
+            {activeTab==='today'&&<TodayView data={data} updateField={updateField} weekNum={weekNum} dayIdx={dayIdx} setDayIdx={setDayIdx} openCoach={openCoach} score={score} onPrint={printTab} setActiveTab={setActiveTab}/>}
             {activeTab==='anvil'&&<AnvilView data={data} updateField={updateField} openCoach={openCoach}/>}
             {activeTab==='score'&&<ScoreView data={data} updateField={updateField} weekNum={weekNum} setWeekNum={setWeekNum} setActiveTab={setActiveTab} openCoach={openCoach} onPrint={printTab} onMilestone={setMilestone} setShowResetModal={setShowResetModal}/>}
             {activeTab==='journal'&&<JournalView data={data} updateField={updateField}/>}
