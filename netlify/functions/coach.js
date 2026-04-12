@@ -72,7 +72,7 @@ async function handleShare(body) {
         advisor_data: advisorData,
         updated_at: new Date().toISOString(),
       },
-      { onConflict: 'advisor_id' }
+      { onConflict: 'advisor_id,coach_id' }
     )
     .select()
     .single();
@@ -109,7 +109,8 @@ async function handleGetAdvisors(queryParams) {
     return err(error.message);
   }
 
-  return ok({ advisors: data || [] });
+  // Return plain array — front-end expects Array.isArray(response)
+  return ok(data || []);
 }
 
 /**
@@ -171,7 +172,8 @@ async function handleGetMessages(queryParams) {
     return err(error.message);
   }
 
-  return ok({ messages: data || [] });
+  // Return plain array — front-end expects Array.isArray(response)
+  return ok(data || []);
 }
 
 /**
