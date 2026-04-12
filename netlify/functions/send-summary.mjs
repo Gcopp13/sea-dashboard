@@ -18,8 +18,8 @@ export default async (req) => {
   const { email, name, plannerData } = body;
   if (!email?.includes("@")) return new Response(JSON.stringify({ error: "Valid email required" }), { status: 400, headers: CORS });
 
-  const RESEND_API_KEY = process.env.RESEND_API_KEY;
-  const FROM_EMAIL = process.env.FROM_EMAIL || "S.E.A. Dashboard <onboarding@resend.dev>";
+  const RESEND_API_KEY = Netlify.env.get("RESEND_API_KEY");
+  const FROM_EMAIL = Netlify.env.get("FROM_EMAIL") || "S.E.A. Dashboard <onboarding@resend.dev>";
 
   if (!RESEND_API_KEY) return new Response(JSON.stringify({ error: "Email service not configured" }), { status: 500, headers: CORS });
 
