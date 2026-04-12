@@ -3152,6 +3152,74 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
               {data.startDate&&(()=>{const[y,m,d]=data.startDate.split('-').map(Number);const s=new Date(y,m-1,d);const dow=s.getDay();if(dow!==1){const adj=dow===0?1:8-dow;s.setDate(s.getDate()+adj);}const e=new Date(s);e.setDate(s.getDate()+119);return(<div className="mt-2 p-3 bg-slate-700/30 rounded-xl"><p className="text-xs text-slate-400">Week 1 starts: <span className="text-white font-medium">{s.toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})}</span></p><p className="text-xs text-slate-400 mt-1">Ends: <span className="text-white font-medium">{e.toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})}</span></p>{dow!==1&&<p className="text-xs text-yellow-400 mt-1">⚠️ Adjusted to nearest Monday</p>}</div>);})()}
             </div>
 
+            {/* Weekly Email Summary */}
+            {(()=>{
+              const EmailSummary = () => {
+                const [emailInput, setEmailInput] = React.useState(()=>localStorage.getItem('summary-email')||'');
+                const [nameInput, setNameInput] = React.useState(()=>localStorage.getItem('summary-name')||'');
+                const [optIn, setOptIn] = React.useState(()=>localStorage.getItem('summary-optin')==='true');
+                const [sending, setSending] = React.useState(false);
+                const [status, setStatus] = React.useState('');
+
+                const save = () => {
+                  localStorage.setItem('summary-email', emailInput.trim());
+                  localStorage.setItem('summary-name', nameInput.trim());
+                  localStorage.setItem('summary-optin', optIn ? 'true' : 'false');
+                  setStatus('✓ Saved');
+                  setTimeout(()=>setStatus(''), 2000);
+                };
+
+                const sendNow = async () => {
+                  if (!emailInput.trim()) { setStatus('⚠️ Enter your email first'); setTimeout(()=>setStatus(''),3000); return; }
+                  setSending(true); setStatus('Sending...');
+                  try {
+                    const res = await fetch('/api/send-summary', {
+                      method: 'POST',
+                      headers: {'Content-Type':'application/json'},
+                      body: JSON.stringify({email:emailInput.trim(), name:nameInput.trim(), plannerData:data})
+                    });
+                    const d = await res.json();
+                    setStatus(d.success ? '✓ Email sent! Check your inbox' : '✗ ' + (d.error||'Failed'));
+                  } catch(e) { setStatus('✗ Network error'); }
+                  setSending(false);
+                  setTimeout(()=>setStatus(''), 5000);
+                };
+
+                return (
+                  <div className="bg-slate-800/60 rounded-2xl p-5 border border-slate-700">
+                    <h3 className="text-sm font-bold text-blue-400 mb-1">📧 Weekly Email Summary</h3>
+                    <p className="text-xs text-slate-400 mb-4">Get your S.E.A. Score, Anvil streak, wins, and goals emailed to you automatically every Sunday.</p>
+                    <div className="space-y-3">
+                      <div>
+                        <label className="text-xs text-slate-400 block mb-1">Your name</label>
+                        <input value={nameInput} onChange={e=>setNameInput(e.target.value)}
+                          placeholder="First name" className="w-full bg-slate-700/50 border border-slate-600/50 rounded-xl p-3 text-white placeholder-slate-500 text-sm focus:outline-none"/>
+                      </div>
+                      <div>
+                        <label className="text-xs text-slate-400 block mb-1">Email address</label>
+                        <input type="email" value={emailInput} onChange={e=>setEmailInput(e.target.value)}
+                          placeholder="you@example.com" className="w-full bg-slate-700/50 border border-slate-600/50 rounded-xl p-3 text-white placeholder-slate-500 text-sm focus:outline-none"/>
+                      </div>
+                      <button onClick={()=>{const v=!optIn;setOptIn(v);localStorage.setItem('summary-optin',v?'true':'false');}}
+                        className={`w-full py-3 rounded-xl font-semibold text-sm border transition-all ${optIn?'border-blue-500/50 text-blue-400 bg-blue-500/10':'border-slate-600 text-slate-400'}`}>
+                        {optIn ? '✓ Auto-send every Sunday — ON' : 'Auto-send every Sunday — OFF'}
+                      </button>
+                      <div className="flex gap-2">
+                        <button onClick={save} className="flex-1 py-3 rounded-xl font-bold text-sm text-white" style={{background:'linear-gradient(135deg,#3b82f6,#8b5cf6)'}}>
+                          Save Settings
+                        </button>
+                        <button onClick={sendNow} disabled={sending} className="flex-1 py-3 rounded-xl font-bold text-sm bg-slate-700 text-slate-200 disabled:opacity-50">
+                          {sending ? 'Sending...' : '📤 Send Now'}
+                        </button>
+                      </div>
+                      {status && <p className={`text-xs text-center font-semibold ${status.includes('✓')?'text-green-400':status.includes('✗')||status.includes('⚠️')?'text-red-400':'text-blue-400'}`}>{status}</p>}
+                    </div>
+                  </div>
+                );
+              };
+              return <EmailSummary/>;
+            })()}
+
             {/* Backup & Restore */}
             <div className="bg-slate-800/60 rounded-2xl p-5 border border-slate-700">
               <h3 className="text-sm font-bold text-teal-400 mb-1">💾 Backup & Restore</h3>
