@@ -1,5 +1,5 @@
 [build]
-  publish = "src"
+  publish = "."
   functions = "netlify/functions"
 
 [dev]
