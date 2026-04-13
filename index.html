@@ -6,6 +6,12 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <title>S.E.A. Dashboard v2</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+  <script>
+    const SUPABASE_URL = 'https://vilsfabrovxwgdrhkvso.supabase.co';
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZpbHNmYWJyb3Z4d2dkcmhrdnNvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQxMjIxMjgsImV4cCI6MjA4OTY5ODEyOH0.3GGxaTgxZHxn_hFOcwNyBs9XxridjeWEdM3a5lRPomU';
+    const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  </script>
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -104,6 +110,122 @@
 
   // ── Coach API ──────────────────────────────────────────────────────────────
   const COACH_API = '/.netlify/functions/coach';
+
+  // ── Auth: Login Screen ─────────────────────────────────────────────────────
+  const LoginScreen = () => {
+    const [email, setEmail] = useState('');
+    const [status, setStatus] = useState(null); // null | 'sent' | 'error'
+    const [errorMsg, setErrorMsg] = useState('');
+    const [loading, setLoading] = useState(false);
+
+    const handleSubmit = async (e) => {
+      e.preventDefault();
+      if (!email.trim()) return;
+      setLoading(true);
+      setStatus(null);
+      try {
+        const { error } = await _supabase.auth.signInWithOtp({
+          email: email.trim(),
+          options: { emailRedirectTo: 'https://sea-dashboardindex18.netlify.app' }
+        });
+        if (error) { setErrorMsg(error.message); setStatus('error'); }
+        else { setStatus('sent'); }
+      } catch(e) {
+        setErrorMsg('Something went wrong. Please try again.');
+        setStatus('error');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    return (
+      <div style={{
+        minHeight: '100vh', background: '#0f1229',
+        display: 'flex', flexDirection: 'column',
+        alignItems: 'center', justifyContent: 'center',
+        padding: '24px', fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+      }}>
+        {/* Logo */}
+        <div style={{ textAlign: 'center', marginBottom: '40px' }}>
+          <div style={{ fontSize: '56px', marginBottom: '16px' }}>🌊</div>
+          <h1 style={{
+            fontSize: '2rem', fontWeight: '900', margin: '0 0 8px',
+            background: 'linear-gradient(135deg,#60a5fa,#a78bfa)',
+            WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent'
+          }}>S.E.A. Dashboard</h1>
+          <p style={{ color: '#94a3b8', fontSize: '0.9rem', margin: 0, fontStyle: 'italic' }}>
+            Live By Design, Not By Default
+          </p>
+        </div>
+
+        {/* Card */}
+        <div style={{
+          width: '100%', maxWidth: '400px',
+          background: 'rgba(30,41,59,0.8)',
+          border: '1px solid rgba(51,65,85,0.8)',
+          borderRadius: '24px', padding: '32px'
+        }}>
+          <h2 style={{ color: '#fff', fontSize: '1.2rem', fontWeight: '700', margin: '0 0 8px' }}>
+            Sign in to your account
+          </h2>
+          <p style={{ color: '#94a3b8', fontSize: '0.85rem', margin: '0 0 24px', lineHeight: '1.5' }}>
+            Enter your email and we&#39;ll send you a magic link — no password needed.
+          </p>
+
+          {status === 'sent' ? (
+            <div style={{
+              background: 'rgba(16,185,129,0.12)', border: '1px solid rgba(16,185,129,0.3)',
+              borderRadius: '12px', padding: '16px', textAlign: 'center', color: '#34d399'
+            }}>
+              <div style={{ fontSize: '24px', marginBottom: '8px' }}>✉️</div>
+              <p style={{ fontWeight: '700', margin: '0 0 4px' }}>Check your email!</p>
+              <p style={{ fontSize: '0.8rem', margin: 0, color: '#6ee7b7' }}>We sent a magic link to <strong>{email}</strong></p>
+            </div>
+          ) : (
+            <form onSubmit={handleSubmit}>
+              <input
+                type="email"
+                placeholder="you@example.com"
+                value={email}
+                onChange={e => setEmail(e.target.value)}
+                required
+                style={{
+                  width: '100%', boxSizing: 'border-box',
+                  background: 'rgba(15,18,41,0.8)',
+                  border: '1px solid rgba(71,85,105,0.8)',
+                  borderRadius: '12px', padding: '14px 16px',
+                  color: '#fff', fontSize: '16px',
+                  outline: 'none', marginBottom: '16px',
+                  transition: 'border-color 0.2s'
+                }}
+              />
+              {status === 'error' && (
+                <p style={{ color: '#f87171', fontSize: '0.82rem', margin: '-8px 0 12px' }}>{errorMsg}</p>
+              )}
+              <button
+                type="submit"
+                disabled={loading}
+                style={{
+                  width: '100%', padding: '14px',
+                  background: loading ? '#334155' : 'linear-gradient(135deg,#3b82f6,#8b5cf6)',
+                  border: 'none', borderRadius: '12px',
+                  color: '#fff', fontSize: '1rem', fontWeight: '700',
+                  cursor: loading ? 'not-allowed' : 'pointer',
+                  transition: 'opacity 0.2s'
+                }}
+              >
+                {loading ? 'Sending…' : 'Send Magic Link'}
+              </button>
+            </form>
+          )}
+        </div>
+
+        <p style={{ color: '#475569', fontSize: '0.75rem', marginTop: '24px', textAlign: 'center' }}>
+          By signing in, you agree to our terms of service.
+        </p>
+      </div>
+    );
+  };
 
   const getOrCreateAdvisorId = () => {
     let id = localStorage.getItem('sea_advisor_id');
@@ -2627,7 +2749,7 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
     );
   };
 
-  const MoreView = ({ data, updateField, saveData, openCoach, personality, setPersonality, onReopenOnboarding, onMilestone, weekNum, setWeekNum }) => {
+  const MoreView = ({ data, updateField, saveData, openCoach, personality, setPersonality, onReopenOnboarding, onMilestone, weekNum, setWeekNum, onSignOut }) => {
     const [section, setSection] = useState(null);
     const [newNote, setNewNote] = useState('');
     const [noteTitle, setNoteTitle] = useState('');
@@ -2793,6 +2915,18 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
           <button onClick={()=>window.print()} className="w-full flex items-center gap-4 p-4 bg-slate-800/60 rounded-2xl border border-slate-700 hover:border-slate-600 transition-all text-left">
             <span className="text-3xl">🖨️</span>
             <div className="flex-1"><p className="font-semibold text-white">Print / Save PDF</p><p className="text-xs text-slate-400 mt-0.5">Print current view</p></div>
+          </button>
+        </div>
+
+        {/* Account */}
+        <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-2 px-1 mt-5">Account</p>
+        <div className="space-y-2">
+          <button onClick={onSignOut} className="w-full flex items-center gap-4 p-4 bg-slate-800/60 rounded-2xl border border-slate-700 hover:border-red-900/40 hover:border-red-500/30 transition-all text-left">
+            <span className="text-3xl">🚪</span>
+            <div className="flex-1">
+              <p className="font-semibold text-red-400">Sign Out</p>
+              <p className="text-xs text-slate-400 mt-0.5">Sign out of your account</p>
+            </div>
           </button>
         </div>
       </div>
@@ -3253,7 +3387,10 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
     return Math.max(1, Math.min(17, week));
   };
 
-  const SEAPlannerApp = ({ onboardingData, onReopenOnboarding }) => {
+  const SEAPlannerApp = ({ onboardingData, onReopenOnboarding, authUser, setAuthUser }) => {
+    // ── Auth State ───────────────────────────────────────────────────────────
+    // authUser and setAuthUser are passed from AppRoot
+
     const [activeTab, setActiveTab] = useState('today');
     const [weekNum, setWeekNum]     = useState(1);
     const [dayIdx, setDayIdx]       = useState(()=>{ const d=new Date().getDay(); return d===0?6:d-1; });
@@ -3298,6 +3435,13 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
       finally{setLoading(false);}
     },[]);
 
+    // Sync with Supabase when authUser becomes available
+    useEffect(()=>{
+      if (authUser && !loading) {
+        syncPlannerData(authUser.id);
+      }
+    },[authUser, loading]);
+
     // Auto-calculate correct week number once data is loaded
     useEffect(()=>{
       if (!loading && data.startDate) {
@@ -3322,6 +3466,52 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
       }
     },[onboardingData,loading]);
 
+    const savePlannerDataToCloud = async (userId, d) => {
+      try {
+        const session = await _supabase.auth.getSession();
+        const token = session.data.session?.access_token;
+        if (!token) return;
+        await fetch(`${SUPABASE_URL}/rest/v1/planner_data`, {
+          method: 'POST',
+          headers: {
+            'apikey': SUPABASE_ANON_KEY,
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+            'Prefer': 'resolution=merge-duplicates',
+          },
+          body: JSON.stringify({ user_id: userId, data: d, updated_at: new Date().toISOString() }),
+        });
+      } catch (e) {
+        console.error('savePlannerDataToCloud error:', e);
+      }
+    };
+
+    const syncPlannerData = async (userId) => {
+      try {
+        const session = await _supabase.auth.getSession();
+        const token = session.data.session?.access_token;
+        if (!token) return;
+        const res = await fetch(`${SUPABASE_URL}/rest/v1/planner_data?user_id=eq.${userId}&select=data`, {
+          headers: {
+            'apikey': SUPABASE_ANON_KEY,
+            'Authorization': `Bearer ${token}`,
+          }
+        });
+        const rows = await res.json();
+        if (rows && rows.length > 0 && rows[0].data) {
+          const cloudData = rows[0].data;
+          localStorage.setItem('sea-planner-data', JSON.stringify(cloudData));
+          setData(cloudData);
+        } else {
+          const localRaw = localStorage.getItem('sea-planner-data');
+          const localData = localRaw ? JSON.parse(localRaw) : null;
+          if (localData) await savePlannerDataToCloud(userId, localData);
+        }
+      } catch (e) {
+        console.error('syncPlannerData error:', e);
+      }
+    };
+
     const saveData = useCallback((d)=>{
       try{localStorage.setItem('sea-planner-data',JSON.stringify(d||data));setSaveStatus('Saved ✓');setTimeout(()=>setSaveStatus(''),2000);}
       catch(e){setSaveStatus('Error');}
@@ -3331,7 +3521,10 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
       if(loading)return;
       if(saveTimer.current)clearTimeout(saveTimer.current);
       setSaveStatus('...');
-      saveTimer.current=setTimeout(()=>saveData(data),1500);
+      saveTimer.current=setTimeout(()=>{
+        saveData(data);
+        if(authUser) savePlannerDataToCloud(authUser.id, data);
+      },1500);
       return()=>clearTimeout(saveTimer.current);
     },[data]);
 
@@ -3596,7 +3789,7 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
             {activeTab==='anvil'&&<AnvilView data={data} updateField={updateField} openCoach={openCoach}/>}
             {activeTab==='score'&&<ScoreView data={data} updateField={updateField} weekNum={weekNum} setWeekNum={setWeekNum} setActiveTab={setActiveTab} openCoach={openCoach} onPrint={printTab} onMilestone={setMilestone} setShowResetModal={setShowResetModal}/>}
             {activeTab==='journal'&&<JournalView data={data} updateField={updateField}/>}
-            {activeTab==='more'&&<MoreView data={data} updateField={updateField} saveData={saveData} openCoach={openCoach} personality={coachPersonality} setPersonality={setCoachPersonality} onReopenOnboarding={onReopenOnboarding} onMilestone={setMilestone} weekNum={weekNum} setWeekNum={setWeekNum}/>}
+            {activeTab==='more'&&<MoreView data={data} updateField={updateField} saveData={saveData} openCoach={openCoach} personality={coachPersonality} setPersonality={setCoachPersonality} onReopenOnboarding={onReopenOnboarding} onMilestone={setMilestone} weekNum={weekNum} setWeekNum={setWeekNum} onSignOut={async()=>{await _supabase.auth.signOut();setAuthUser(null);}}/>}
             <div style={{display:activeTab==='coach'&&myCoachId?'block':'none'}}>
               {myCoachId&&<CoachDashboard coachId={myCoachId} embedded={true}/>}
             </div>
@@ -4358,6 +4551,32 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
       return <CoachDashboard coachId={coachParam}/>;
     }
 
+    // ── Auth State (managed here, passed down) ──────────────────────────────────
+    const [authUser, setAuthUser] = useState(null);
+    const [authLoading, setAuthLoading] = useState(true);
+
+    useEffect(() => {
+      // Check for existing session
+      _supabase.auth.getSession().then(({ data: { session } }) => {
+        setAuthUser(session?.user ?? null);
+        setAuthLoading(false);
+      });
+
+      // Listen for auth changes (handles magic link callback)
+      const { data: { subscription } } = _supabase.auth.onAuthStateChange((_event, session) => {
+        setAuthUser(session?.user ?? null);
+        setAuthLoading(false);
+      });
+
+      return () => subscription.unsubscribe();
+    }, []);
+
+    // Show loading spinner while checking auth
+    if (authLoading) return React.createElement('div', { style: { display:'flex', alignItems:'center', justifyContent:'center', height:'100vh', background:'#0f1229', color:'white', fontSize:'1.2rem' } }, 'Loading...');
+
+    // Show login screen if not authenticated
+    if (!authUser) return React.createElement(LoginScreen, null);
+
     const [onboardingDone, setOnboardingDone] = useState(false);
     const [onboardingData, setOnboardingData] = useState(null);
     const [showingOnboarding, setShowingOnboarding] = useState(false);
@@ -4387,7 +4606,7 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
     if ((showOnboarding && !onboardingDone) || showingOnboarding) {
       return <OnboardingFlow onComplete={handleOnboardingComplete} initialData={getExistingData()}/>;
     }
-    return <SEAPlannerApp onboardingData={onboardingData} onReopenOnboarding={handleReopenOnboarding}/>;
+    return <SEAPlannerApp onboardingData={onboardingData} onReopenOnboarding={handleReopenOnboarding} authUser={authUser} setAuthUser={setAuthUser}/>;
   };
 
   ReactDOM.render(<AppRoot/>, document.getElementById('root'));
