@@ -4665,7 +4665,7 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
 
           <div style={{background:'rgba(255,255,255,0.05)',border:'1px solid rgba(255,255,255,0.1)',borderRadius:'20px',padding:'32px',marginBottom:'24px'}}>
             <div style={{color:'#60a5fa',fontSize:'0.85rem',fontWeight:'700',letterSpacing:'0.1em',marginBottom:'8px',textTransform:'uppercase'}}>Monthly Subscription</div>
-            <div style={{color:'white',fontSize:'3rem',fontWeight:'800',marginBottom:'4px'}}>${(process.env.SUBSCRIPTION_PRICE||'97')}<span style={{fontSize:'1rem',color:'#94a3b8',fontWeight:'400'}}>/mo</span></div>
+            <div style={{color:'white',fontSize:'3rem',fontWeight:'800',marginBottom:'4px'}}>$97<span style={{fontSize:'1rem',color:'#94a3b8',fontWeight:'400'}}>/mo</span></div>
             <div style={{color:'#64748b',fontSize:'0.85rem',marginBottom:'28px'}}>Cancel anytime</div>
 
             <div style={{textAlign:'left',marginBottom:'28px'}}>
@@ -4730,7 +4730,7 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
         setSubStatus(status === 'active' ? 'active' : 'inactive');
       } catch(e) {
         console.error('sub check error:', e);
-        setSubStatus('inactive');
+        setSubStatus('active'); // fail open — never lock out on network error
       }
     };
     const hasData = ()=>{try{const s=localStorage.getItem('sea-planner-data');if(!s)return false;const p=JSON.parse(s);return!!(p.slightEdge||p.goals?.some(g=>g.title));}catch(e){return false;}};
@@ -4754,9 +4754,9 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
     const handleOnboardingComplete = (d) => { setOnboardingData(d); setOnboardingDone(true); setShowingOnboarding(false); };
     const handleReopenOnboarding = () => setShowingOnboarding(true);
 
-    // Subscription gate
+    // Subscription gate — if check fails, default to showing app (fail open) so blank screens never happen
     if (subStatus === null) return React.createElement('div', { style: { display:'flex', alignItems:'center', justifyContent:'center', height:'100vh', background:'#0f1229', color:'white', fontSize:'1.2rem' } }, 'Loading...');
-    if (subStatus !== 'active') return <SubscribeScreen authUser={authUser} onSubscribed={()=>setSubStatus('active')}/>;
+    if (subStatus === 'inactive') return <SubscribeScreen authUser={authUser} onSubscribed={()=>setSubStatus('active')}/>;
 
     if ((showOnboarding && !onboardingDone) || showingOnboarding) {
       return <OnboardingFlow onComplete={handleOnboardingComplete} initialData={getExistingData()}/>;
