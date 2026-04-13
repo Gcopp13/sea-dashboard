@@ -4531,58 +4531,13 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
   };
 
   // ── APP ROOT ───────────────────────────────────────────────────────────────
-  const AppRoot = () => {
-    // Check for share link first
-    const urlParams = new URLSearchParams(window.location.search);
-    const shareParam = urlParams.get('share');
-    if (shareParam) {
-      try {
-        const padded = shareParam.replace(/-/g,'+').replace(/_/g,'/');
-        const shareData = JSON.parse(decodeURIComponent(escape(atob(padded))));
-        return <ShareView shareData={shareData}/>;
-      } catch(e) {
-        // Bad share link — fall through to normal app
-      }
-    }
-
-    // Check for coach dashboard
-    const coachParam = urlParams.get('coach');
-    if (coachParam) {
-      return <CoachDashboard coachId={coachParam}/>;
-    }
-
-    // ── Auth State (managed here, passed down) ──────────────────────────────────
-    const [authUser, setAuthUser] = useState(null);
-    const [authLoading, setAuthLoading] = useState(true);
-
-    useEffect(() => {
-      // Check for existing session
-      _supabase.auth.getSession().then(({ data: { session } }) => {
-        setAuthUser(session?.user ?? null);
-        setAuthLoading(false);
-      });
-
-      // Listen for auth changes (handles magic link callback)
-      const { data: { subscription } } = _supabase.auth.onAuthStateChange((_event, session) => {
-        setAuthUser(session?.user ?? null);
-        setAuthLoading(false);
-      });
-
-      return () => subscription.unsubscribe();
-    }, []);
-
-    // Show loading spinner while checking auth
-    if (authLoading) return React.createElement('div', { style: { display:'flex', alignItems:'center', justifyContent:'center', height:'100vh', background:'#0f1229', color:'white', fontSize:'1.2rem' } }, 'Loading...');
-
-    // Show login screen if not authenticated
-    if (!authUser) return React.createElement(LoginScreen, null);
-
+  // Renders only when user is authenticated — all hooks are safe here
+  const AuthenticatedApp = ({ authUser, setAuthUser }) => {
     const [onboardingDone, setOnboardingDone] = useState(false);
     const [onboardingData, setOnboardingData] = useState(null);
     const [showingOnboarding, setShowingOnboarding] = useState(false);
     const hasData = ()=>{try{const s=localStorage.getItem('sea-planner-data');if(!s)return false;const p=JSON.parse(s);return!!(p.slightEdge||p.goals?.some(g=>g.title));}catch(e){return false;}};
     const [showOnboarding] = useState(()=>!hasData());
-
     const getExistingData = () => {
       try {
         const s = localStorage.getItem('sea-planner-data');
@@ -4599,14 +4554,49 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
         };
       } catch(e) { return {slightEdge:'',yearTheme:'',vision120Day:'',startDate:'',goals:[{title:'',impact:'',measurement:''},{title:'',impact:'',measurement:''},{title:'',impact:'',measurement:''},{title:'',impact:'',measurement:''}],anvil:{project:'',cadence:'',why:''},personality:{style:2,tone:2,approach:2,energy:2}}; }
     };
-
     const handleOnboardingComplete = (d) => { setOnboardingData(d); setOnboardingDone(true); setShowingOnboarding(false); };
     const handleReopenOnboarding = () => setShowingOnboarding(true);
-
     if ((showOnboarding && !onboardingDone) || showingOnboarding) {
       return <OnboardingFlow onComplete={handleOnboardingComplete} initialData={getExistingData()}/>;
     }
     return <SEAPlannerApp onboardingData={onboardingData} onReopenOnboarding={handleReopenOnboarding} authUser={authUser} setAuthUser={setAuthUser}/>;
+  };
+
+  // Top-level router + auth gate — hooks called unconditionally
+  const AppRoot = () => {
+    const [authUser, setAuthUser] = useState(null);
+    const [authLoading, setAuthLoading] = useState(true);
+
+    useEffect(() => {
+      _supabase.auth.getSession().then(({ data: { session } }) => {
+        setAuthUser(session?.user ?? null);
+        setAuthLoading(false);
+      });
+      const { data: { subscription } } = _supabase.auth.onAuthStateChange((_event, session) => {
+        setAuthUser(session?.user ?? null);
+        setAuthLoading(false);
+      });
+      return () => subscription.unsubscribe();
+    }, []);
+
+    // Check for share link
+    const urlParams = new URLSearchParams(window.location.search);
+    const shareParam = urlParams.get('share');
+    if (shareParam) {
+      try {
+        const padded = shareParam.replace(/-/g,'+').replace(/_/g,'/');
+        const shareData = JSON.parse(decodeURIComponent(escape(atob(padded))));
+        return <ShareView shareData={shareData}/>;
+      } catch(e) {}
+    }
+
+    // Check for coach dashboard
+    const coachParam = urlParams.get('coach');
+    if (coachParam) return <CoachDashboard coachId={coachParam}/>;
+
+    if (authLoading) return React.createElement('div', { style: { display:'flex', alignItems:'center', justifyContent:'center', height:'100vh', background:'#0f1229', color:'white', fontSize:'1.2rem' } }, 'Loading...');
+    if (!authUser) return React.createElement(LoginScreen, null);
+    return React.createElement(AuthenticatedApp, { authUser, setAuthUser });
   };
 
   ReactDOM.render(<AppRoot/>, document.getElementById('root'));
