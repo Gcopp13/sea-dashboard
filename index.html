@@ -4700,6 +4700,10 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
 
     // Check subscription status on mount
     useEffect(() => {
+      // PAYWALL DISABLED — set to true to enable billing enforcement
+      const PAYWALL_ENABLED = false;
+      if (!PAYWALL_ENABLED) { setSubStatus('active'); return; }
+
       // Owner bypass — always grant access
       if (authUser.email === BYPASS_EMAIL) { setSubStatus('active'); return; }
 
