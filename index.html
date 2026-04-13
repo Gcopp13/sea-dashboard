@@ -3516,16 +3516,27 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
           coachId: localStorage.getItem('sea_coach_id'),
         };
         const payload = { ...d, _meta: meta };
-        await fetch(`${SUPABASE_URL}/rest/v1/planner_data`, {
-          method: 'POST',
-          headers: {
-            'apikey': SUPABASE_ANON_KEY,
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json',
-            'Prefer': 'resolution=merge-duplicates',
-          },
-          body: JSON.stringify({ user_id: userId, data: payload, updated_at: new Date().toISOString() }),
+        const now = new Date().toISOString();
+        const headers = {
+          'apikey': SUPABASE_ANON_KEY,
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        };
+        // Try PATCH first (update existing record) — avoids 409 conflict on unique user_id
+        const patchRes = await fetch(`${SUPABASE_URL}/rest/v1/planner_data?user_id=eq.${userId}`, {
+          method: 'PATCH',
+          headers: { ...headers, 'Prefer': 'return=minimal' },
+          body: JSON.stringify({ data: payload, updated_at: now }),
         });
+        // If no row existed (204 with 0 rows updated), fall back to INSERT
+        const rowsUpdated = patchRes.headers.get('content-range');
+        if (patchRes.status === 404 || rowsUpdated === '*/0') {
+          await fetch(`${SUPABASE_URL}/rest/v1/planner_data`, {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({ user_id: userId, data: payload, updated_at: now }),
+          });
+        }
       } catch (e) {
         console.error('savePlannerDataToCloud error:', e);
       }
