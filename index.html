@@ -1256,11 +1256,11 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
                       <div className="space-y-5">
                         <div className="p-3 rounded-xl" style={{background:'rgba(59,130,246,0.08)',border:'1px solid rgba(59,130,246,0.2)'}}>
                           <div className="flex items-center justify-between mb-1.5">
-                            <span className="text-xs text-slate-400">{answered} of 9 answered</span>
-                            <span className="text-xs font-bold text-blue-400">{Math.round((answered/9)*100)}%</span>
+                            <span className="text-xs text-slate-400">{answered} of 15 answered</span>
+                            <span className="text-xs font-bold text-blue-400">{Math.round((answered/15)*100)}%</span>
                           </div>
                           <div className="h-1.5 bg-slate-700 rounded-full overflow-hidden">
-                            <div className="h-full rounded-full transition-all" style={{width:`${Math.round((answered/9)*100)}%`,background:'linear-gradient(90deg,#3b82f6,#8b5cf6)'}}/>
+                            <div className="h-full rounded-full transition-all" style={{width:`${Math.round((answered/15)*100)}%`,background:'linear-gradient(90deg,#3b82f6,#8b5cf6)'}}/>
                           </div>
                         </div>
                         <div>
@@ -1314,6 +1314,36 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
                         <div>
                           <p className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">What originally drew you to this career? <span className="text-slate-600 font-normal normal-case">(optional)</span></p>
                           <textarea defaultValue={cp.why||''} onBlur={e=>upCP('why',e.target.value)} placeholder="e.g. My parents lost everything and I wanted to help people avoid that..." rows={2} className="w-full bg-slate-700 border border-slate-600 rounded-xl p-3 text-white placeholder-slate-500 text-sm resize-none focus:border-blue-500 focus:outline-none"/>
+                        </div>
+                        <div>
+                          <p className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">What's your biggest fear about your business?</p>
+                          <textarea defaultValue={cp.fear||''} onBlur={e=>upCP('fear',e.target.value)} placeholder="e.g. That I'll hit $1M and still feel empty. That I'm building someone else's dream..." rows={2} className="w-full bg-slate-700 border border-slate-600 rounded-xl p-3 text-white placeholder-slate-500 text-sm resize-none focus:border-purple-500 focus:outline-none"/>
+                        </div>
+                        <div>
+                          <p className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">How do you define success?</p>
+                          <textarea defaultValue={cp.successDef||''} onBlur={e=>upCP('successDef',e.target.value)} placeholder="e.g. Freedom to coach my kids' games. Never checking my phone at dinner. Clients who trust me completely..." rows={2} className="w-full bg-slate-700 border border-slate-600 rounded-xl p-3 text-white placeholder-slate-500 text-sm resize-none focus:border-purple-500 focus:outline-none"/>
+                        </div>
+                        <div>
+                          <p className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">What are you avoiding right now?</p>
+                          <div className="flex flex-wrap gap-2 mb-2">
+                            {['Difficult clients','Hiring/firing','Raising fees','Prospecting','Tough conversations'].map(o=><Pill key={o} label={o} selected={cp.avoiding===o} onSelect={()=>upCP('avoiding',o)}/>)}
+                          </div>
+                          <textarea defaultValue={cp.avoiding&&!['Difficult clients','Hiring/firing','Raising fees','Prospecting','Tough conversations'].includes(cp.avoiding)?cp.avoiding:''} onBlur={e=>e.target.value.trim()&&upCP('avoiding',e.target.value)} placeholder="Or describe it in your own words..." rows={2} className="w-full bg-slate-700 border border-slate-600 rounded-xl p-3 text-white placeholder-slate-500 text-sm resize-none focus:border-purple-500 focus:outline-none"/>
+                        </div>
+                        <div>
+                          <p className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">What's a coaching moment you're most proud of?</p>
+                          <textarea defaultValue={cp.proud||''} onBlur={e=>upCP('proud',e.target.value)} placeholder="e.g. A client who called me when her husband died and said I was the first person she thought of..." rows={2} className="w-full bg-slate-700 border border-slate-600 rounded-xl p-3 text-white placeholder-slate-500 text-sm resize-none focus:border-purple-500 focus:outline-none"/>
+                        </div>
+                        <div>
+                          <p className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Where do you want to be in 5 years?</p>
+                          <textarea defaultValue={cp.fiveYear||''} onBlur={e=>upCP('fiveYear',e.target.value)} placeholder="e.g. Working 3 days a week. My team runs the business. Taking my family to Italy every summer..." rows={2} className="w-full bg-slate-700 border border-slate-600 rounded-xl p-3 text-white placeholder-slate-500 text-sm resize-none focus:border-purple-500 focus:outline-none"/>
+                        </div>
+                        <div>
+                          <p className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">What's holding you back from getting there?</p>
+                          <div className="flex flex-wrap gap-2 mb-2">
+                            {['Fear of failure','Lack of systems','No clear vision','People around me','Self-doubt'].map(o=><Pill key={o} label={o} selected={cp.holdingBack===o} onSelect={()=>upCP('holdingBack',o)}/>)}
+                          </div>
+                          <textarea defaultValue={cp.holdingBack&&!['Fear of failure','Lack of systems','No clear vision','People around me','Self-doubt'].includes(cp.holdingBack)?cp.holdingBack:''} onBlur={e=>e.target.value.trim()&&upCP('holdingBack',e.target.value)} placeholder="Or describe it honestly..." rows={2} className="w-full bg-slate-700 border border-slate-600 rounded-xl p-3 text-white placeholder-slate-500 text-sm resize-none focus:border-purple-500 focus:outline-none"/>
                         </div>
                         <p className="text-xs text-slate-500 text-center">All answers can be updated anytime in More → Coach Profile</p>
                       </div>
