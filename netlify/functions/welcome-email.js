@@ -43,7 +43,7 @@ const welcomeHTML = (name, appUrl) => `
         <tr><td style="background:#ffffff;padding:40px;">
           <h2 style="color:#1a1f3c;margin:0 0 16px;font-size:22px;">Welcome${name ? ', ' + name : ''}.</h2>
           <p style="color:#4b5563;font-size:16px;line-height:1.6;margin:0 0 20px;">
-            You've just taken the first step toward running your practice with intention. The S.E.A. Framework — <strong>Strategic, Executable, Accountable</strong> — is about 5 minutes a day that compounds into something significant.
+            You've just taken the first step toward running your practice with intention. S.E.A. stands for <strong>Slight Edge Accelerator</strong> — and also for <strong>Strategic, Accountable, Executable</strong>. It's about 5 minutes a day that compounds into something significant.
           </p>
 
           <!-- 3 steps -->
@@ -87,7 +87,7 @@ const welcomeHTML = (name, appUrl) => `
         <!-- Footer -->
         <tr><td style="background:#f4f4f7;border-radius:0 0 12px 12px;padding:24px;text-align:center;">
           <p style="color:#9ca3af;font-size:13px;margin:0;">Getting Results Inc. · S.E.A. Dashboard</p>
-          <p style="color:#9ca3af;font-size:12px;margin:6px 0 0;">You received this because you signed up at sea-dashboardindex18.netlify.app</p>
+          <p style="color:#9ca3af;font-size:12px;margin:6px 0 0;">You received this because you signed up at sea-dashboard.netlify.app</p>
         </td></tr>
 
       </table>
