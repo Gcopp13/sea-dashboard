@@ -3503,6 +3503,17 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
           localStorage.setItem('sea-planner-data', JSON.stringify(cloudData));
           setData(cloudData);
         } else {
+          // No cloud data = new user — send welcome email
+          const alreadyWelcomed = localStorage.getItem('sea-welcomed');
+          if (!alreadyWelcomed) {
+            localStorage.setItem('sea-welcomed', '1');
+            const userEmail = (await _supabase.auth.getUser()).data.user?.email;
+            fetch('/.netlify/functions/welcome-email', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ email: userEmail, name: '' }),
+            }).catch(e => console.error('welcome email error:', e));
+          }
           const localRaw = localStorage.getItem('sea-planner-data');
           const localData = localRaw ? JSON.parse(localRaw) : null;
           if (localData) await savePlannerDataToCloud(userId, localData);
