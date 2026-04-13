@@ -2930,7 +2930,7 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
             </div>
             <ChevRight/>
           </button>
-          <CoachMessages advisorId={getOrCreateAdvisorId()}/>
+          <CoachMessages advisorId={getOrCreateAdvisorId()} coachId={localStorage.getItem('sea_coach_id')||''} advisorName={data?.name||data?.fullName||''}/>
         </div>
 
         {/* TOOLS */}
@@ -4412,6 +4412,9 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
     const [coachName, setCoachName] = useState(() => localStorage.getItem(`coach_name_${coachId}`) || '');
     const [editingName, setEditingName] = useState(false);
     const [messaging, setMessaging] = useState(null); // { advisorId, name }
+    const [activeView, setActiveView] = useState('advisors'); // 'advisors' | 'inbox'
+    const [inbox, setInbox] = useState([]);
+    const [inboxLoading, setInboxLoading] = useState(false);
     const nameInputRef = useRef(null);
 
     const fetchAdvisors = useCallback(async () => {
@@ -4425,7 +4428,23 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
       setLoading(false);
     }, [coachId]);
 
+    const fetchInbox = useCallback(async () => {
+      setInboxLoading(true);
+      try {
+        const res = await fetch(`${COACH_API}?action=get-coach-inbox&coachId=${encodeURIComponent(coachId)}`);
+        const data = await res.json();
+        if (Array.isArray(data)) setInbox(data);
+      } catch(e) {}
+      setInboxLoading(false);
+    }, [coachId]);
+
     useEffect(() => { fetchAdvisors(); }, [fetchAdvisors]);
+    useEffect(() => { if (activeView==='inbox') fetchInbox(); }, [activeView, fetchInbox]);
+
+    const markCoachRead = async (advisorId) => {
+      setInbox(prev=>prev.map(m=>m.advisor_id===advisorId?{...m,read:true}:m));
+      fetch(`${COACH_API}?action=mark-coach-read`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({coachId,advisorId})}).catch(()=>{});
+    };
 
     const saveCoachName = () => {
       const n = nameInputRef.current?.value?.trim() || '';
@@ -4492,23 +4511,75 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
           </div>
         )}
 
+        {/* Tab switcher */}
+        <div style={{padding:embedded?'0 0 12px':'12px 20px 0',maxWidth:'720px',margin:'0 auto'}}>
+          <div style={{display:'flex',gap:'8px',background:'rgba(255,255,255,0.04)',borderRadius:'12px',padding:'4px',width:'fit-content'}}>
+            {[{id:'advisors',label:'👥 Clients'},{id:'inbox',label:`📬 Inbox${inbox.filter(m=>!m.read).length>0?' ('+inbox.filter(m=>!m.read).length+')':''}`}].map(v=>(
+              <button key={v.id} onClick={()=>setActiveView(v.id)}
+                style={{padding:'7px 18px',borderRadius:'9px',border:'none',cursor:'pointer',fontSize:'13px',fontWeight:'600',background:activeView===v.id?'#6366f1':'transparent',color:activeView===v.id?'white':'#64748b',transition:'all 0.15s'}}>
+                {v.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
         {/* Content */}
-        <div style={{padding:embedded?'0':'20px',maxWidth:'720px',margin:'0 auto'}}>
-          {loading && <div style={{textAlign:'center',padding:'60px',color:'#64748b'}}><div style={{fontSize:'36px',marginBottom:'12px'}}>⏳</div><div>Loading advisors...</div></div>}
-          {error && (
+        <div style={{padding:embedded?'12px 0 0':'20px',maxWidth:'720px',margin:'0 auto'}}>
+          {/* Inbox view */}
+          {activeView==='inbox' && (
+            <div>
+              {inboxLoading && <div style={{textAlign:'center',padding:'40px',color:'#64748b'}}>Loading messages...</div>}
+              {!inboxLoading && inbox.length===0 && (
+                <div style={{textAlign:'center',padding:'60px 20px',color:'#64748b'}}>
+                  <div style={{fontSize:'52px',marginBottom:'16px'}}>📭</div>
+                  <div style={{fontSize:'17px',fontWeight:'700',color:'#94a3b8',marginBottom:'8px'}}>No messages yet</div>
+                  <div style={{fontSize:'14px'}}>When clients send you updates, they appear here.</div>
+                </div>
+              )}
+              {!inboxLoading && inbox.length>0 && (
+                <div>
+                  <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'12px'}}>
+                    <span style={{color:'#64748b',fontSize:'13px'}}>{inbox.length} message{inbox.length!==1?'s':''} from clients</span>
+                    <button onClick={fetchInbox} style={{background:'#1e293b',color:'#94a3b8',border:'1px solid #334155',borderRadius:'8px',padding:'6px 14px',cursor:'pointer',fontSize:'12px'}}>🔄 Refresh</button>
+                  </div>
+                  {inbox.map(msg=>{
+                    const fmt = ts => { const d=new Date(ts),now=new Date(); return (now-d)<86400000?d.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'}):d.toLocaleDateString('en-US',{month:'short',day:'numeric'}); };
+                    return (
+                      <div key={msg.id||msg.timestamp} onClick={()=>markCoachRead(msg.advisor_id)}
+                        style={{background:msg.read?'#1e293b':'rgba(99,102,241,0.08)',border:`1px solid ${msg.read?'#334155':'rgba(99,102,241,0.3)'}`,borderRadius:'14px',padding:'16px',marginBottom:'10px',cursor:'pointer'}}>
+                        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'6px'}}>
+                          <span style={{fontWeight:'700',fontSize:'14px',color:'#f8fafc'}}>{msg.advisor_name||'Client'}</span>
+                          <div style={{display:'flex',alignItems:'center',gap:'8px'}}>
+                            {!msg.read&&<span style={{background:'#6366f1',color:'white',fontSize:'10px',fontWeight:'700',padding:'2px 8px',borderRadius:'20px'}}>NEW</span>}
+                            <span style={{fontSize:'11px',color:'#475569'}}>{fmt(msg.timestamp)}</span>
+                          </div>
+                        </div>
+                        <p style={{fontSize:'13px',color:'#cbd5e1',margin:0,lineHeight:'1.5'}}>{msg.message}</p>
+                        <button onClick={e=>{e.stopPropagation();setMessaging({advisorId:msg.advisor_id,name:msg.advisor_name||'Client'});setActiveView('advisors');}}
+                          style={{marginTop:'10px',padding:'6px 14px',borderRadius:'8px',border:'1px solid #6366f1',background:'rgba(99,102,241,0.1)',color:'#a78bfa',cursor:'pointer',fontSize:'12px',fontWeight:'600'}}>↩ Reply</button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {activeView==='advisors' && loading && <div style={{textAlign:'center',padding:'60px',color:'#64748b'}}><div style={{fontSize:'36px',marginBottom:'12px'}}>⏳</div><div>Loading advisors...</div></div>}
+          {activeView==='advisors' && error && (
             <div style={{background:'#450a0a',border:'1px solid #ef4444',borderRadius:'12px',padding:'16px',color:'#fca5a5',marginBottom:'16px'}}>
               ⚠️ {error}
               <button onClick={fetchAdvisors} style={{marginLeft:'12px',background:'#ef4444',color:'white',border:'none',borderRadius:'6px',padding:'4px 10px',cursor:'pointer',fontSize:'12px'}}>Retry</button>
             </div>
           )}
-          {!loading && !error && advisors.length === 0 && (
+          {activeView==='advisors' && !loading && !error && advisors.length === 0 && (
             <div style={{textAlign:'center',padding:'60px 20px',color:'#64748b'}}>
               <div style={{fontSize:'52px',marginBottom:'16px'}}>👥</div>
               <div style={{fontSize:'17px',fontWeight:'700',color:'#94a3b8',marginBottom:'8px'}}>No advisors yet</div>
               <div style={{fontSize:'14px',lineHeight:'1.6'}}>Copy your coach link above and share it.<br/>Advisors appear here after they share their score.</div>
             </div>
           )}
-          {!loading && advisors.length > 0 && (
+          {activeView==='advisors' && !loading && advisors.length > 0 && (
             <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'16px'}}>
               <span style={{color:'#64748b',fontSize:'13px'}}>{advisors.length} advisor{advisors.length!==1?'s':''}</span>
               <button onClick={fetchAdvisors} style={{background:'#1e293b',color:'#94a3b8',border:'1px solid #334155',borderRadius:'8px',padding:'6px 14px',cursor:'pointer',fontSize:'12px'}}>🔄 Refresh</button>
@@ -4554,11 +4625,15 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
   };
 
 
-  const CoachMessages = ({ advisorId }) => {
+  // Two-way coach messaging — client sees conversation thread + can reply
+  const CoachMessages = ({ advisorId, coachId, advisorName }) => {
     const [messages, setMessages] = useState([]);
     const [loading, setLoading] = useState(false);
     const [open, setOpen] = useState(false);
     const [unread, setUnread] = useState(0);
+    const [replyText, setReplyText] = useState('');
+    const [sending, setSending] = useState(false);
+    const [sent, setSent] = useState(false);
 
     const fetchMessages = useCallback(async () => {
       if (!advisorId) return;
@@ -4567,16 +4642,16 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
         const res = await fetch(`${COACH_API}?action=get-messages&advisorId=${encodeURIComponent(advisorId)}`);
         const data = await res.json();
         if (Array.isArray(data)) {
-          setMessages([...data].reverse());
-          setUnread(data.filter(m=>!m.read).length);
+          setMessages(data); // already asc by timestamp
+          setUnread(data.filter(m=>!m.read && m.sender==='coach').length);
         }
-      } catch(e) { /* silent — bonus feature */ }
+      } catch(e) { /* silent */ }
       setLoading(false);
     }, [advisorId]);
 
     useEffect(() => {
       fetchMessages();
-      const t = setInterval(fetchMessages, 5*60*1000);
+      const t = setInterval(fetchMessages, 3*60*1000);
       return () => clearInterval(t);
     }, [fetchMessages]);
 
@@ -4585,6 +4660,24 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
       setUnread(0);
       setMessages(m=>m.map(msg=>({...msg,read:true})));
       fetch(`${COACH_API}?action=mark-read`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({advisorId})}).catch(()=>{});
+    };
+
+    const sendReply = async () => {
+      const msg = replyText.trim();
+      if (!msg || !coachId) return;
+      setSending(true);
+      try {
+        await fetch(`${COACH_API}?action=send-reply`, {
+          method: 'POST',
+          headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({ coachId, advisorId, advisorName: advisorName||'Advisor', message: msg }),
+        });
+        setReplyText('');
+        setSent(true);
+        setTimeout(()=>setSent(false), 3000);
+        fetchMessages();
+      } catch(e) { /* silent */ }
+      setSending(false);
     };
 
     const toggle = () => { if (!open && unread>0) markAllRead(); setOpen(o=>!o); };
@@ -4596,7 +4689,7 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
           <div className="flex items-center gap-3">
             <span className="text-2xl">💬</span>
             <div>
-              <p className="font-bold text-white text-sm">Messages from Coach</p>
+              <p className="font-bold text-white text-sm">Coach Messages</p>
               <p className="text-xs text-slate-400 mt-0.5">{loading?'Checking...':(messages.length===0?'No messages yet':`${messages.length} message${messages.length!==1?'s':''}`)}</p>
             </div>
           </div>
@@ -4607,21 +4700,46 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
         </button>
         {open && (
           <div className="border-t border-slate-700 p-4 space-y-3">
+            {/* Message thread */}
             {messages.length===0 ? (
               <div className="text-center py-6 text-slate-500">
                 <div className="text-3xl mb-2">📭</div>
-                <p className="text-sm">Your coach hasn't sent any messages yet.</p>
+                <p className="text-sm">No messages yet. Send your coach an update below.</p>
               </div>
-            ) : messages.map(msg => (
-              <div key={msg.id||msg.timestamp} className="rounded-xl p-3" style={{background:msg.read?'rgba(15,23,42,0.8)':'rgba(99,102,241,0.08)',borderLeft:`3px solid ${msg.read?'#334155':'#8b5cf6'}`}}>
-                <div className="flex justify-between items-center mb-1">
-                  <span className="text-xs font-bold text-purple-400">{msg.coachName||'Your Coach'}</span>
-                  <span className="text-xs text-slate-500">{fmt(msg.timestamp)}</span>
+            ) : messages.map(msg => {
+              const isMe = msg.sender === 'advisor';
+              return (
+                <div key={msg.id||msg.timestamp} style={{display:'flex',flexDirection:'column',alignItems:isMe?'flex-end':'flex-start'}}>
+                  <div style={{maxWidth:'85%',borderRadius:isMe?'16px 16px 4px 16px':'16px 16px 16px 4px',padding:'10px 14px',background:isMe?'rgba(99,102,241,0.25)':'rgba(255,255,255,0.06)',border:`1px solid ${isMe?'rgba(99,102,241,0.4)':'rgba(255,255,255,0.08)'}`}}>
+                    <p style={{fontSize:'11px',fontWeight:'700',color:isMe?'#a78bfa':'#60a5fa',marginBottom:'4px'}}>{isMe?'You':(msg.coach_name||'Coach')}</p>
+                    <p style={{fontSize:'13px',color:'#e2e8f0',lineHeight:'1.5',margin:0}}>{msg.message}</p>
+                  </div>
+                  <span style={{fontSize:'10px',color:'#475569',marginTop:'3px',paddingLeft:'4px',paddingRight:'4px'}}>{fmt(msg.timestamp)}</span>
                 </div>
-                <p className="text-sm text-slate-200 leading-relaxed">{msg.message}</p>
+              );
+            })}
+
+            {/* Reply box — only show if connected to a coach */}
+            {coachId && (
+              <div style={{marginTop:'8px',borderTop:'1px solid #1e293b',paddingTop:'12px'}}>
+                <textarea
+                  value={replyText}
+                  onChange={e=>setReplyText(e.target.value)}
+                  placeholder="Send a message to your coach..."
+                  rows={2}
+                  style={{width:'100%',background:'rgba(15,23,42,0.8)',border:'1px solid #334155',borderRadius:'10px',padding:'10px 12px',color:'#f8fafc',fontSize:'13px',resize:'vertical',boxSizing:'border-box',fontFamily:'inherit'}}
+                  onKeyDown={e=>{if(e.key==='Enter'&&(e.metaKey||e.ctrlKey))sendReply();}}
+                />
+                <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginTop:'8px'}}>
+                  <span style={{fontSize:'11px',color:'#475569'}}>⌘+Enter to send</span>
+                  <button onClick={sendReply} disabled={sending||!replyText.trim()}
+                    style={{padding:'8px 18px',borderRadius:'8px',border:'none',cursor:sending||!replyText.trim()?'not-allowed':'pointer',opacity:sending||!replyText.trim()?0.5:1,background:'#6366f1',color:'white',fontSize:'12px',fontWeight:'700'}}>
+                    {sending?'Sending...':sent?'✓ Sent!':'Send'}
+                  </button>
+                </div>
               </div>
-            ))}
-            <button onClick={fetchMessages} className="w-full py-2 text-xs text-slate-500 hover:text-slate-300 border border-slate-700 rounded-xl transition-colors">🔄 Refresh messages</button>
+            )}
+            <button onClick={fetchMessages} style={{width:'100%',padding:'8px',fontSize:'11px',color:'#475569',background:'transparent',border:'1px solid #1e293b',borderRadius:'10px',cursor:'pointer',marginTop:'4px'}}>🔄 Refresh</button>
           </div>
         )}
       </div>
