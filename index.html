@@ -4630,10 +4630,109 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
 
   // ── APP ROOT ───────────────────────────────────────────────────────────────
   // Renders only when user is authenticated — all hooks are safe here
+  // ── SUBSCRIPTION PAYWALL ─────────────────────────────────────────────────
+  const SubscribeScreen = ({ authUser, onSubscribed }) => {
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState('');
+
+    const handleSubscribe = async () => {
+      setLoading(true); setError('');
+      try {
+        const res = await fetch('/.netlify/functions/stripe-checkout', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId: authUser.id, email: authUser.email }),
+        });
+        const data = await res.json();
+        if (data.url) {
+          window.location.href = data.url;
+        } else {
+          setError(data.error || 'Something went wrong. Please try again.');
+        }
+      } catch(e) {
+        setError('Connection error. Please try again.');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    return (
+      <div style={{minHeight:'100vh',background:'linear-gradient(135deg,#0f1229 0%,#1a1f4e 100%)',display:'flex',alignItems:'center',justifyContent:'center',padding:'24px'}}>
+        <div style={{maxWidth:'480px',width:'100%',textAlign:'center'}}>
+          <div style={{fontSize:'3rem',marginBottom:'16px'}}>🎯</div>
+          <h1 style={{color:'white',fontSize:'2rem',fontWeight:'800',marginBottom:'8px',letterSpacing:'-0.02em'}}>S.E.A. Dashboard</h1>
+          <p style={{color:'#94a3b8',fontSize:'1rem',marginBottom:'40px'}}>Strategic · Executable · Accountable</p>
+
+          <div style={{background:'rgba(255,255,255,0.05)',border:'1px solid rgba(255,255,255,0.1)',borderRadius:'20px',padding:'32px',marginBottom:'24px'}}>
+            <div style={{color:'#60a5fa',fontSize:'0.85rem',fontWeight:'700',letterSpacing:'0.1em',marginBottom:'8px',textTransform:'uppercase'}}>Monthly Subscription</div>
+            <div style={{color:'white',fontSize:'3rem',fontWeight:'800',marginBottom:'4px'}}>${(process.env.SUBSCRIPTION_PRICE||'97')}<span style={{fontSize:'1rem',color:'#94a3b8',fontWeight:'400'}}>/mo</span></div>
+            <div style={{color:'#64748b',fontSize:'0.85rem',marginBottom:'28px'}}>Cancel anytime</div>
+
+            <div style={{textAlign:'left',marginBottom:'28px'}}>
+              {['AI-powered accountability coach','Daily, weekly & 120-day planner','Goal tracking & Wheel of Life','Coach dashboard for your advisor','Weekly performance summaries'].map(f=>(
+                <div key={f} style={{display:'flex',alignItems:'center',gap:'10px',marginBottom:'10px'}}>
+                  <span style={{color:'#10b981',fontSize:'1rem'}}>✓</span>
+                  <span style={{color:'#cbd5e1',fontSize:'0.9rem'}}>{f}</span>
+                </div>
+              ))}
+            </div>
+
+            <button onClick={handleSubscribe} disabled={loading}
+              style={{width:'100%',padding:'16px',borderRadius:'14px',border:'none',cursor:loading?'not-allowed':'pointer',opacity:loading?0.7:1,fontSize:'1rem',fontWeight:'700',color:'white',background:'linear-gradient(135deg,#3b82f6,#6366f1)',boxShadow:'0 4px 20px rgba(99,102,241,0.4)'}}>
+              {loading ? 'Redirecting to checkout...' : 'Subscribe & Get Access'}
+            </button>
+
+            {error && <p style={{color:'#f87171',fontSize:'0.85rem',marginTop:'12px'}}>{error}</p>}
+          </div>
+
+          <p style={{color:'#475569',fontSize:'0.8rem'}}>Signed in as {authUser.email} · <button onClick={async()=>{await _supabase.auth.signOut();window.location.reload();}} style={{background:'none',border:'none',color:'#64748b',cursor:'pointer',textDecoration:'underline',fontSize:'0.8rem'}}>Sign out</button></p>
+        </div>
+      </div>
+    );
+  };
+
   const AuthenticatedApp = ({ authUser, setAuthUser }) => {
     const [onboardingDone, setOnboardingDone] = useState(false);
     const [onboardingData, setOnboardingData] = useState(null);
     const [showingOnboarding, setShowingOnboarding] = useState(false);
+    const [subStatus, setSubStatus] = useState(null); // null=loading, 'active'=ok, 'inactive'=paywall
+    const BYPASS_EMAIL = 'gino.coppola@gettingresultsinc.com'; // owner always has access
+
+    // Check subscription status on mount
+    useEffect(() => {
+      // Owner bypass — always grant access
+      if (authUser.email === BYPASS_EMAIL) { setSubStatus('active'); return; }
+
+      // Check URL params — returning from successful Stripe checkout
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('subscribed') === 'true') {
+        // Give webhook a moment to update Supabase, then check
+        setTimeout(async () => {
+          await checkSub();
+          window.history.replaceState({}, '', window.location.pathname);
+        }, 2000);
+        return;
+      }
+
+      checkSub();
+    }, [authUser]);
+
+    const checkSub = async () => {
+      try {
+        const session = await _supabase.auth.getSession();
+        const token = session.data.session?.access_token;
+        if (!token) { setSubStatus('inactive'); return; }
+        const res = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${authUser.id}&select=subscription_status`, {
+          headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': `Bearer ${token}` }
+        });
+        const rows = await res.json();
+        const status = rows?.[0]?.subscription_status;
+        setSubStatus(status === 'active' ? 'active' : 'inactive');
+      } catch(e) {
+        console.error('sub check error:', e);
+        setSubStatus('inactive');
+      }
+    };
     const hasData = ()=>{try{const s=localStorage.getItem('sea-planner-data');if(!s)return false;const p=JSON.parse(s);return!!(p.slightEdge||p.goals?.some(g=>g.title));}catch(e){return false;}};
     const [showOnboarding] = useState(()=>!hasData());
     const getExistingData = () => {
@@ -4654,6 +4753,11 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
     };
     const handleOnboardingComplete = (d) => { setOnboardingData(d); setOnboardingDone(true); setShowingOnboarding(false); };
     const handleReopenOnboarding = () => setShowingOnboarding(true);
+
+    // Subscription gate
+    if (subStatus === null) return React.createElement('div', { style: { display:'flex', alignItems:'center', justifyContent:'center', height:'100vh', background:'#0f1229', color:'white', fontSize:'1.2rem' } }, 'Loading...');
+    if (subStatus !== 'active') return <SubscribeScreen authUser={authUser} onSubscribed={()=>setSubStatus('active')}/>;
+
     if ((showOnboarding && !onboardingDone) || showingOnboarding) {
       return <OnboardingFlow onComplete={handleOnboardingComplete} initialData={getExistingData()}/>;
     }
