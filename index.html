@@ -2779,7 +2779,7 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
     );
   };
 
-  const MoreView = ({ data, updateField, saveData, openCoach, personality, setPersonality, onReopenOnboarding, onMilestone, weekNum, setWeekNum, onSignOut }) => {
+  const MoreView = ({ data, updateField, saveData, openCoach, personality, setPersonality, onReopenOnboarding, onMilestone, weekNum, setWeekNum, onSignOut, onMetaChange }) => {
     const [section, setSection] = useState(null);
     const [newNote, setNewNote] = useState('');
     const [noteTitle, setNoteTitle] = useState('');
@@ -2792,6 +2792,8 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
       const p = {...coachProfile, [key]:val};
       setCoachProfile(p);
       localStorage.setItem('coach-profile', JSON.stringify(p));
+      // Trigger cloud meta-sync via parent callback
+      if (onMetaChange) onMetaChange();
     };
 
     const exportBackup = () => {
@@ -3271,7 +3273,7 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
                               <p className="text-xs text-slate-500">{d.leftDesc}</p>
                             </div>
                             <input type="range" min="0" max="4" step="1" value={p[d.key]}
-                              onChange={e=>{const np={...p,[d.key]:parseInt(e.target.value)};setPersonality(np);localStorage.setItem('coach-personality',JSON.stringify(np));}}
+                              onChange={e=>{const np={...p,[d.key]:parseInt(e.target.value)};setPersonality(np);localStorage.setItem('coach-personality',JSON.stringify(np));if(onMetaChange)onMetaChange();}}
                               className="flex-1 h-2 rounded-full appearance-none cursor-pointer"
                               style={{accentColor:d.color}}/>
                             <div className="w-20 flex-shrink-0">
@@ -3501,6 +3503,19 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
         const session = await _supabase.auth.getSession();
         const token = session.data.session?.access_token;
         if (!token) return;
+        // Bundle all localStorage-only settings into _meta so they sync across devices
+        const meta = {
+          coachProfile: (() => { try { return JSON.parse(localStorage.getItem('coach-profile') || 'null'); } catch(e) { return null; } })(),
+          coachPersonality: localStorage.getItem('coach-personality'),
+          summaryEmail: localStorage.getItem('summary-email'),
+          summaryName: localStorage.getItem('summary-name'),
+          summaryOptIn: localStorage.getItem('summary-optin'),
+          coachCommitment: localStorage.getItem('coach-commitment'),
+          coachCommitmentDate: localStorage.getItem('coach-commitment-date'),
+          shareUsed: localStorage.getItem('share-used'),
+          coachId: localStorage.getItem('sea_coach_id'),
+        };
+        const payload = { ...d, _meta: meta };
         await fetch(`${SUPABASE_URL}/rest/v1/planner_data`, {
           method: 'POST',
           headers: {
@@ -3509,7 +3524,7 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
             'Content-Type': 'application/json',
             'Prefer': 'resolution=merge-duplicates',
           },
-          body: JSON.stringify({ user_id: userId, data: d, updated_at: new Date().toISOString() }),
+          body: JSON.stringify({ user_id: userId, data: payload, updated_at: new Date().toISOString() }),
         });
       } catch (e) {
         console.error('savePlannerDataToCloud error:', e);
@@ -3530,8 +3545,23 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
         const rows = await res.json();
         if (rows && rows.length > 0 && rows[0].data) {
           const cloudData = rows[0].data;
-          localStorage.setItem('sea-planner-data', JSON.stringify(cloudData));
-          setData(cloudData);
+          // Restore _meta settings to localStorage if present
+          if (cloudData._meta) {
+            const m = cloudData._meta;
+            if (m.coachProfile) localStorage.setItem('coach-profile', JSON.stringify(m.coachProfile));
+            if (m.coachPersonality) localStorage.setItem('coach-personality', m.coachPersonality);
+            if (m.summaryEmail) localStorage.setItem('summary-email', m.summaryEmail);
+            if (m.summaryName) localStorage.setItem('summary-name', m.summaryName);
+            if (m.summaryOptIn) localStorage.setItem('summary-optin', m.summaryOptIn);
+            if (m.coachCommitment) localStorage.setItem('coach-commitment', m.coachCommitment);
+            if (m.coachCommitmentDate) localStorage.setItem('coach-commitment-date', m.coachCommitmentDate);
+            if (m.shareUsed) localStorage.setItem('share-used', m.shareUsed);
+            if (m.coachId) localStorage.setItem('sea_coach_id', m.coachId);
+          }
+          // Strip _meta before setting into app state (it's not planner data)
+          const { _meta, ...plannerData } = cloudData;
+          localStorage.setItem('sea-planner-data', JSON.stringify(plannerData));
+          setData(plannerData);
         } else {
           // No cloud data = new user — send welcome email
           const alreadyWelcomed = localStorage.getItem('sea-welcomed');
@@ -3846,7 +3876,7 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
             {activeTab==='anvil'&&<AnvilView data={data} updateField={updateField} openCoach={openCoach}/>}
             {activeTab==='score'&&<ScoreView data={data} updateField={updateField} weekNum={weekNum} setWeekNum={setWeekNum} setActiveTab={setActiveTab} openCoach={openCoach} onPrint={printTab} onMilestone={setMilestone} setShowResetModal={setShowResetModal}/>}
             {activeTab==='journal'&&<JournalView data={data} updateField={updateField}/>}
-            {activeTab==='more'&&<MoreView data={data} updateField={updateField} saveData={saveData} openCoach={openCoach} personality={coachPersonality} setPersonality={setCoachPersonality} onReopenOnboarding={onReopenOnboarding} onMilestone={setMilestone} weekNum={weekNum} setWeekNum={setWeekNum} onSignOut={async()=>{await _supabase.auth.signOut();setAuthUser(null);}}/>}
+            {activeTab==='more'&&<MoreView data={data} updateField={updateField} saveData={saveData} openCoach={openCoach} personality={coachPersonality} setPersonality={setCoachPersonality} onReopenOnboarding={onReopenOnboarding} onMilestone={setMilestone} weekNum={weekNum} setWeekNum={setWeekNum} onSignOut={async()=>{await _supabase.auth.signOut();setAuthUser(null);}} onMetaChange={()=>{ if(authUser) savePlannerDataToCloud(authUser.id, data); }}/>}
             <div style={{display:activeTab==='coach'&&myCoachId?'block':'none'}}>
               {myCoachId&&<CoachDashboard coachId={myCoachId} embedded={true}/>}
             </div>
