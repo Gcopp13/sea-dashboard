@@ -3562,12 +3562,28 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
       if(loading)return;
       if(saveTimer.current)clearTimeout(saveTimer.current);
       setSaveStatus('...');
+      // Save to localStorage immediately, cloud after 1.5s debounce
+      try{localStorage.setItem('sea-planner-data',JSON.stringify(data));} catch(e){}
       saveTimer.current=setTimeout(()=>{
         saveData(data);
         if(authUser) savePlannerDataToCloud(authUser.id, data);
       },1500);
       return()=>clearTimeout(saveTimer.current);
     },[data]);
+
+    // Force-save to cloud when user closes/navigates away
+    useEffect(()=>{
+      const handleUnload = () => {
+        if(authUser) {
+          try{localStorage.setItem('sea-planner-data',JSON.stringify(data));} catch(e){}
+          // Use sendBeacon for reliable save on page close
+          const session = _supabase.auth.getSession();
+          savePlannerDataToCloud(authUser.id, data);
+        }
+      };
+      window.addEventListener('beforeunload', handleUnload);
+      return () => window.removeEventListener('beforeunload', handleUnload);
+    },[data, authUser]);
 
     const archiveAndReset = (reflection) => {
       // Archive current cycle
