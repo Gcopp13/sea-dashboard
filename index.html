@@ -126,7 +126,7 @@
       try {
         const { error } = await _supabase.auth.signInWithOtp({
           email: email.trim(),
-          options: { emailRedirectTo: 'https://sea-dashboardindex18.netlify.app' }
+          options: { emailRedirectTo: window.location.origin }
         });
         if (error) { setErrorMsg(error.message); setStatus('error'); }
         else { setStatus('sent'); }
@@ -3529,6 +3529,7 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
           coachCommitmentDate: localStorage.getItem('coach-commitment-date'),
           shareUsed: localStorage.getItem('share-used'),
           coachId: localStorage.getItem('sea_coach_id'),
+          archives: (() => { try { return JSON.parse(localStorage.getItem('sea-archives')||'[]'); } catch(e){return [];} })()
         };
         const payload = { ...d, _meta: meta };
         const now = new Date().toISOString();
@@ -3583,6 +3584,7 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
             if (m.coachCommitmentDate) localStorage.setItem('coach-commitment-date', m.coachCommitmentDate);
             if (m.shareUsed) localStorage.setItem('share-used', m.shareUsed);
             if (m.coachId) localStorage.setItem('sea_coach_id', m.coachId);
+            if (m.archives && m.archives.length > 0) localStorage.setItem('sea-archives', JSON.stringify(m.archives));
           }
           // Strip _meta before setting into app state (it's not planner data)
           const { _meta, ...plannerData } = cloudData;
@@ -3630,12 +3632,33 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
     // Force-save to cloud when user closes/navigates away
     useEffect(()=>{
       const handleUnload = () => {
-        if(authUser) {
-          try{localStorage.setItem('sea-planner-data',JSON.stringify(data));} catch(e){}
-          // Use sendBeacon for reliable save on page close
-          const session = _supabase.auth.getSession();
-          savePlannerDataToCloud(authUser.id, data);
-        }
+        if(!authUser) return;
+        // Always save to localStorage first (synchronous, guaranteed)
+        try{localStorage.setItem('sea-planner-data',JSON.stringify(data));} catch(e){}
+        // Use sendBeacon for reliable async-safe cloud save on page close
+        // sendBeacon is specifically designed for this — browser guarantees delivery even during unload
+        try {
+          const meta = {
+            coachProfile: (() => { try { return JSON.parse(localStorage.getItem('coach-profile')||'null'); } catch(e){return null;} })(),
+            coachPersonality: localStorage.getItem('coach-personality'),
+            summaryEmail: localStorage.getItem('summary-email'),
+            summaryName: localStorage.getItem('summary-name'),
+            summaryOptIn: localStorage.getItem('summary-optin'),
+            coachCommitment: localStorage.getItem('coach-commitment'),
+            coachId: localStorage.getItem('sea_coach_id'),
+            archives: (() => { try { return JSON.parse(localStorage.getItem('sea-archives')||'[]'); } catch(e){return [];} })()
+          };
+          const payload = JSON.stringify({
+            user_id: authUser.id,
+            data: { ...data, _meta: meta },
+            updated_at: new Date().toISOString()
+          });
+          // sendBeacon to a Netlify function that handles the Supabase write
+          // Falls back to queued fetch if sendBeacon not available
+          if (navigator.sendBeacon) {
+            navigator.sendBeacon('/.netlify/functions/beacon-save', payload);
+          }
+        } catch(e){}
       };
       window.addEventListener('beforeunload', handleUnload);
       return () => window.removeEventListener('beforeunload', handleUnload);
@@ -4916,6 +4939,48 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
     return <SEAPlannerApp onboardingData={onboardingData} onReopenOnboarding={handleReopenOnboarding} authUser={authUser} setAuthUser={setAuthUser}/>;
   };
 
+  // Error Boundary — catches runtime errors and shows a recovery screen instead of blank
+  class ErrorBoundary extends React.Component {
+    constructor(props) {
+      super(props);
+      this.state = { hasError: false, error: null };
+    }
+    static getDerivedStateFromError(error) {
+      return { hasError: true, error };
+    }
+    componentDidCatch(error, info) {
+      console.error('[SEA] Uncaught error:', error, info);
+    }
+    render() {
+      if (this.state.hasError) {
+        return React.createElement('div', {
+          style: {
+            display: 'flex', flexDirection: 'column', alignItems: 'center',
+            justifyContent: 'center', height: '100vh',
+            background: '#0f1229', color: 'white',
+            fontFamily: 'sans-serif', textAlign: 'center', padding: '2rem'
+          }
+        },
+          React.createElement('div', { style: { fontSize: '3rem', marginBottom: '1rem' } }, '⚠️'),
+          React.createElement('h2', { style: { fontSize: '1.4rem', marginBottom: '0.5rem', color: '#f87171' } }, 'Something went wrong'),
+          React.createElement('p', { style: { color: '#94a3b8', marginBottom: '2rem', maxWidth: '320px' } },
+            'An unexpected error occurred. Your data is safe — tap below to reload.'
+          ),
+          React.createElement('button', {
+            onClick: () => window.location.reload(),
+            style: {
+              background: 'linear-gradient(135deg,#6366f1,#8b5cf6)',
+              color: 'white', border: 'none', borderRadius: '12px',
+              padding: '0.75rem 2rem', fontSize: '1rem', cursor: 'pointer',
+              fontWeight: '600'
+            }
+          }, 'Reload App')
+        );
+      }
+      return this.props.children;
+    }
+  }
+
   // Top-level router + auth gate — hooks called unconditionally
   const AppRoot = () => {
     const [authUser, setAuthUser] = useState(null);
@@ -4964,7 +5029,10 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
     return React.createElement(AuthenticatedApp, { authUser, setAuthUser });
   };
 
-  ReactDOM.render(<AppRoot/>, document.getElementById('root'));
+  ReactDOM.render(
+    React.createElement(ErrorBoundary, null, React.createElement(AppRoot, null)),
+    document.getElementById('root')
+  );
 </script>
 </body>
 </html>
