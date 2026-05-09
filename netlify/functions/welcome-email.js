@@ -121,7 +121,7 @@ exports.handler = async (event) => {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        from: `S.E.A. Dashboard <${fromEmail}>`,
+        from: `SEA Dashboard <${fromEmail}>`,
         to: [email],
         subject: 'Welcome to S.E.A. Dashboard — Live By Design',
         html: welcomeHTML(name, appUrl),
