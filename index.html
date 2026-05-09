@@ -3538,6 +3538,13 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
         };
+        // Update last_seen on every save (fire-and-forget)
+        fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${userId}`, {
+          method: 'PATCH',
+          headers: { ...headers, 'Prefer': 'return=minimal' },
+          body: JSON.stringify({ last_seen: now }),
+        }).catch(() => {});
+
         // Try PATCH first (update existing record) — avoids 409 conflict on unique user_id
         const patchRes = await fetch(`${SUPABASE_URL}/rest/v1/planner_data?user_id=eq.${userId}`, {
           method: 'PATCH',
@@ -4866,7 +4873,19 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
     const [onboardingDone, setOnboardingDone] = useState(false);
     const [onboardingData, setOnboardingData] = useState(null);
     const [showingOnboarding, setShowingOnboarding] = useState(false);
-    const [subStatus, setSubStatus] = useState(null); // null=loading, 'active'=ok, 'inactive'=paywall
+    const [subStatus, setSubStatus] = useState(null);
+    const [showReEngageBanner, setShowReEngageBanner] = useState(false);
+
+    // Show re-engagement banner if last_seen stored locally is > 24h ago
+    useEffect(() => {
+      const lastSeen = localStorage.getItem('sea_last_seen');
+      if (lastSeen) {
+        const diff = Date.now() - new Date(lastSeen).getTime();
+        if (diff > 24 * 60 * 60 * 1000) setShowReEngageBanner(true);
+      }
+      // Always update local last_seen on mount
+      localStorage.setItem('sea_last_seen', new Date().toISOString());
+    }, []);
     const BYPASS_EMAIL = 'gino.coppola@gettingresultsinc.com'; // owner always has access
 
     // Check subscription status on mount
@@ -4936,7 +4955,34 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
     if ((showOnboarding && !onboardingDone) || showingOnboarding) {
       return <OnboardingFlow onComplete={handleOnboardingComplete} initialData={getExistingData()}/>;
     }
-    return <SEAPlannerApp onboardingData={onboardingData} onReopenOnboarding={handleReopenOnboarding} authUser={authUser} setAuthUser={setAuthUser}/>;
+    return (
+      <>
+        {showReEngageBanner && (
+          <div style={{
+            position: 'fixed', top: 0, left: 0, right: 0, zIndex: 9999,
+            background: 'linear-gradient(135deg,#6366f1,#8b5cf6)',
+            padding: '12px 20px',
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            boxShadow: '0 2px 12px rgba(99,102,241,0.4)',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <span style={{ fontSize: '1.2rem' }}>👋</span>
+              <span style={{ color: 'white', fontWeight: 600, fontSize: '0.9rem' }}>
+                Welcome back! Keep your Slight Edge going — log today's progress.
+              </span>
+            </div>
+            <button
+              onClick={() => setShowReEngageBanner(false)}
+              style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.8)', cursor: 'pointer', fontSize: '1.2rem', padding: '0 4px', lineHeight: 1 }}
+              aria-label="Dismiss"
+            >×</button>
+          </div>
+        )}
+        <div style={showReEngageBanner ? { paddingTop: '48px' } : {}}>
+          <SEAPlannerApp onboardingData={onboardingData} onReopenOnboarding={handleReopenOnboarding} authUser={authUser} setAuthUser={setAuthUser}/>
+        </div>
+      </>
+    );
   };
 
   // Error Boundary — catches runtime errors and shows a recovery screen instead of blank
@@ -4994,6 +5040,19 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
       const { data: { subscription } } = _supabase.auth.onAuthStateChange((_event, session) => {
         setAuthUser(session?.user ?? null);
         setAuthLoading(false);
+        // Update last_seen on every login / session refresh
+        if (session?.user) {
+          fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${session.user.id}`, {
+            method: 'PATCH',
+            headers: {
+              'apikey': SUPABASE_ANON_KEY,
+              'Authorization': `Bearer ${session.access_token}`,
+              'Content-Type': 'application/json',
+              'Prefer': 'return=minimal',
+            },
+            body: JSON.stringify({ last_seen: new Date().toISOString() }),
+          }).catch(() => {});
+        }
       });
       return () => subscription.unsubscribe();
     }, []);
