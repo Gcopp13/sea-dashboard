@@ -108,7 +108,7 @@ exports.handler = async (event) => {
   if (!email) return err('email is required', 400);
 
   const apiKey = process.env.RESEND_API_KEY;
-  const fromEmail = process.env.FROM_EMAIL || 'onboarding@resend.dev';
+  const fromEmail = process.env.FROM_EMAIL || 'onboarding@gettingresultsinc.com';
   const appUrl = process.env.APP_URL || 'https://sea-dashboardindex18.netlify.app';
 
   if (!apiKey) return err('RESEND_API_KEY not configured', 500);
