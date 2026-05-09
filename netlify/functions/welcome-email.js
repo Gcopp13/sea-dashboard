@@ -87,6 +87,7 @@ const welcomeHTML = (name, appUrl) => `
         <!-- Footer -->
         <tr><td style="background:#f4f4f7;border-radius:0 0 12px 12px;padding:24px;text-align:center;">
           <p style="color:#9ca3af;font-size:13px;margin:0;">Getting Results Inc. · S.E.A. Dashboard</p>
+          <p style="color:#9ca3af;font-size:12px;margin:8px 0 0;">Please do not reply to this email &mdash; this mailbox is not monitored. To reach us, contact your coach directly.</p>
           <p style="color:#9ca3af;font-size:12px;margin:6px 0 0;">You received this because you signed up at sea-dashboard.netlify.app</p>
         </td></tr>
 
