@@ -4617,6 +4617,27 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
     const [loading, setLoading] = useState(true);
     const [updating, setUpdating] = useState(null); // userId being updated
     const [error, setError] = useState(null);
+    const [coachInviteEmail, setCoachInviteEmail] = useState('');
+    const [coachInviteStatus, setCoachInviteStatus] = useState(null); // null | 'sending' | 'sent' | 'error'
+    const [coachInviteError, setCoachInviteError] = useState('');
+
+    const sendCoachInvite = async (e) => {
+      e.preventDefault();
+      if (!coachInviteEmail.trim()) return;
+      setCoachInviteStatus('sending'); setCoachInviteError('');
+      try {
+        const res = await fetch('/.netlify/functions/invite-coach', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: coachInviteEmail.trim(), inviterId: authUser?.id }),
+        });
+        const data = await res.json();
+        if (!res.ok || data.error) { setCoachInviteError(data.error || 'Failed to send invite.'); setCoachInviteStatus('error'); }
+        else { setCoachInviteStatus('sent'); setCoachInviteEmail(''); setTimeout(() => setCoachInviteStatus(null), 4000); }
+      } catch(e) {
+        setCoachInviteError('Something went wrong. Please try again.'); setCoachInviteStatus('error');
+      }
+    };
 
     const fetchUsers = async () => {
       setLoading(true); setError(null);
@@ -4671,6 +4692,30 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
           <button onClick={fetchUsers} style={{ background: '#1e293b', border: '1px solid #334155', borderRadius: '8px', padding: '7px 14px', color: '#94a3b8', cursor: 'pointer', fontSize: '12px' }}>
             ↻ Refresh
           </button>
+        </div>
+
+        {/* Invite a Coach */}
+        <div style={{ background: '#1e293b', border: '1px solid #334155', borderRadius: '14px', padding: '16px 20px', marginBottom: '20px' }}>
+          <div style={{ fontSize: '13px', fontWeight: '700', color: '#f8fafc', marginBottom: '4px' }}>🎓 Invite a Coach</div>
+          <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '12px' }}>Their account will be created with the Coach role automatically.</div>
+          <form onSubmit={sendCoachInvite} style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+            <input
+              type="email"
+              placeholder="coach@email.com"
+              value={coachInviteEmail}
+              onChange={e => setCoachInviteEmail(e.target.value)}
+              required
+              style={{ flex: 1, minWidth: '200px', padding: '9px 14px', borderRadius: '8px', border: '1px solid #334155', background: '#0f172a', color: '#f8fafc', fontSize: '13px', outline: 'none' }}
+            />
+            <button
+              type="submit"
+              disabled={coachInviteStatus === 'sending'}
+              style={{ padding: '9px 18px', borderRadius: '8px', background: coachInviteStatus === 'sent' ? '#10b981' : '#6366f1', color: 'white', border: 'none', cursor: 'pointer', fontSize: '13px', fontWeight: '700', whiteSpace: 'nowrap' }}
+            >
+              {coachInviteStatus === 'sending' ? 'Sending…' : coachInviteStatus === 'sent' ? '✓ Invite Sent!' : 'Send Coach Invite'}
+            </button>
+          </form>
+          {coachInviteStatus === 'error' && <p style={{ color: '#f87171', fontSize: '12px', margin: '8px 0 0' }}>{coachInviteError}</p>}
         </div>
 
         {error && <div style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '10px', padding: '10px 14px', color: '#f87171', fontSize: '13px', marginBottom: '16px' }}>{error}</div>}
