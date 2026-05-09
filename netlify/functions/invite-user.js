@@ -37,12 +37,9 @@ const inviteEmailHTML = (coachName, appUrl) => `
       <tr>
         <td style="padding:40px;">
           <h2 style="color:#1e293b;font-size:1.5rem;margin:0 0 16px;">You've been invited!</h2>
-          <p style="color:#475569;line-height:1.7;margin:0 0 20px;">
-            <strong>${coachName || 'Your coach'}</strong> has invited you to join the S.E.A. Dashboard &mdash; 
-            a coaching and accountability platform built for financial advisors who want to live by design, not by default.
-          </p>
           <p style="color:#475569;line-height:1.7;margin:0 0 32px;">
-            Click the button below to accept your invitation and get started. No password needed &mdash; you'll set one up after your first login.
+            <strong>${coachName || 'Your coach'}</strong> has invited you to connect as your S.E.A. coach.
+            Accept the invitation to access your personal dashboard and get started.
           </p>
           <!-- CTA -->
           <table cellpadding="0" cellspacing="0" style="margin:0 auto 32px;">
@@ -93,7 +90,7 @@ exports.handler = async (event) => {
   try { body = JSON.parse(event.body || '{}'); }
   catch { return err('Invalid JSON', 400); }
 
-  const { email, coachId, coachName } = body;
+  const { email, coachId } = body;
   if (!email || !coachId) return err('email and coachId are required', 400);
 
   // Validate email format
@@ -102,6 +99,27 @@ exports.handler = async (event) => {
   }
 
   try {
+    // Fetch coach's real name from Supabase profiles using service key
+    let coachName = 'Your coach';
+    try {
+      const profileRes = await fetch(
+        `${SUPABASE_URL}/rest/v1/profiles?id=eq.${encodeURIComponent(coachId)}&select=full_name&limit=1`,
+        {
+          headers: {
+            'apikey': SERVICE_KEY,
+            'Authorization': `Bearer ${SERVICE_KEY}`,
+          },
+        }
+      );
+      if (profileRes.ok) {
+        const profileData = await profileRes.json();
+        if (profileData?.[0]?.full_name) {
+          coachName = profileData[0].full_name;
+        }
+      }
+    } catch (profileErr) {
+      console.warn('[invite-user] Could not fetch coach profile, using fallback:', profileErr.message);
+    }
     // Use Supabase admin to generate a magic link invite
     // redirectTo includes the coachId so the app can auto-connect on landing
     const redirectTo = `${APP_URL}?coach=${encodeURIComponent(coachId)}&invite=1`;
@@ -171,7 +189,7 @@ exports.handler = async (event) => {
       body: JSON.stringify({
         from: 'SEA Dashboard <onboarding@gettingresultsinc.com>',
         to: [email],
-        subject: `${coachName || 'Your coach'} has invited you to the S.E.A. Dashboard`,
+        subject: `${coachName} has invited you to connect on the S.E.A. Dashboard`,
         html: inviteEmailHTML(coachName, inviteLink),
       }),
     });

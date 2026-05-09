@@ -3949,19 +3949,43 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
     const score = loading?{total:0,stars:1}:calcSEAScore(data,weekNum-1);
 
     const [myCoachId, setMyCoachId] = useState(()=>localStorage.getItem('sea_coach_id')||'');
+    const [userRole, setUserRole] = useState('advisor');
+
     useEffect(()=>{
       const refresh = () => setMyCoachId(localStorage.getItem('sea_coach_id')||'');
       window.addEventListener('sea-coach-id-changed', refresh);
       return () => window.removeEventListener('sea-coach-id-changed', refresh);
     },[]);
 
+    // Fetch user role from profiles
+    useEffect(()=>{
+      if (!authUser) return;
+      const fetchRole = async () => {
+        try {
+          const session = await _supabase.auth.getSession();
+          const token = session?.data?.session?.access_token;
+          if (!token) return;
+          const res = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${authUser.id}&select=role`, {
+            headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': `Bearer ${token}` }
+          });
+          if (res.ok) {
+            const rows = await res.json();
+            if (rows[0]?.role) setUserRole(rows[0].role);
+          }
+        } catch(e) { console.warn('Role fetch failed', e); }
+      };
+      fetchRole();
+    }, [authUser]);
+
+    const isCoachOrAdmin = ['coach','admin'].includes(userRole);
     const TABS=[
       {id:'today',  label:'Today',  Icon:SunIcon},
       {id:'anvil',  label:'Anvil',  Icon:()=><span style={{fontSize:'18px'}}>🔨</span>},
       {id:'score',  label:'Score',  Icon:StarIcon},
       {id:'journal',label:'Journal',Icon:JournalIcon},
       {id:'more',   label:'More',   Icon:MenuIcon},
-      ...(myCoachId?[{id:'coach',label:'Coach',Icon:CoachTabIcon}]:[]),
+      ...(isCoachOrAdmin?[{id:'coach',label:'Coach',Icon:CoachTabIcon}]:[]),
+      ...(userRole==='admin'?[{id:'admin',label:'Admin',Icon:()=><span style={{fontSize:'18px'}}>⚙️</span>}]:[]),
     ];
 
     if(loading)return(<div className="flex items-center justify-center h-screen" style={{background:'#0f172a'}}><div className="text-center"><div className="text-4xl mb-3">🌊</div><p className="text-white font-semibold">Loading S.E.A. Dashboard...</p><p className="text-slate-400 text-sm mt-1">Getting Results Inc.</p></div></div>);
@@ -4129,9 +4153,10 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
             {activeTab==='score'&&<ScoreView data={data} updateField={updateField} weekNum={weekNum} setWeekNum={setWeekNum} setActiveTab={setActiveTab} openCoach={openCoach} onPrint={printTab} onMilestone={setMilestone} setShowResetModal={setShowResetModal}/>}
             {activeTab==='journal'&&<JournalView data={data} updateField={updateField}/>}
             {activeTab==='more'&&<MoreView data={data} updateField={updateField} saveData={saveData} openCoach={openCoach} personality={coachPersonality} setPersonality={setCoachPersonality} onReopenOnboarding={onReopenOnboarding} onMilestone={setMilestone} weekNum={weekNum} setWeekNum={setWeekNum} onSignOut={async()=>{await _supabase.auth.signOut();setAuthUser(null);}} onMetaChange={()=>{ if(authUser) savePlannerDataToCloud(authUser.id, data); }}/>}
-            <div style={{display:activeTab==='coach'&&myCoachId?'block':'none'}}>
-              {myCoachId&&<CoachDashboard coachId={myCoachId} embedded={true}/>}
+            <div style={{display:activeTab==='coach'&&isCoachOrAdmin?'block':'none'}}>
+              {isCoachOrAdmin&&<CoachDashboard coachId={authUser?.id||myCoachId} embedded={true} authUser={authUser}/>}
             </div>
+            {activeTab==='admin'&&userRole==='admin'&&<AdminPanel authUser={authUser}/>}
           </div>
         </div>
 
@@ -4586,6 +4611,111 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
     );
   };
 
+  // ── ADMIN PANEL ─────────────────────────────────────────────────────────────
+  const AdminPanel = ({ authUser }) => {
+    const [users, setUsers] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [updating, setUpdating] = useState(null); // userId being updated
+    const [error, setError] = useState(null);
+
+    const fetchUsers = async () => {
+      setLoading(true); setError(null);
+      try {
+        const session = await _supabase.auth.getSession();
+        const token = session?.data?.session?.access_token;
+        const res = await fetch(
+          `${SUPABASE_URL}/rest/v1/profiles?select=id,email,full_name,role,avatar_url,created_at&order=created_at.asc`,
+          { headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': `Bearer ${token}` } }
+        );
+        if (res.ok) setUsers(await res.json());
+        else setError('Failed to load users.');
+      } catch(e) { setError(e.message); }
+      finally { setLoading(false); }
+    };
+
+    useEffect(() => { fetchUsers(); }, []);
+
+    const setRole = async (userId, newRole) => {
+      setUpdating(userId);
+      try {
+        const session = await _supabase.auth.getSession();
+        const token = session?.data?.session?.access_token;
+        const res = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${userId}`, {
+          method: 'PATCH',
+          headers: {
+            'apikey': SUPABASE_ANON_KEY,
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+            'Prefer': 'return=minimal'
+          },
+          body: JSON.stringify({ role: newRole })
+        });
+        if (res.ok) {
+          setUsers(prev => prev.map(u => u.id === userId ? {...u, role: newRole} : u));
+        } else { setError('Failed to update role.'); }
+      } catch(e) { setError(e.message); }
+      finally { setUpdating(null); }
+    };
+
+    const roleColors = { admin: '#f59e0b', coach: '#6366f1', advisor: '#10b981' };
+    const roleNext = { admin: 'advisor', coach: 'admin', advisor: 'coach' };
+    const roleNextLabel = { admin: 'Demote to Advisor', coach: 'Promote to Admin', advisor: 'Promote to Coach' };
+
+    return (
+      <div style={{ padding: '16px', maxWidth: '720px', margin: '0 auto', color: '#f8fafc' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
+          <div>
+            <h2 style={{ margin: 0, fontSize: '1.2rem', fontWeight: '800' }}>⚙️ Admin Panel</h2>
+            <p style={{ margin: '4px 0 0', fontSize: '0.8rem', color: '#64748b' }}>Manage user roles across the platform</p>
+          </div>
+          <button onClick={fetchUsers} style={{ background: '#1e293b', border: '1px solid #334155', borderRadius: '8px', padding: '7px 14px', color: '#94a3b8', cursor: 'pointer', fontSize: '12px' }}>
+            ↻ Refresh
+          </button>
+        </div>
+
+        {error && <div style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '10px', padding: '10px 14px', color: '#f87171', fontSize: '13px', marginBottom: '16px' }}>{error}</div>}
+
+        {loading ? (
+          <div style={{ textAlign: 'center', padding: '40px', color: '#64748b' }}>Loading users…</div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            {users.map(u => (
+              <div key={u.id} style={{ background: '#1e293b', border: '1px solid #334155', borderRadius: '12px', padding: '12px 16px', display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                {/* Avatar */}
+                <div style={{ width: '38px', height: '38px', borderRadius: '50%', background: 'linear-gradient(135deg,#6366f1,#8b5cf6)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '16px', fontWeight: '700', color: 'white', flexShrink: 0, overflow: 'hidden' }}>
+                  {u.avatar_url ? <img src={u.avatar_url} style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt=""/> : (u.full_name||u.email||'?')[0].toUpperCase()}
+                </div>
+                {/* Info */}
+                <div style={{ flex: 1, minWidth: '120px' }}>
+                  <div style={{ fontWeight: '600', fontSize: '0.9rem' }}>{u.full_name || '(no name)'}</div>
+                  <div style={{ fontSize: '0.75rem', color: '#64748b' }}>{u.email}</div>
+                </div>
+                {/* Role badge */}
+                <div style={{ padding: '4px 10px', borderRadius: '20px', fontSize: '11px', fontWeight: '700', background: `${roleColors[u.role]}22`, color: roleColors[u.role], border: `1px solid ${roleColors[u.role]}44`, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                  {u.role}
+                </div>
+                {/* Action button — don’t allow changing own role */}
+                {u.id !== authUser?.id && (
+                  <button
+                    onClick={() => setRole(u.id, roleNext[u.role])}
+                    disabled={updating === u.id}
+                    style={{ padding: '6px 12px', borderRadius: '8px', border: '1px solid #334155', background: '#0f172a', color: '#94a3b8', cursor: 'pointer', fontSize: '11px', fontWeight: '600', whiteSpace: 'nowrap' }}
+                  >
+                    {updating === u.id ? 'Saving…' : roleNextLabel[u.role]}
+                  </button>
+                )}
+                {u.id === authUser?.id && (
+                  <span style={{ fontSize: '11px', color: '#475569', fontStyle: 'italic' }}>You</span>
+                )}
+              </div>
+            ))}
+            {users.length === 0 && <div style={{ textAlign: 'center', padding: '40px', color: '#64748b' }}>No users found.</div>}
+          </div>
+        )}
+      </div>
+    );
+  };
+
   // ── COACH DASHBOARD (shown at ?coach=ID) ──────────────────────────────────
   // ── CoachMessageModal — top-level modal, completely isolated from advisor list ──
   const CoachMessageModal = ({ advisorId, advisorName, coachId, coachName, onClose }) => {
@@ -4669,7 +4799,7 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
         const res = await fetch('/.netlify/functions/invite-user', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email: inviteEmail.trim(), coachId, coachName }),
+          body: JSON.stringify({ email: inviteEmail.trim(), coachId }),
         });
         const data = await res.json();
         if (!res.ok || data.error) { setInviteError(data.error || 'Failed to send invite.'); setInviteStatus('error'); }
