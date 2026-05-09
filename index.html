@@ -387,14 +387,19 @@
     useEffect(() => {
       // Detect Supabase hash tokens in URL (magic link callback or password reset)
       const hash = window.location.hash;
+      const params = new URLSearchParams(window.location.search);
       if (hash && hash.includes('access_token')) {
-        // Supabase will process the token via onAuthStateChange
-        // Detect reset flow via query param
-        const params = new URLSearchParams(window.location.search);
+        // Auto-connect coach if invite link includes ?coach=ID
+        const coachIdFromInvite = params.get('coach');
+        const isInvite = params.get('invite') === '1';
+        if (coachIdFromInvite) {
+          localStorage.setItem('sea_coach_id', coachIdFromInvite);
+        }
+        // Detect reset flow
         if (params.get('reset') === '1' || hash.includes('type=recovery')) {
           setScreen('reset-password');
         } else {
-          // Magic link login — show set-password for new users
+          // Magic link login — show set-password (new users set password, existing users can skip)
           setScreen('set-password');
         }
         // Clean URL
@@ -4652,6 +4657,27 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
     const [inbox, setInbox] = useState([]);
     const [inboxLoading, setInboxLoading] = useState(false);
     const nameInputRef = useRef(null);
+    const [inviteEmail, setInviteEmail] = useState('');
+    const [inviteStatus, setInviteStatus] = useState(null); // null | 'sending' | 'sent' | 'error'
+    const [inviteError, setInviteError] = useState('');
+
+    const sendInvite = async (e) => {
+      e.preventDefault();
+      if (!inviteEmail.trim()) return;
+      setInviteStatus('sending'); setInviteError('');
+      try {
+        const res = await fetch('/.netlify/functions/invite-user', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: inviteEmail.trim(), coachId, coachName }),
+        });
+        const data = await res.json();
+        if (!res.ok || data.error) { setInviteError(data.error || 'Failed to send invite.'); setInviteStatus('error'); }
+        else { setInviteStatus('sent'); setInviteEmail(''); setTimeout(() => setInviteStatus(null), 4000); }
+      } catch(err) {
+        setInviteError('Something went wrong. Please try again.'); setInviteStatus('error');
+      }
+    };
 
     const fetchAdvisors = useCallback(async () => {
       setLoading(true); setError(null);
@@ -4748,17 +4774,35 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
           </div>
         )}
 
-        {/* Coach link banner */}
+        {/* Invite User panel */}
         {embedded && (
-          <div style={{background:'rgba(99,102,241,0.08)',padding:'10px 16px',borderRadius:'12px',marginBottom:'16px',border:'1px solid rgba(99,102,241,0.2)',display:'flex',alignItems:'center',justifyContent:'space-between',flexWrap:'wrap',gap:'8px'}}>
-            <span style={{fontSize:'12px',color:'#64748b'}}>📎 Share your coach link with advisors</span>
-            <button onClick={copyCoachLink} style={{background:coachLinkCopied?'#10b981':'#6366f1',color:'white',border:'none',borderRadius:'8px',padding:'7px 16px',cursor:'pointer',fontSize:'12px',fontWeight:'700',transition:'background 0.2s'}}>{coachLinkCopied?'✓ Copied!':'📋 Copy Coach Link'}</button>
+          <div style={{background:'rgba(99,102,241,0.08)',padding:'14px 16px',borderRadius:'12px',marginBottom:'16px',border:'1px solid rgba(99,102,241,0.2)'}}>
+            <div style={{fontSize:'12px',color:'#94a3b8',marginBottom:'8px',fontWeight:'600'}}>✉️ Invite a client</div>
+            <form onSubmit={sendInvite} style={{display:'flex',gap:'8px',flexWrap:'wrap'}}>
+              <input type="email" placeholder="client@email.com" value={inviteEmail} onChange={e=>setInviteEmail(e.target.value)} required
+                style={{flex:1,minWidth:'180px',padding:'8px 12px',borderRadius:'8px',border:'1px solid rgba(99,102,241,0.3)',background:'rgba(15,18,41,0.8)',color:'#f8fafc',fontSize:'13px',outline:'none'}}/>
+              <button type="submit" disabled={inviteStatus==='sending'}
+                style={{padding:'8px 16px',borderRadius:'8px',background:inviteStatus==='sent'?'#10b981':'#6366f1',color:'white',border:'none',cursor:'pointer',fontSize:'12px',fontWeight:'700',whiteSpace:'nowrap'}}>
+                {inviteStatus==='sending'?'Sending…':inviteStatus==='sent'?'✓ Invite Sent!':'Send Invite'}
+              </button>
+            </form>
+            {inviteStatus==='error' && <p style={{color:'#f87171',fontSize:'11px',margin:'6px 0 0'}}>{inviteError}</p>}
           </div>
         )}
         {!embedded && (
-          <div style={{background:'#151d2e',padding:'10px 20px',borderBottom:'1px solid #1e293b',display:'flex',alignItems:'center',justifyContent:'space-between',flexWrap:'wrap',gap:'8px'}}>
-            <span style={{fontSize:'12px',color:'#64748b'}}>📎 Share your coach link with advisors</span>
-            <button onClick={copyCoachLink} style={{background:coachLinkCopied?'#10b981':'#6366f1',color:'white',border:'none',borderRadius:'8px',padding:'7px 16px',cursor:'pointer',fontSize:'12px',fontWeight:'700',transition:'background 0.2s'}}>{coachLinkCopied?'✓ Copied!':'📋 Copy Coach Link'}</button>
+          <div style={{background:'#151d2e',padding:'12px 20px',borderBottom:'1px solid #1e293b'}}>
+            <div style={{maxWidth:'720px',margin:'0 auto'}}>
+              <div style={{fontSize:'12px',color:'#94a3b8',marginBottom:'8px',fontWeight:'600'}}>✉️ Invite a client to the S.E.A. Dashboard</div>
+              <form onSubmit={sendInvite} style={{display:'flex',gap:'8px',flexWrap:'wrap'}}>
+                <input type="email" placeholder="client@email.com" value={inviteEmail} onChange={e=>setInviteEmail(e.target.value)} required
+                  style={{flex:1,minWidth:'200px',padding:'8px 12px',borderRadius:'8px',border:'1px solid #334155',background:'#0f172a',color:'#f8fafc',fontSize:'13px',outline:'none'}}/>
+                <button type="submit" disabled={inviteStatus==='sending'}
+                  style={{padding:'8px 18px',borderRadius:'8px',background:inviteStatus==='sent'?'#10b981':'#6366f1',color:'white',border:'none',cursor:'pointer',fontSize:'13px',fontWeight:'700',whiteSpace:'nowrap'}}>
+                  {inviteStatus==='sending'?'Sending…':inviteStatus==='sent'?'✓ Invite Sent!':'Send Invite'}
+                </button>
+              </form>
+              {inviteStatus==='error' && <p style={{color:'#f87171',fontSize:'11px',margin:'6px 0 0'}}>{inviteError}</p>}
+            </div>
           </div>
         )}
 
