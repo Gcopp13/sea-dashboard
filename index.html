@@ -112,119 +112,310 @@
   const COACH_API = '/.netlify/functions/coach';
 
   // ── Auth: Login Screen ─────────────────────────────────────────────────────
-  const LoginScreen = () => {
-    const [email, setEmail] = useState('');
-    const [status, setStatus] = useState(null); // null | 'sent' | 'error'
+  // ── Shared auth styles ──────────────────────────────────────────────────
+  const authInputStyle = {
+    width: '100%', boxSizing: 'border-box',
+    background: 'rgba(15,18,41,0.8)',
+    border: '1px solid rgba(71,85,105,0.8)',
+    borderRadius: '12px', padding: '14px 16px',
+    color: '#fff', fontSize: '16px',
+    outline: 'none', marginBottom: '14px',
+  };
+  const authBtnStyle = (loading) => ({
+    width: '100%', padding: '14px',
+    background: loading ? '#334155' : 'linear-gradient(135deg,#3b82f6,#8b5cf6)',
+    border: 'none', borderRadius: '12px',
+    color: '#fff', fontSize: '1rem', fontWeight: '700',
+    cursor: loading ? 'not-allowed' : 'pointer',
+  });
+  const AuthCard = ({ children }) => (
+    <div style={{
+      minHeight: '100vh', background: '#0f1229',
+      display: 'flex', flexDirection: 'column',
+      alignItems: 'center', justifyContent: 'center',
+      padding: '24px', fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+    }}>
+      <div style={{ textAlign: 'center', marginBottom: '32px' }}>
+        <div style={{ fontSize: '48px', marginBottom: '12px' }}>🌊</div>
+        <h1 style={{
+          fontSize: '2rem', fontWeight: '900', margin: '0 0 6px',
+          background: 'linear-gradient(135deg,#60a5fa,#a78bfa)',
+          WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent'
+        }}>S.E.A. Dashboard</h1>
+        <p style={{ color: '#94a3b8', fontSize: '0.85rem', margin: 0, fontStyle: 'italic' }}>Live By Design, Not By Default</p>
+      </div>
+      <div style={{
+        width: '100%', maxWidth: '400px',
+        background: 'rgba(30,41,59,0.8)',
+        border: '1px solid rgba(51,65,85,0.8)',
+        borderRadius: '24px', padding: '32px'
+      }}>{children}</div>
+      <p style={{ color: '#475569', fontSize: '0.75rem', marginTop: '20px', textAlign: 'center' }}>
+        By signing in, you agree to our terms of service.
+      </p>
+    </div>
+  );
+
+  // ── Login Screen — email + password ─────────────────────────────────────
+  const LoginScreen = ({ onShowForgot, onShowMagicLink }) => {
+    const [email, setEmail]       = useState('');
+    const [password, setPassword] = useState('');
+    const [errorMsg, setErrorMsg] = useState('');
+    const [loading, setLoading]   = useState(false);
+
+    const handleLogin = async (e) => {
+      e.preventDefault();
+      if (!email.trim() || !password) return;
+      setLoading(true); setErrorMsg('');
+      try {
+        const { error } = await _supabase.auth.signInWithPassword({
+          email: email.trim(), password
+        });
+        if (error) setErrorMsg(error.message);
+        // on success onAuthStateChange fires automatically
+      } catch(err) {
+        setErrorMsg('Something went wrong. Please try again.');
+      } finally { setLoading(false); }
+    };
+
+    return (
+      <AuthCard>
+        <h2 style={{ color: '#fff', fontSize: '1.2rem', fontWeight: '700', margin: '0 0 6px' }}>Welcome back</h2>
+        <p style={{ color: '#94a3b8', fontSize: '0.85rem', margin: '0 0 22px' }}>Sign in to your account</p>
+        <form onSubmit={handleLogin}>
+          <input type="email" placeholder="Email address" value={email}
+            onChange={e => setEmail(e.target.value)} required style={authInputStyle}/>
+          <input type="password" placeholder="Password" value={password}
+            onChange={e => setPassword(e.target.value)} required style={authInputStyle}/>
+          {errorMsg && <p style={{ color: '#f87171', fontSize: '0.82rem', margin: '-6px 0 10px' }}>{errorMsg}</p>}
+          <button type="submit" disabled={loading} style={authBtnStyle(loading)}>
+            {loading ? 'Signing in…' : 'Sign In'}
+          </button>
+        </form>
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '16px' }}>
+          <button onClick={onShowForgot}
+            style={{ background: 'none', border: 'none', color: '#60a5fa', fontSize: '0.82rem', cursor: 'pointer', padding: 0 }}>
+            Forgot password?
+          </button>
+          <button onClick={onShowMagicLink}
+            style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: '0.82rem', cursor: 'pointer', padding: 0 }}>
+            New user? Sign up →
+          </button>
+        </div>
+      </AuthCard>
+    );
+  };
+
+  // ── Magic Link Screen — for new users / sign up ──────────────────────────
+  const MagicLinkScreen = ({ onBack }) => {
+    const [email, setEmail]     = useState('');
+    const [status, setStatus]   = useState(null);
     const [errorMsg, setErrorMsg] = useState('');
     const [loading, setLoading] = useState(false);
 
     const handleSubmit = async (e) => {
       e.preventDefault();
       if (!email.trim()) return;
-      setLoading(true);
-      setStatus(null);
+      setLoading(true); setStatus(null);
       try {
         const { error } = await _supabase.auth.signInWithOtp({
           email: email.trim(),
           options: { emailRedirectTo: window.location.origin }
         });
         if (error) { setErrorMsg(error.message); setStatus('error'); }
-        else { setStatus('sent'); }
-      } catch(e) {
+        else setStatus('sent');
+      } catch(err) {
         setErrorMsg('Something went wrong. Please try again.');
         setStatus('error');
-      } finally {
+      } finally { setLoading(false); }
+    };
+
+    return (
+      <AuthCard>
+        <button onClick={onBack}
+          style={{ background: 'none', border: 'none', color: '#60a5fa', fontSize: '0.85rem', cursor: 'pointer', padding: '0 0 16px', display: 'block' }}>
+          ← Back to sign in
+        </button>
+        <h2 style={{ color: '#fff', fontSize: '1.2rem', fontWeight: '700', margin: '0 0 6px' }}>Create your account</h2>
+        <p style={{ color: '#94a3b8', fontSize: '0.85rem', margin: '0 0 22px', lineHeight: 1.5 }}>
+          Enter your email and we'll send you a link to get started. You'll set a password after your first login.
+        </p>
+        {status === 'sent' ? (
+          <div style={{ background: 'rgba(16,185,129,0.12)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: '12px', padding: '16px', textAlign: 'center', color: '#34d399' }}>
+            <div style={{ fontSize: '24px', marginBottom: '8px' }}>✉️</div>
+            <p style={{ fontWeight: '700', margin: '0 0 4px' }}>Check your email!</p>
+            <p style={{ fontSize: '0.8rem', margin: 0, color: '#6ee7b7' }}>We sent a link to <strong>{email}</strong></p>
+          </div>
+        ) : (
+          <form onSubmit={handleSubmit}>
+            <input type="email" placeholder="your@email.com" value={email}
+              onChange={e => setEmail(e.target.value)} required style={authInputStyle}/>
+            {status === 'error' && <p style={{ color: '#f87171', fontSize: '0.82rem', margin: '-6px 0 10px' }}>{errorMsg}</p>}
+            <button type="submit" disabled={loading} style={authBtnStyle(loading)}>
+              {loading ? 'Sending…' : 'Send Sign-Up Link'}
+            </button>
+          </form>
+        )}
+      </AuthCard>
+    );
+  };
+
+  // ── Forgot Password Screen ────────────────────────────────────────────────
+  const ForgotPasswordScreen = ({ onBack }) => {
+    const [email, setEmail]     = useState('');
+    const [status, setStatus]   = useState(null);
+    const [errorMsg, setErrorMsg] = useState('');
+    const [loading, setLoading] = useState(false);
+
+    const handleSubmit = async (e) => {
+      e.preventDefault();
+      if (!email.trim()) return;
+      setLoading(true); setStatus(null);
+      try {
+        const { error } = await _supabase.auth.resetPasswordForEmail(email.trim(), {
+          redirectTo: window.location.origin + '?reset=1'
+        });
+        if (error) { setErrorMsg(error.message); setStatus('error'); }
+        else setStatus('sent');
+      } catch(err) {
+        setErrorMsg('Something went wrong. Please try again.');
+        setStatus('error');
+      } finally { setLoading(false); }
+    };
+
+    return (
+      <AuthCard>
+        <button onClick={onBack}
+          style={{ background: 'none', border: 'none', color: '#60a5fa', fontSize: '0.85rem', cursor: 'pointer', padding: '0 0 16px', display: 'block' }}>
+          ← Back to sign in
+        </button>
+        <h2 style={{ color: '#fff', fontSize: '1.2rem', fontWeight: '700', margin: '0 0 6px' }}>Reset your password</h2>
+        <p style={{ color: '#94a3b8', fontSize: '0.85rem', margin: '0 0 22px' }}>Enter your email and we'll send a reset link.</p>
+        {status === 'sent' ? (
+          <div style={{ background: 'rgba(16,185,129,0.12)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: '12px', padding: '16px', textAlign: 'center', color: '#34d399' }}>
+            <div style={{ fontSize: '24px', marginBottom: '8px' }}>✉️</div>
+            <p style={{ fontWeight: '700', margin: '0 0 4px' }}>Check your email!</p>
+            <p style={{ fontSize: '0.8rem', margin: 0, color: '#6ee7b7' }}>We sent a reset link to <strong>{email}</strong></p>
+          </div>
+        ) : (
+          <form onSubmit={handleSubmit}>
+            <input type="email" placeholder="your@email.com" value={email}
+              onChange={e => setEmail(e.target.value)} required style={authInputStyle}/>
+            {status === 'error' && <p style={{ color: '#f87171', fontSize: '0.82rem', margin: '-6px 0 10px' }}>{errorMsg}</p>}
+            <button type="submit" disabled={loading} style={authBtnStyle(loading)}>
+              {loading ? 'Sending…' : 'Send Reset Link'}
+            </button>
+          </form>
+        )}
+      </AuthCard>
+    );
+  };
+
+  // ── Set Password Screen — shown after magic link / reset ─────────────────
+  const SetPasswordScreen = ({ isReset = false, onDone }) => {
+    const [password, setPassword]     = useState('');
+    const [confirm, setConfirm]       = useState('');
+    const [errorMsg, setErrorMsg]     = useState('');
+    const [loading, setLoading]       = useState(false);
+    const [success, setSuccess]       = useState(false);
+
+    const handleSubmit = async (e) => {
+      e.preventDefault();
+      if (password.length < 8) { setErrorMsg('Password must be at least 8 characters.'); return; }
+      if (password !== confirm) { setErrorMsg('Passwords do not match.'); return; }
+      setLoading(true); setErrorMsg('');
+      try {
+        const { error } = await _supabase.auth.updateUser({ password });
+        if (error) { setErrorMsg(error.message); setLoading(false); return; }
+        setSuccess(true);
+        // Fire welcome email for new users (not resets)
+        if (!isReset) {
+          try {
+            const { data: { user } } = await _supabase.auth.getUser();
+            if (user) {
+              fetch('/.netlify/functions/welcome-email', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email: user.email, name: user.user_metadata?.full_name || user.email.split('@')[0] })
+              }).catch(() => {});
+            }
+          } catch(err) { /* welcome email failure is non-fatal */ }
+        }
+        setTimeout(() => { if (onDone) onDone(); }, 1500);
+      } catch(err) {
+        setErrorMsg('Something went wrong. Please try again.');
         setLoading(false);
       }
     };
 
     return (
-      <div style={{
-        minHeight: '100vh', background: '#0f1229',
-        display: 'flex', flexDirection: 'column',
-        alignItems: 'center', justifyContent: 'center',
-        padding: '24px', fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
-      }}>
-        {/* Logo */}
-        <div style={{ textAlign: 'center', marginBottom: '40px' }}>
-          <div style={{ fontSize: '56px', marginBottom: '16px' }}>🌊</div>
-          <h1 style={{
-            fontSize: '2rem', fontWeight: '900', margin: '0 0 8px',
-            background: 'linear-gradient(135deg,#60a5fa,#a78bfa)',
-            WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent'
-          }}>S.E.A. Dashboard</h1>
-          <p style={{ color: '#94a3b8', fontSize: '0.9rem', margin: 0, fontStyle: 'italic' }}>
-            Live By Design, Not By Default
-          </p>
-        </div>
-
-        {/* Card */}
-        <div style={{
-          width: '100%', maxWidth: '400px',
-          background: 'rgba(30,41,59,0.8)',
-          border: '1px solid rgba(51,65,85,0.8)',
-          borderRadius: '24px', padding: '32px'
-        }}>
-          <h2 style={{ color: '#fff', fontSize: '1.2rem', fontWeight: '700', margin: '0 0 8px' }}>
-            Sign in to your account
-          </h2>
-          <p style={{ color: '#94a3b8', fontSize: '0.85rem', margin: '0 0 24px', lineHeight: '1.5' }}>
-            Enter your email and we&#39;ll send you a magic link — no password needed.
-          </p>
-
-          {status === 'sent' ? (
-            <div style={{
-              background: 'rgba(16,185,129,0.12)', border: '1px solid rgba(16,185,129,0.3)',
-              borderRadius: '12px', padding: '16px', textAlign: 'center', color: '#34d399'
-            }}>
-              <div style={{ fontSize: '24px', marginBottom: '8px' }}>✉️</div>
-              <p style={{ fontWeight: '700', margin: '0 0 4px' }}>Check your email!</p>
-              <p style={{ fontSize: '0.8rem', margin: 0, color: '#6ee7b7' }}>We sent a magic link to <strong>{email}</strong></p>
-            </div>
-          ) : (
-            <form onSubmit={handleSubmit}>
-              <input
-                type="email"
-                placeholder="you@example.com"
-                value={email}
-                onChange={e => setEmail(e.target.value)}
-                required
-                style={{
-                  width: '100%', boxSizing: 'border-box',
-                  background: 'rgba(15,18,41,0.8)',
-                  border: '1px solid rgba(71,85,105,0.8)',
-                  borderRadius: '12px', padding: '14px 16px',
-                  color: '#fff', fontSize: '16px',
-                  outline: 'none', marginBottom: '16px',
-                  transition: 'border-color 0.2s'
-                }}
-              />
-              {status === 'error' && (
-                <p style={{ color: '#f87171', fontSize: '0.82rem', margin: '-8px 0 12px' }}>{errorMsg}</p>
-              )}
-              <button
-                type="submit"
-                disabled={loading}
-                style={{
-                  width: '100%', padding: '14px',
-                  background: loading ? '#334155' : 'linear-gradient(135deg,#3b82f6,#8b5cf6)',
-                  border: 'none', borderRadius: '12px',
-                  color: '#fff', fontSize: '1rem', fontWeight: '700',
-                  cursor: loading ? 'not-allowed' : 'pointer',
-                  transition: 'opacity 0.2s'
-                }}
-              >
-                {loading ? 'Sending…' : 'Send Magic Link'}
-              </button>
-            </form>
-          )}
-        </div>
-
-        <p style={{ color: '#475569', fontSize: '0.75rem', marginTop: '24px', textAlign: 'center' }}>
-          By signing in, you agree to our terms of service.
+      <AuthCard>
+        <h2 style={{ color: '#fff', fontSize: '1.2rem', fontWeight: '700', margin: '0 0 6px' }}>
+          {isReset ? 'Set a new password' : 'Create your password'}
+        </h2>
+        <p style={{ color: '#94a3b8', fontSize: '0.85rem', margin: '0 0 22px', lineHeight: 1.5 }}>
+          {isReset
+            ? 'Choose a new password for your account.'
+            : 'Set a password so you can sign in easily next time.'}
         </p>
-      </div>
+        {success ? (
+          <div style={{ background: 'rgba(16,185,129,0.12)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: '12px', padding: '16px', textAlign: 'center', color: '#34d399' }}>
+            <div style={{ fontSize: '24px', marginBottom: '8px' }}>✅</div>
+            <p style={{ fontWeight: '700', margin: 0 }}>Password set! Taking you in…</p>
+          </div>
+        ) : (
+          <form onSubmit={handleSubmit}>
+            <input type="password" placeholder="New password (min 8 chars)" value={password}
+              onChange={e => setPassword(e.target.value)} required style={authInputStyle}/>
+            <input type="password" placeholder="Confirm password" value={confirm}
+              onChange={e => setConfirm(e.target.value)} required style={authInputStyle}/>
+            {errorMsg && <p style={{ color: '#f87171', fontSize: '0.82rem', margin: '-6px 0 10px' }}>{errorMsg}</p>}
+            <button type="submit" disabled={loading} style={authBtnStyle(loading)}>
+              {loading ? 'Saving…' : isReset ? 'Set New Password' : 'Set Password & Enter Dashboard'}
+            </button>
+          </form>
+        )}
+      </AuthCard>
     );
+  };
+
+  // ── Auth Router — handles all auth states + URL tokens ───────────────────
+  const AuthRouter = () => {
+    // screen: 'login' | 'magic' | 'forgot' | 'set-password' | 'reset-password'
+    const [screen, setScreen] = useState('login');
+
+    useEffect(() => {
+      // Detect Supabase hash tokens in URL (magic link callback or password reset)
+      const hash = window.location.hash;
+      if (hash && hash.includes('access_token')) {
+        // Supabase will process the token via onAuthStateChange
+        // Detect reset flow via query param
+        const params = new URLSearchParams(window.location.search);
+        if (params.get('reset') === '1' || hash.includes('type=recovery')) {
+          setScreen('reset-password');
+        } else {
+          // Magic link login — show set-password for new users
+          setScreen('set-password');
+        }
+        // Clean URL
+        window.history.replaceState({}, '', window.location.pathname);
+      }
+      // Also listen for onAuthStateChange events
+      const { data: { subscription } } = _supabase.auth.onAuthStateChange((event) => {
+        if (event === 'PASSWORD_RECOVERY') setScreen('reset-password');
+        if (event === 'SIGNED_IN') {
+          // If we're on set-password or reset-password, stay there
+          // Otherwise AppRoot will handle routing
+        }
+      });
+      return () => subscription.unsubscribe();
+    }, []);
+
+    if (screen === 'magic')          return <MagicLinkScreen onBack={() => setScreen('login')} />;
+    if (screen === 'forgot')         return <ForgotPasswordScreen onBack={() => setScreen('login')} />;
+    if (screen === 'set-password')   return <SetPasswordScreen isReset={false} onDone={() => setScreen('login')} />;
+    if (screen === 'reset-password') return <SetPasswordScreen isReset={true}  onDone={() => setScreen('login')} />;
+    return <LoginScreen onShowForgot={() => setScreen('forgot')} onShowMagicLink={() => setScreen('magic')} />;
   };
 
   const getOrCreateAdvisorId = () => {
@@ -5084,7 +5275,7 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
     }
 
     if (authLoading) return React.createElement('div', { style: { display:'flex', alignItems:'center', justifyContent:'center', height:'100vh', background:'#0f1229', color:'white', fontSize:'1.2rem' } }, 'Loading...');
-    if (!authUser) return React.createElement(LoginScreen, null);
+    if (!authUser) return React.createElement(AuthRouter, null);
     return React.createElement(AuthenticatedApp, { authUser, setAuthUser });
   };
 
