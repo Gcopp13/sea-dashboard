@@ -272,10 +272,13 @@
       if (!email.trim()) return;
       setLoading(true); setStatus(null);
       try {
-        const { error } = await _supabase.auth.resetPasswordForEmail(email.trim(), {
-          redirectTo: window.location.origin + '?reset=1'
+        const res = await fetch('/.netlify/functions/reset-password', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: email.trim() }),
         });
-        if (error) { setErrorMsg(error.message); setStatus('error'); }
+        const data = await res.json();
+        if (!res.ok || data.error) { setErrorMsg(data.error || 'Something went wrong.'); setStatus('error'); }
         else setStatus('sent');
       } catch(err) {
         setErrorMsg('Something went wrong. Please try again.');
