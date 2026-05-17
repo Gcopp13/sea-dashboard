@@ -37,15 +37,68 @@ function buildSummaryData(plannerData) {
   const weeks = Array.isArray(data.weeks) ? data.weeks : [];
   const recentWeek = weeks.find((w) => w && (w.wins?.some((x) => x?.trim()) || w.focus?.trim())) || null;
 
-  // Compute S.E.A. score from most recent week if available
+  // Compute S.E.A. score using the same logic as calcSEAScore in the app
   let seaScore = null;
   if (recentWeek) {
-    const checkIns = Array.isArray(recentWeek.checkIns) ? recentWeek.checkIns : [];
-    const completed = checkIns.filter((c) => c?.completed).length;
-    const total = checkIns.length;
-    if (total > 0) {
-      seaScore = Math.round((completed / total) * 100);
+    // 1. Habit completion (30pts) — respects targetDays per habit
+    const acts = (recentWeek.aActivities || []).filter(a => a?.name?.trim());
+    const habitPct = acts.length > 0
+      ? acts.reduce((s, a) => {
+          const target = Math.min(Math.max(parseInt(a.targetDays) || 7, 1), 7);
+          const done = (a.days || []).filter(Boolean).length;
+          return s + Math.min(done / target, 1);
+        }, 0) / acts.length
+      : 0;
+    const habitScore = habitPct * 30;
+
+    // 2. Anvil (25pts) — period-based
+    const anvilLog2 = Array.isArray(data.anvilProject?.log) ? data.anvilProject.log : [];
+    const freqCount = Math.max(1, parseInt(data.anvilProject?.freqCount) || 1);
+    const freqPeriod = data.anvilProject?.freqPeriod || 'week';
+    const now = new Date(); now.setHours(0, 0, 0, 0);
+    const getPeriodStart = (stepsBack) => {
+      const d = new Date(now);
+      if (freqPeriod === 'week') {
+        d.setDate(d.getDate() - ((d.getDay() + 6) % 7) - stepsBack * 7);
+      } else if (freqPeriod === 'biweekly') {
+        d.setDate(d.getDate() - ((d.getDay() + 6) % 7) - stepsBack * 14);
+      } else {
+        return new Date(d.getFullYear(), d.getMonth() - stepsBack, 1);
+      }
+      return d;
+    };
+    const curStart = getPeriodStart(0);
+    const curEnd = new Date(); curEnd.setHours(23, 59, 59, 999);
+    const logsThisPeriod = anvilLog2.filter(e => { const d = new Date(e.date); return d >= curStart && d <= curEnd; }).length;
+    const hitCurrent = logsThisPeriod >= freqCount;
+    let anvilStreak2 = hitCurrent ? 1 : 0;
+    if (hitCurrent) {
+      for (let i = 1; i <= 52; i++) {
+        const s = getPeriodStart(i);
+        const ePrev = new Date(getPeriodStart(i - 1)); ePrev.setDate(ePrev.getDate() - 1); ePrev.setHours(23,59,59,999);
+        const cnt = anvilLog2.filter(e => { const d = new Date(e.date); return d >= s && d <= ePrev; }).length;
+        if (cnt >= freqCount) anvilStreak2++; else break;
+      }
     }
+    const anvilScore = hitCurrent ? 25 : Math.min(anvilStreak2 / 4, 1) * 25;
+
+    // 3. Wheel (20pts)
+    const w = recentWeek.wheelOfJohn || { family: 5, fun: 5, fitness: 5, finance: 5, faith: 5 };
+    const wheelAvg = Object.values(w).reduce((a, b) => a + (b || 5), 0) / 5;
+    const wheelScore = (wheelAvg / 10) * 20;
+
+    // 4. Weekly ritual (15pts)
+    const ritualDone = recentWeek.wins?.some(x => x?.trim()) &&
+      recentWeek.focus?.trim() &&
+      recentWeek.goalPriorities?.some(x => x?.trim());
+    const ritualScore = ritualDone ? 15 : 0;
+
+    // 5. Goals (10pts)
+    const goals2 = (data.goals || []).filter(g => g?.title?.trim());
+    const goalAvg = goals2.length > 0 ? goals2.reduce((s, g) => s + (g.completion || 0), 0) / goals2.length : 0;
+    const goalScore = (goalAvg / 100) * 10;
+
+    seaScore = Math.round(habitScore + anvilScore + wheelScore + ritualScore + goalScore);
   }
 
   // Wins
@@ -93,7 +146,7 @@ function buildEmailHtml(name, summary) {
   const { seaScore, wins, anvilStreak, anvilProject, slightEdge, goals, weekFocus, yearTheme } = summary;
 
   const scoreColor = seaScore === null ? '#94a3b8' : seaScore >= 80 ? '#22c55e' : seaScore >= 60 ? '#eab308' : '#ef4444';
-  const scoreDisplay = seaScore !== null ? `${seaScore}%` : 'Not yet calculated';
+  const scoreDisplay = seaScore !== null ? `${seaScore} / 100` : 'Not yet calculated';
 
   const winsHtml =
     wins.length > 0
