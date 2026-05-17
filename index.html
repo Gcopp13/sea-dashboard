@@ -11,6 +11,7 @@
     const SUPABASE_URL = 'https://vilsfabrovxwgdrhkvso.supabase.co';
     const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZpbHNmYWJyb3Z4d2dkcmhrdnNvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQxMjIxMjgsImV4cCI6MjA4OTY5ODEyOH0.3GGxaTgxZHxn_hFOcwNyBs9XxridjeWEdM3a5lRPomU';
     const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    window._supabase = _supabase; // expose for push notification component
   </script>
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
