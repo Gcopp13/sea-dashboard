@@ -2030,6 +2030,9 @@ Message should be 1-2 sentences, direct, specific to their data. No generic fluf
                 rows={3}
                 className="w-full bg-slate-800/60 border border-purple-500/20 rounded-xl p-3 text-white placeholder-slate-500 text-sm resize-none focus:border-purple-500 focus:outline-none"
               />
+              <button onClick={()=>setActiveTab('journal')} className="mt-2 flex items-center gap-1.5 text-xs text-purple-400 hover:text-purple-300 transition-colors">
+                <span>📓</span><span>View Journal history →</span>
+              </button>
             </Section>
           );
         })()}
@@ -2979,7 +2982,7 @@ Message should be 1-2 sentences, direct, specific to their data. No generic fluf
     );
   };
 
-  const MoreView = ({ data, updateField, saveData, openCoach, personality, setPersonality, onReopenOnboarding, onMilestone, weekNum, setWeekNum, onSignOut, onMetaChange }) => {
+  const MoreView = ({ data, updateField, saveData, openCoach, personality, setPersonality, onReopenOnboarding, onMilestone, weekNum, setWeekNum, onSignOut, onMetaChange, setActiveTab }) => {
     const [section, setSection] = useState(null);
     const [newNote, setNewNote] = useState('');
     const [noteTitle, setNoteTitle] = useState('');
@@ -3080,6 +3083,14 @@ Message should be 1-2 sentences, direct, specific to their data. No generic fluf
         {/* DO — things used regularly */}
         <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-2 px-1">Do</p>
         <div className="space-y-2 mb-5">
+          <button onClick={()=>setActiveTab('journal')} className="w-full flex items-center gap-4 p-4 bg-slate-800/60 rounded-2xl border border-slate-700 hover:border-slate-600 transition-all text-left">
+            <span className="text-3xl">📓</span>
+            <div className="flex-1">
+              <p className="font-semibold text-white">Journal</p>
+              <p className="text-xs text-slate-400 mt-0.5">Notes, reflections & daily entries</p>
+            </div>
+            <ChevRight/>
+          </button>
           <button onClick={()=>setSection('weekly')} className="w-full flex items-center gap-4 p-4 bg-slate-800/60 rounded-2xl border border-slate-700 hover:border-slate-600 transition-all text-left">
             <span className="text-3xl">📋</span>
             <div className="flex-1">
@@ -4131,7 +4142,7 @@ Message should be 1-2 sentences, direct, specific to their data. No generic fluf
             {activeTab==='score'&&<ScoreView data={data} updateField={updateField} weekNum={weekNum} setWeekNum={setWeekNum} setActiveTab={setActiveTab} openCoach={openCoach} onPrint={printTab} onMilestone={setMilestone} setShowResetModal={setShowResetModal}/>}
             {activeTab==='aicoach'&&<AICoachTab plannerData={data} authUserId={authUser?.id} personality={coachPersonality} conversations={conversations} onConversationsChange={setConversations}/>}
             {activeTab==='journal'&&<JournalView data={data} updateField={updateField}/>}
-            {activeTab==='more'&&<MoreView data={data} updateField={updateField} saveData={saveData} openCoach={openCoach} personality={coachPersonality} setPersonality={setCoachPersonality} onReopenOnboarding={onReopenOnboarding} onMilestone={setMilestone} weekNum={weekNum} setWeekNum={setWeekNum} onSignOut={async()=>{await _supabase.auth.signOut();setAuthUser(null);}} onMetaChange={()=>{ if(authUser) savePlannerDataToCloud(authUser.id, data); }}/>}
+            {activeTab==='more'&&<MoreView data={data} updateField={updateField} saveData={saveData} openCoach={openCoach} personality={coachPersonality} setPersonality={setCoachPersonality} onReopenOnboarding={onReopenOnboarding} onMilestone={setMilestone} weekNum={weekNum} setWeekNum={setWeekNum} onSignOut={async()=>{await _supabase.auth.signOut();setAuthUser(null);}} onMetaChange={()=>{ if(authUser) savePlannerDataToCloud(authUser.id, data); }} setActiveTab={setActiveTab}/>}
             <div style={{display:activeTab==='coach'&&isCoachOrAdmin?'block':'none'}}>
               {isCoachOrAdmin&&<CoachDashboard coachId={authUser?.id||myCoachId} embedded={true} authUser={authUser}/>}
             </div>
