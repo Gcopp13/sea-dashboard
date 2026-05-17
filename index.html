@@ -2609,7 +2609,38 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
   };
 
   // ── SCORE VIEW ─────────────────────────────────────────────────────────────
+  const ScoreInfoModal = ({ onClose }) => (
+    <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.7)',zIndex:9999,display:'flex',alignItems:'center',justifyContent:'center',padding:'20px'}} onClick={onClose}>
+      <div style={{background:'#1e293b',borderRadius:'20px',padding:'28px',maxWidth:'420px',width:'100%',border:'1px solid #334155'}} onClick={e=>e.stopPropagation()}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'20px'}}>
+          <h2 style={{color:'#f8fafc',fontSize:'1.1rem',fontWeight:'800',margin:0}}>How Your Score is Calculated</h2>
+          <button onClick={onClose} style={{background:'none',border:'none',color:'#64748b',fontSize:'1.4rem',cursor:'pointer',lineHeight:1}}>✕</button>
+        </div>
+        <div style={{display:'flex',flexDirection:'column',gap:'14px'}}>
+          {[{color:'#f59e0b',pts:'30 pts',title:'Habit Completion',desc:'Based on how consistently you hit your weekly habits. Each habit is scored against its own target (e.g. 3x/week). Hit your target = 100% for that habit. All habits are averaged together.'},
+            {color:'#f97316',pts:'25 pts',title:'Anvil Streak',desc:'Tracks your consecutive days of logging Anvil activity. A 30-day streak = full points. Shorter streaks score proportionally.'},
+            {color:'#8b5cf6',pts:'20 pts',title:'Wheel of John',desc:'The average of your 5 Wheel of John scores (Family, Fun, Fitness, Finance, Faith), scaled from 1–10. A perfect 10 across all = full points.'},
+            {color:'#3b82f6',pts:'15 pts',title:'Weekly Ritual',desc:'Did you complete your weekly planning ritual? This means filling in your wins, setting your weekly focus, and listing your goal priorities.'},
+            {color:'#10b981',pts:'10 pts',title:'Goal Progress',desc:'The average completion % across all your active goals. 100% average = full points.'},
+          ].map(({color,pts,title,desc})=>(
+            <div key={title} style={{display:'flex',gap:'12px',alignItems:'flex-start'}}>
+              <div style={{background:color,borderRadius:'8px',padding:'4px 8px',fontSize:'11px',fontWeight:'800',color:'white',whiteSpace:'nowrap',flexShrink:0}}>{pts}</div>
+              <div>
+                <div style={{color:'#f1f5f9',fontSize:'13px',fontWeight:'700',marginBottom:'2px'}}>{title}</div>
+                <div style={{color:'#94a3b8',fontSize:'12px',lineHeight:'1.5'}}>{desc}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+        <div style={{marginTop:'20px',padding:'12px',background:'rgba(99,102,241,0.1)',borderRadius:'12px',border:'1px solid rgba(99,102,241,0.2)'}}>
+          <p style={{color:'#a5b4fc',fontSize:'12px',margin:0,textAlign:'center'}}>Maximum score: <strong>100 pts</strong> — scores reset each week. Focus on consistent execution, not perfection.</p>
+        </div>
+      </div>
+    </div>
+  );
+
   const ScoreView = ({ data, updateField, weekNum, setWeekNum, setActiveTab, openCoach, onPrint, onMilestone, setShowResetModal }) => {
+    const [showScoreInfo, setShowScoreInfo] = useState(false);
     const score = calcSEAScore(data, weekNum-1);
     const wheel = data.weeks[weekNum-1].wheelOfJohn||{family:5,fun:5,fitness:5,finance:5,faith:5};
     const prevWheel = weekNum > 1 ? (data.weeks[weekNum-2].wheelOfJohn||null) : null;
@@ -2763,8 +2794,12 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
           </div>
           <p className="text-slate-400 text-sm mb-2">S.E.A. Score — Week {weekNum}</p>
           <StarRating score={score.total} size={36}/>
-          <div className="text-6xl font-black text-white mt-3 mb-1">{score.total}</div>
+          <div className="flex items-center justify-center gap-2 mt-3 mb-1">
+            <div className="text-6xl font-black text-white">{score.total}</div>
+            <button onClick={()=>setShowScoreInfo(true)} title="How is this calculated?" style={{background:'rgba(99,102,241,0.15)',border:'1px solid rgba(99,102,241,0.3)',borderRadius:'50%',width:'28px',height:'28px',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',color:'#a5b4fc',fontSize:'14px',fontWeight:'700',flexShrink:0,alignSelf:'flex-end',marginBottom:'8px'}}>ⓘ</button>
+          </div>
           <p className="text-slate-400 text-sm">out of 100</p>
+          {showScoreInfo && <ScoreInfoModal onClose={()=>setShowScoreInfo(false)}/>}
           <button onClick={()=>openCoach({section:'score',score})} className="no-print mt-4 flex items-center gap-2 mx-auto px-4 py-2 rounded-xl text-sm text-purple-300 border border-purple-500/30" style={{background:'rgba(139,92,246,0.1)'}}>
             <BotIcon/> Talk to coach about this
           </button>
