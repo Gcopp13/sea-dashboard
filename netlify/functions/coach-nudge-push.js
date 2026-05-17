@@ -19,9 +19,9 @@ exports.handler = async () => {
     return { statusCode: 500, body: JSON.stringify({ error: 'Missing env vars' }) };
   }
 
-  // Get all coach_nudge subscribers joined with profiles (last_seen + re_engagement_sent_at)
+  // Get all coach_nudge subscribers
   const res = await fetch(
-    `${SUPABASE_URL}/rest/v1/push_subscriptions?coach_nudge=eq.true&select=*,profiles!inner(id,last_seen,re_engagement_sent_at)`,
+    `${SUPABASE_URL}/rest/v1/push_subscriptions?coach_nudge=eq.true&select=*`,
     { headers: supabaseHeaders }
   );
 
@@ -48,7 +48,15 @@ exports.handler = async () => {
 
   for (const sub of subs) {
     checked++;
-    const profile = sub.profiles;
+
+    // Fetch profile for last_seen and re_engagement_sent_at
+    const profileRes = await fetch(
+      `${SUPABASE_URL}/rest/v1/profiles?id=eq.${sub.user_id}&select=id,last_seen,re_engagement_sent_at`,
+      { headers: supabaseHeaders }
+    );
+    const profileRows = profileRes.ok ? await profileRes.json() : [];
+    const profile = profileRows?.[0] || null;
+
     const lastSeen = profile?.last_seen ? new Date(profile.last_seen) : null;
 
     // Skip if user was active in last 6 hours
