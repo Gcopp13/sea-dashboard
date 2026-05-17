@@ -3660,35 +3660,48 @@ Message should be 1-2 sentences, direct, specific to their data. No generic fluf
                   }
                 }, []);
 
+                // Safe btoa for large ArrayBuffers (avoids spread operator stack overflow on iOS)
+                const arrayBufferToBase64 = (buffer) => {
+                  const bytes = new Uint8Array(buffer);
+                  let binary = '';
+                  for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
+                  return btoa(binary);
+                };
+
                 const subscribe = async () => {
                   if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
                     setStatus('Push notifications are not supported on this browser.');
                     return;
                   }
                   setLoading(true);
+                  setStatus('Step 1: activating service worker...');
                   try {
                     // Re-register SW if needed, then wait for ready with a 10s timeout
                     if (!navigator.serviceWorker.controller) {
                       await navigator.serviceWorker.register('/sw.js');
                     }
                     const swReadyTimeout = new Promise((_, reject) =>
-                      setTimeout(() => reject(new Error('Service worker took too long to activate. Close all tabs for this app and try again.')), 10000)
+                      setTimeout(() => reject(new Error('Service worker took too long. Close all tabs and try again.')), 10000)
                     );
                     const reg = await Promise.race([navigator.serviceWorker.ready, swReadyTimeout]);
+                    setStatus('Step 2: requesting permission...');
                     const perm = await Notification.requestPermission();
                     setPermission(perm);
                     if (perm !== 'granted') { setStatus('Permission denied — go to iPhone Settings → Notifications and allow this app.'); setLoading(false); return; }
 
+                    setStatus('Step 3: subscribing to push...');
                     const sub = await reg.pushManager.subscribe({
                       userVisibleOnly: true,
                       applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
                     });
 
-                    const p256dh = btoa(String.fromCharCode(...new Uint8Array(sub.getKey('p256dh'))));
-                    const auth = btoa(String.fromCharCode(...new Uint8Array(sub.getKey('auth'))));
+                    // Use safe loop-based btoa (avoids iOS Safari spread overflow)
+                    const p256dh = arrayBufferToBase64(sub.getKey('p256dh'));
+                    const auth = arrayBufferToBase64(sub.getKey('auth'));
 
-                    const mergedPrefs = { eveningReminder: prefs.eveningReminder ?? true, weeklyRitual: prefs.weeklyRitual ?? true, coachNudge: prefs.coachNudge ?? true, timezone: Intl.DateTimeFormat().resolvedOptions().timeZone };
+                    const mergedPrefs = { eveningReminder: true, weeklyRitual: true, coachNudge: true, timezone: Intl.DateTimeFormat().resolvedOptions().timeZone };
 
+                    setStatus('Step 4: getting user ID...');
                     // Get userId directly from session in case authUser closure isn't populated yet
                     let userId = authUser?.id;
                     if (!userId && typeof _supabase !== 'undefined') {
@@ -3697,6 +3710,7 @@ Message should be 1-2 sentences, direct, specific to their data. No generic fluf
                     }
                     if (!userId) { setStatus('Error: not logged in. Please refresh and try again.'); setLoading(false); return; }
 
+                    setStatus('Step 5: saving subscription...');
                     const saveRes = await fetch('/.netlify/functions/save-push-subscription', {
                       method: 'POST',
                       headers: { 'Content-Type': 'application/json' },
@@ -3705,16 +3719,15 @@ Message should be 1-2 sentences, direct, specific to their data. No generic fluf
                     if (!saveRes.ok) {
                       const errText = await saveRes.text();
                       console.error('save-push-subscription failed:', errText);
-                      setStatus('Subscribed locally but failed to save to server: ' + errText);
+                      setStatus('Save failed: ' + errText);
                     } else {
-                      // prefs stored in React state only
                       setPrefs(mergedPrefs);
                       setSubscribed(true);
                       setStatus('✓ Notifications enabled!');
                     }
                   } catch(e) { setStatus('Error: ' + e.message); console.error('Push subscribe error:', e); }
                   setLoading(false);
-                  setTimeout(() => setStatus(''), 10000);
+                  setTimeout(() => setStatus(''), 15000);
                 };
 
                 const unsubscribe = async () => {
