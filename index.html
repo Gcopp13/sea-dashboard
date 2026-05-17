@@ -647,16 +647,42 @@
         }, 0) / acts.length
       : 0;
     const habitScore = habitPct * 30;
-    // 2. Anvil streak (25pts)
+    // 2. Anvil streak (25pts) — based on hitting frequency target per period
     const log = data.anvilProject?.log || [];
-    let streak = 0;
-    if (log.length > 0) {
-      const today = new Date(); today.setHours(0,0,0,0);
-      const sorted = log.map(e=>{const d=new Date(e.date);d.setHours(0,0,0,0);return d;}).sort((a,b)=>b-a);
-      const unique = [...new Set(sorted.map(d=>d.toDateString()))].map(s=>new Date(s));
-      for (let i=0;i<unique.length;i++){const exp=new Date(today);exp.setDate(today.getDate()-i);if(unique[i].toDateString()===exp.toDateString())streak++;else break;}
+    const freqCount  = Math.max(1, parseInt(data.anvilProject?.freqCount)  || 1);
+    const freqPeriod = data.anvilProject?.freqPeriod || 'week'; // 'week' | 'biweekly' | 'month'
+    // Helper: get start of period N steps back from today
+    const getPeriodStart = (stepsBack) => {
+      const d = new Date(); d.setHours(0,0,0,0);
+      if (freqPeriod === 'week') {
+        const day = d.getDay(); const monday = new Date(d); monday.setDate(d.getDate() - ((day+6)%7) - (stepsBack*7)); return monday;
+      } else if (freqPeriod === 'biweekly') {
+        const day = d.getDay(); const monday = new Date(d); monday.setDate(d.getDate() - ((day+6)%7) - (stepsBack*14)); return monday;
+      } else { // month
+        const m = new Date(d.getFullYear(), d.getMonth() - stepsBack, 1); return m;
+      }
+    };
+    const getPeriodEnd = (stepsBack) => {
+      const start = getPeriodStart(stepsBack - 1);
+      const end = new Date(start); end.setDate(end.getDate() - 1); return end;
+    };
+    // Count log entries in a given period
+    const logsInPeriod = (start, end) => log.filter(e => { const d = new Date(e.date); d.setHours(0,0,0,0); return d >= start && d <= end; }).length;
+    // Current period: did they hit it?
+    const curStart = getPeriodStart(0);
+    const today2 = new Date(); today2.setHours(23,59,59,999);
+    const hitCurrent = logsInPeriod(curStart, today2) >= freqCount;
+    // Count consecutive periods hit (streak)
+    let streak = hitCurrent ? 1 : 0;
+    if (hitCurrent) {
+      for (let i = 1; i <= 52; i++) {
+        const s = getPeriodStart(i);
+        const e = getPeriodEnd(i);
+        if (logsInPeriod(s, e) >= freqCount) streak++; else break;
+      }
     }
-    const anvilScore = Math.min(streak/30,1)*25;
+    // Full points = hitting target this period. Streak bonus scales up to 4 consecutive periods.
+    const anvilScore = hitCurrent ? 25 : Math.min(streak / 4, 1) * 25;
     // 3. Wheel avg (20pts)
     const w = week.wheelOfJohn||{family:5,fun:5,fitness:5,finance:5,faith:5};
     const wheelAvg = Object.values(w).reduce((a,b)=>a+(b||5),0)/5;
@@ -1843,7 +1869,28 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
         <div className="bg-slate-800/60 rounded-2xl p-5 border border-slate-700 space-y-3">
           <h3 className="text-sm font-bold text-slate-300 uppercase tracking-wide mb-1">Anvil Setup</h3>
           <div><label className="text-xs text-slate-400 block mb-1">My Anvil is...</label><input value={anvil.project||''} onChange={e=>updateField('anvilProject',{...anvil,project:e.target.value})} placeholder="e.g. 8 appointments per week" className="w-full bg-slate-700/50 border border-slate-600/50 rounded-xl p-3 text-white placeholder-slate-500 text-sm focus:outline-none"/></div>
-          <div><label className="text-xs text-slate-400 block mb-1">Cadence</label><input value={anvil.cadence||''} onChange={e=>updateField('anvilProject',{...anvil,cadence:e.target.value})} placeholder="Daily, 5x/week..." className="w-full bg-slate-700/50 border border-slate-600/50 rounded-xl p-3 text-white placeholder-slate-500 text-sm focus:outline-none"/></div>
+          <div>
+            <label className="text-xs text-slate-400 block mb-1">Frequency</label>
+            <div className="flex items-center gap-2">
+              <input
+                type="number" min="1" max="7"
+                value={anvil.freqCount||1}
+                onChange={e=>{ const v=Math.min(Math.max(parseInt(e.target.value)||1,1),7); updateField('anvilProject',{...anvil,freqCount:v}); }}
+                className="w-14 bg-slate-700/50 border border-slate-600/50 rounded-xl p-3 text-orange-400 font-bold text-center text-sm focus:border-orange-500 focus:outline-none"
+              />
+              <span className="text-slate-400 text-sm">time(s)</span>
+              <select
+                value={anvil.freqPeriod||'week'}
+                onChange={e=>updateField('anvilProject',{...anvil,freqPeriod:e.target.value})}
+                className="flex-1 bg-slate-700/50 border border-slate-600/50 rounded-xl p-3 text-white text-sm focus:border-orange-500 focus:outline-none"
+              >
+                <option value="week">per week</option>
+                <option value="biweekly">every 2 weeks</option>
+                <option value="month">per month</option>
+              </select>
+            </div>
+            <p className="text-xs text-slate-500 mt-1">Scoring: hit your target this period = full 25 pts</p>
+          </div>
           <div><label className="text-xs text-slate-400 block mb-1">Why this one?</label><textarea value={anvil.why||''} onChange={e=>updateField('anvilProject',{...anvil,why:e.target.value})} rows={2} placeholder="What makes this your highest-leverage activity..." className="w-full bg-slate-700/50 border border-slate-600/50 rounded-xl p-3 text-white placeholder-slate-500 text-sm resize-none focus:outline-none"/></div>
         </div>
 
@@ -2618,7 +2665,7 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
         </div>
         <div style={{display:'flex',flexDirection:'column',gap:'14px'}}>
           {[{color:'#f59e0b',pts:'30 pts',title:'Habit Completion',desc:'Based on how consistently you hit your weekly habits. Each habit is scored against its own target (e.g. 3x/week). Hit your target = 100% for that habit. All habits are averaged together.'},
-            {color:'#f97316',pts:'25 pts',title:'Anvil Streak',desc:'Tracks your consecutive days of logging Anvil activity. A 30-day streak = full points. Shorter streaks score proportionally.'},
+            {color:'#f97316',pts:'25 pts',title:'Anvil Streak',desc:'Did you hit your Anvil frequency target this period? Hit it = full 25 pts. Miss it = 0. Your streak counts consecutive periods where you hit the target.'},
             {color:'#8b5cf6',pts:'20 pts',title:'Wheel of John',desc:'The average of your 5 Wheel of John scores (Family, Fun, Fitness, Finance, Faith), scaled from 1–10. A perfect 10 across all = full points.'},
             {color:'#3b82f6',pts:'15 pts',title:'Weekly Ritual',desc:'Did you complete your weekly planning ritual? This means filling in your wins, setting your weekly focus, and listing your goal priorities.'},
             {color:'#10b981',pts:'10 pts',title:'Goal Progress',desc:'The average completion % across all your active goals. 100% average = full points.'},
