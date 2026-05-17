@@ -3638,7 +3638,7 @@ Message should be 1-2 sentences, direct, specific to their data. No generic fluf
                 const [loading, setLoading] = React.useState(false);
                 const [status, setStatus] = React.useState('');
                 const [prefs, setPrefs] = React.useState(()=>{
-                  try { return JSON.parse(localStorage.getItem('push-prefs')||'{}'); } catch { return {}; }
+                  return { eveningReminder: true, weeklyRitual: true, coachNudge: true };
                 });
 
                 const VAPID_PUBLIC_KEY = 'BLL4ZFFDRkZ_5AWIc4TCffRufyd58pXqQZ05YDXbuoJE6wW6eIUm6wTukDNL8qu_wXVwSIrLofObwBkVTymFb7E';
@@ -3682,19 +3682,24 @@ Message should be 1-2 sentences, direct, specific to their data. No generic fluf
 
                     const mergedPrefs = { eveningReminder: prefs.eveningReminder ?? true, weeklyRitual: prefs.weeklyRitual ?? true, coachNudge: prefs.coachNudge ?? true, timezone: Intl.DateTimeFormat().resolvedOptions().timeZone };
 
-                    await fetch('/.netlify/functions/save-push-subscription', {
+                    const saveRes = await fetch('/.netlify/functions/save-push-subscription', {
                       method: 'POST',
                       headers: { 'Content-Type': 'application/json' },
                       body: JSON.stringify({ userId: authUser?.id, subscription: { endpoint: sub.endpoint, keys: { p256dh, auth } }, preferences: mergedPrefs })
                     });
-
-                    localStorage.setItem('push-prefs', JSON.stringify(mergedPrefs));
-                    setPrefs(mergedPrefs);
-                    setSubscribed(true);
-                    setStatus('✓ Notifications enabled!');
-                  } catch(e) { setStatus('Error: ' + e.message); }
+                    if (!saveRes.ok) {
+                      const errText = await saveRes.text();
+                      console.error('save-push-subscription failed:', errText);
+                      setStatus('Subscribed locally but failed to save to server: ' + errText);
+                    } else {
+                      // prefs stored in React state only
+                      setPrefs(mergedPrefs);
+                      setSubscribed(true);
+                      setStatus('✓ Notifications enabled!');
+                    }
+                  } catch(e) { setStatus('Error: ' + e.message); console.error('Push subscribe error:', e); }
                   setLoading(false);
-                  setTimeout(() => setStatus(''), 4000);
+                  setTimeout(() => setStatus(''), 10000);
                 };
 
                 const unsubscribe = async () => {
@@ -3713,7 +3718,7 @@ Message should be 1-2 sentences, direct, specific to their data. No generic fluf
                 const updatePref = async (key, val) => {
                   const newPrefs = { ...prefs, [key]: val };
                   setPrefs(newPrefs);
-                  localStorage.setItem('push-prefs', JSON.stringify(newPrefs));
+                  // prefs stored in React state only
                   if (subscribed && authUser?.id) {
                     const reg = await navigator.serviceWorker.ready;
                     const sub = await reg.pushManager.getSubscription();
