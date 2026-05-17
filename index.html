@@ -1135,29 +1135,95 @@ Message should be 1-2 sentences, direct, specific to their data. No generic fluf
     );
   };
 
-  // ── AI COACH TAB (history hub) ───────────────────────────────────────────
+  // ── AI COACH TAB (history hub + inline chat) ────────────────────────────
   const AICoachTab = ({ plannerData, authUserId, personality, conversations, onConversationsChange }) => {
-    const [openConvId, setOpenConvId] = useState(null);
-    const [chatOpen, setChatOpen] = useState(false);
+    const [view, setView] = useState('list'); // 'list' | 'chat'
+    const [activeConv, setActiveConv] = useState(null); // null = new, object = existing
+    const [messages, setMessages] = useState([]);
+    const [input, setInput] = useState('');
+    const [loading, setLoading] = useState(false);
+    const [saving, setSaving] = useState(false);
+    const [convId, setConvId] = useState(null);
+    const endRef = useRef(null);
+    const saveTimer = useRef(null);
+    const inputRef = useRef(null);
 
-    const openConversation = (id) => {
-      setOpenConvId(id);
-      setChatOpen(true);
+    useEffect(() => {
+      if (view === 'chat') {
+        setTimeout(() => endRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
+      }
+    }, [messages, view]);
+
+    const openNew = () => {
+      setMessages([]);
+      setConvId(null);
+      setActiveConv(null);
+      setView('chat');
     };
 
-    const startNew = () => {
-      setOpenConvId(null);
-      setChatOpen(true);
+    const openExisting = (conv) => {
+      setMessages(conv.messages || []);
+      setConvId(conv.id);
+      setActiveConv(conv);
+      setView('chat');
     };
 
     const handleDelete = async (id, e) => {
       e.stopPropagation();
       if (!confirm('Delete this conversation?')) return;
       await deleteConversation(authUserId, id);
-      if (onConversationsChange) {
-        const updated = await loadConversations(authUserId);
-        onConversationsChange(updated);
+      const updated = await loadConversations(authUserId);
+      if (onConversationsChange) onConversationsChange(updated);
+    };
+
+    const buildApiMessages = (allMessages, newMsg) => {
+      const combined = [...allMessages, newMsg].filter(m=>m.role==='user'||m.role==='assistant');
+      const trimmed = combined.slice(-12);
+      const firstUserIdx = trimmed.findIndex(m=>m.role==='user');
+      const valid = firstUserIdx >= 0 ? trimmed.slice(firstUserIdx) : trimmed;
+      return valid.map(({role,content})=>({role,content}));
+    };
+
+    const send = async () => {
+      if (!input.trim()) return;
+      const userMsg = { role:'user', content: input };
+      const commitmentMatch = input.match(/\b(i will|i'll|i am going to|i'm going to|i plan to|i commit to)\b(.{5,80})/i);
+      if (commitmentMatch) {
+        localStorage.setItem('coach-commitment', commitmentMatch[0].trim());
+        localStorage.setItem('coach-commitment-date', new Date().toISOString().split('T')[0]);
       }
+      const newMessages = [...messages, userMsg];
+      setMessages(newMessages);
+      setInput(''); setLoading(true);
+      try {
+        const res = await fetch('/.netlify/functions/ai-coach', {
+          method: 'POST',
+          headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({
+            systemPrompt: buildCoachSystemPrompt(plannerData, personality, null),
+            maxTokens: 1024,
+            messages: buildApiMessages(messages, userMsg)
+          })
+        });
+        if (!res.ok) throw new Error(`${res.status} - ${await res.text()}`);
+        const d = await res.json();
+        if (d.content?.[0]) {
+          const withReply = [...newMessages, {role:'assistant', content: d.content[0].text}];
+          setMessages(withReply);
+          clearTimeout(saveTimer.current);
+          saveTimer.current = setTimeout(async () => {
+            setSaving(true);
+            const firstUser = withReply.find(m=>m.role==='user');
+            const titleHint = firstUser ? firstUser.content.slice(0,60) : 'Coaching Session';
+            const newId = await saveConversation(authUserId, convId, withReply, titleHint);
+            if (newId && newId !== convId) setConvId(newId);
+            const updated = await loadConversations(authUserId);
+            if (onConversationsChange) onConversationsChange(updated);
+            setSaving(false);
+          }, 1500);
+        }
+      } catch(e) { alert('Coach error: ' + e.message); }
+      finally { setLoading(false); }
     };
 
     // Group conversations by date
@@ -1185,27 +1251,63 @@ Message should be 1-2 sentences, direct, specific to their data. No generic fluf
       return last ? last.content.slice(0, 80) + (last.content.length > 80 ? '\u2026' : '') : 'No messages yet';
     };
 
+    // ── CHAT VIEW ──────────────────────────────────────────────────────────
+    if (view === 'chat') return (
+      <div className="flex flex-col" style={{height:'calc(100dvh - 122px)'}}>
+        {/* Chat header */}
+        <div className="flex items-center justify-between px-4 py-3 border-b border-slate-800 flex-shrink-0">
+          <button onClick={()=>setView('list')} className="flex items-center gap-2 text-slate-400 hover:text-white transition-colors">
+            <ChevLeft/><span className="text-sm">Conversations</span>
+          </button>
+          <div className="flex items-center gap-2">
+            {saving && <span className="text-xs text-slate-500">Saving...</span>}
+            <button onClick={openNew} className="text-xs text-blue-400 hover:text-blue-300 font-semibold px-2 py-1 rounded-lg hover:bg-blue-500/10 transition-colors">+ New</button>
+          </div>
+        </div>
+        {/* Messages */}
+        <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
+          {messages.length === 0 && (
+            <div className="text-center py-12">
+              <div className="text-4xl mb-3">🤖</div>
+              <p className="text-slate-400 text-sm">Your coach is ready.<br/>What's on your mind?</p>
+            </div>
+          )}
+          {messages.map((m,i) => (
+            <div key={i} className={`flex ${m.role==='user'?'justify-end':'justify-start'}`}>
+              <div className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${m.role==='user'?'bg-blue-600 text-white':'bg-slate-800 text-slate-200'}`}>{m.content}</div>
+            </div>
+          ))}
+          {loading && <div className="flex justify-start"><div className="bg-slate-800 text-slate-400 rounded-2xl px-4 py-3 text-sm">Thinking...</div></div>}
+          <div ref={endRef}/>
+        </div>
+        {/* Input */}
+        <div className="px-4 py-3 border-t border-slate-800 flex-shrink-0" style={{paddingBottom:'max(12px, env(safe-area-inset-bottom, 12px))'}}>
+          <div className="flex gap-2">
+            <input
+              ref={inputRef}
+              value={input}
+              onChange={e=>setInput(e.target.value)}
+              onKeyPress={e=>e.key==='Enter'&&send()}
+              placeholder="Talk to your coach..."
+              disabled={loading}
+              className="flex-1 bg-slate-800 border border-slate-700 rounded-xl p-3 text-white placeholder-slate-500 text-sm focus:border-blue-500 focus:outline-none"
+            />
+            <button onClick={send} disabled={loading||!input.trim()} className="bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white p-3 rounded-xl flex-shrink-0"><SendIcon/></button>
+          </div>
+        </div>
+      </div>
+    );
+
+    // ── LIST VIEW ──────────────────────────────────────────────────────────
     return (
       <div className="page-content px-4 py-5 space-y-5">
-        <AICoach
-          isOpen={chatOpen}
-          onClose={()=>setChatOpen(false)}
-          plannerData={plannerData}
-          authUserId={authUserId}
-          personality={personality}
-          conversations={conversations}
-          onConversationsChange={onConversationsChange}
-          activeConvId={openConvId}
-          onActiveConvIdChange={setOpenConvId}
-        />
-
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
             <h2 className="text-xl font-bold text-white">AI Coach</h2>
             <p className="text-xs text-slate-400">{(conversations||[]).length} conversation{(conversations||[]).length !== 1 ? 's' : ''}</p>
           </div>
-          <button onClick={startNew} className="flex items-center gap-2 px-4 py-2 rounded-2xl text-sm font-bold text-white" style={{background:'linear-gradient(135deg,#3b82f6,#8b5cf6)'}}>
+          <button onClick={openNew} className="flex items-center gap-2 px-4 py-2 rounded-2xl text-sm font-bold text-white" style={{background:'linear-gradient(135deg,#3b82f6,#8b5cf6)'}}>
             <span>+</span> New Chat
           </button>
         </div>
@@ -1216,7 +1318,7 @@ Message should be 1-2 sentences, direct, specific to their data. No generic fluf
             <div className="text-5xl mb-4">🤖</div>
             <p className="text-white font-bold mb-1">No conversations yet</p>
             <p className="text-slate-400 text-sm mb-6">Your coach will check in when there's something worth discussing — or start a conversation anytime.</p>
-            <button onClick={startNew} className="px-6 py-3 rounded-2xl text-sm font-bold text-white" style={{background:'linear-gradient(135deg,#3b82f6,#8b5cf6)'}}>
+            <button onClick={openNew} className="px-6 py-3 rounded-2xl text-sm font-bold text-white" style={{background:'linear-gradient(135deg,#3b82f6,#8b5cf6)'}}>
               Start a Conversation
             </button>
           </div>
@@ -1228,7 +1330,7 @@ Message should be 1-2 sentences, direct, specific to their data. No generic fluf
             <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">{dateLabel}</p>
             <div className="space-y-2">
               {convs.map(conv => (
-                <button key={conv.id} onClick={()=>openConversation(conv.id)} className="w-full text-left bg-slate-800/60 hover:bg-slate-800 border border-slate-700/50 rounded-2xl p-4 transition-all">
+                <button key={conv.id} onClick={()=>openExisting(conv)} className="w-full text-left bg-slate-800/60 hover:bg-slate-800 border border-slate-700/50 rounded-2xl p-4 transition-all">
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex-1 min-w-0">
                       <p className="text-white text-sm font-semibold truncate">{conv.title}</p>
@@ -1239,9 +1341,7 @@ Message should be 1-2 sentences, direct, specific to their data. No generic fluf
                       <button onClick={(e)=>handleDelete(conv.id, e)} className="text-slate-600 hover:text-red-400 text-xs p-1 rounded transition-colors">✕</button>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2 mt-2">
-                    <span className="text-xs text-slate-500">{(conv.messages||[]).filter(m=>m.role==='user').length} messages</span>
-                  </div>
+                  <p className="text-xs text-slate-500 mt-2">{(conv.messages||[]).filter(m=>m.role==='user').length} messages</p>
                 </button>
               ))}
             </div>
