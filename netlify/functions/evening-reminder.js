@@ -1,25 +1,36 @@
 // evening-reminder.js — sends 7 PM Eastern daily push to all subscribed users
-// Cron: 0 23 * * * (23:00 UTC = 7 PM EDT / 8 PM EST — uses Eastern offset dynamically)
+// Cron: 0 23 * * * (23:00 UTC = 7 PM EDT / 8 PM EST)
 
-const { createClient } = require('@supabase/supabase-js');
 const { sendPush } = require('./send-push');
 
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY;
+
+const supabaseHeaders = {
+  'apikey': SUPABASE_SERVICE_KEY,
+  'Authorization': `Bearer ${SUPABASE_SERVICE_KEY}`,
+  'Content-Type': 'application/json',
+};
+
 exports.handler = async () => {
-  const supabase = createClient(
-    process.env.SUPABASE_URL,
-    process.env.SUPABASE_SERVICE_KEY
-  );
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) {
+    console.error('evening-reminder: missing env vars');
+    return { statusCode: 500, body: JSON.stringify({ error: 'Missing env vars' }) };
+  }
 
   // Get all subscriptions with evening_reminder enabled
-  const { data: subs, error } = await supabase
-    .from('push_subscriptions')
-    .select('*')
-    .eq('evening_reminder', true);
+  const res = await fetch(
+    `${SUPABASE_URL}/rest/v1/push_subscriptions?evening_reminder=eq.true&select=*`,
+    { headers: supabaseHeaders }
+  );
 
-  if (error) {
-    console.error('evening-reminder fetch error:', error);
-    return { statusCode: 500, body: error.message };
+  if (!res.ok) {
+    const text = await res.text();
+    console.error('evening-reminder fetch error:', text);
+    return { statusCode: 500, body: JSON.stringify({ error: text }) };
   }
+
+  const subs = await res.json();
 
   if (!subs || subs.length === 0) {
     console.log('evening-reminder: no subscribers');
@@ -58,7 +69,11 @@ exports.handler = async () => {
 
   // Clean up expired subscriptions
   if (expired.length > 0) {
-    await supabase.from('push_subscriptions').delete().in('id', expired);
+    const ids = expired.map(id => `"${id}"`).join(',');
+    await fetch(
+      `${SUPABASE_URL}/rest/v1/push_subscriptions?id=in.(${ids})`,
+      { method: 'DELETE', headers: supabaseHeaders }
+    );
     console.log(`evening-reminder: removed ${expired.length} expired subscriptions`);
   }
 

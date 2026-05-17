@@ -1,25 +1,37 @@
 // coach-nudge-push.js — hourly check: push coach nudge if user inactive 6+ hours
 // Cron: 0 * * * * (every hour)
 
-const { createClient } = require('@supabase/supabase-js');
 const { sendPush } = require('./send-push');
 
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY;
+
+const supabaseHeaders = {
+  'apikey': SUPABASE_SERVICE_KEY,
+  'Authorization': `Bearer ${SUPABASE_SERVICE_KEY}`,
+  'Content-Type': 'application/json',
+  'Prefer': 'return=representation',
+};
+
 exports.handler = async () => {
-  const supabase = createClient(
-    process.env.SUPABASE_URL,
-    process.env.SUPABASE_SERVICE_KEY
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) {
+    console.error('coach-nudge-push: missing env vars');
+    return { statusCode: 500, body: JSON.stringify({ error: 'Missing env vars' }) };
+  }
+
+  // Get all coach_nudge subscribers joined with profiles (last_seen + re_engagement_sent_at)
+  const res = await fetch(
+    `${SUPABASE_URL}/rest/v1/push_subscriptions?coach_nudge=eq.true&select=*,profiles!inner(id,last_seen,re_engagement_sent_at)`,
+    { headers: supabaseHeaders }
   );
 
-  // Get all coach_nudge subscribers with their profile (for last_seen)
-  const { data: subs, error } = await supabase
-    .from('push_subscriptions')
-    .select('*, profiles!inner(id, last_seen, email)')
-    .eq('coach_nudge', true);
-
-  if (error) {
-    console.error('coach-nudge-push fetch error:', error);
-    return { statusCode: 500, body: error.message };
+  if (!res.ok) {
+    const text = await res.text();
+    console.error('coach-nudge-push fetch error:', text);
+    return { statusCode: 500, body: JSON.stringify({ error: text }) };
   }
+
+  const subs = await res.json();
 
   if (!subs || subs.length === 0) {
     return { statusCode: 200, body: JSON.stringify({ checked: 0, sent: 0 }) };
@@ -36,7 +48,8 @@ exports.handler = async () => {
 
   for (const sub of subs) {
     checked++;
-    const lastSeen = sub.profiles?.last_seen ? new Date(sub.profiles.last_seen) : null;
+    const profile = sub.profiles;
+    const lastSeen = profile?.last_seen ? new Date(profile.last_seen) : null;
 
     // Skip if user was active in last 6 hours
     if (lastSeen && lastSeen > sixHoursAgo) {
@@ -44,40 +57,29 @@ exports.handler = async () => {
       continue;
     }
 
-    // Check if we already sent a nudge in the last 6 hours (avoid double-nudging)
-    const nudgeKey = `coach-nudge-sent-${sub.user_id}`;
-    const { data: nudgeRecord } = await supabase
-      .from('push_subscriptions')
-      .select('updated_at')
-      .eq('user_id', sub.user_id)
-      .single();
-
-    // Use a simple time-based dedup: tag updated_at when we send a nudge
-    // We store last nudge time in a separate lightweight check
-    const { data: nudgeLog } = await supabase
-      .from('profiles')
-      .select('re_engagement_sent_at')
-      .eq('id', sub.user_id)
-      .single();
-
-    const lastNudge = nudgeLog?.re_engagement_sent_at ? new Date(nudgeLog.re_engagement_sent_at) : null;
+    // Skip if we already sent a nudge in the last 6 hours
+    const lastNudge = profile?.re_engagement_sent_at ? new Date(profile.re_engagement_sent_at) : null;
     if (lastNudge && lastNudge > sixHoursAgo) {
       skipped++;
       continue;
     }
 
-    // Fetch planner data to run smart trigger logic
-    const { data: plannerRow } = await supabase
-      .from('planner_data')
-      .select('data')
-      .eq('user_id', sub.user_id)
-      .single();
+    // Fetch planner data to decide if there's something worth nudging about
+    const plannerRes = await fetch(
+      `${SUPABASE_URL}/rest/v1/planner_data?user_id=eq.${sub.user_id}&select=data`,
+      { headers: supabaseHeaders }
+    );
 
-    const plannerData = plannerRow?.data;
+    let plannerData = null;
+    if (plannerRes.ok) {
+      const rows = await plannerRes.json();
+      plannerData = rows?.[0]?.data || null;
+    }
+
     if (!plannerData) { skipped++; continue; }
 
     // Decide if there's something worth saying
-    const nudgeMsg = await decideNudge(plannerData);
+    const nudgeMsg = decideNudge(plannerData);
     if (!nudgeMsg) { skipped++; continue; }
 
     // Send push
@@ -90,11 +92,15 @@ exports.handler = async () => {
 
     if (result.ok) {
       sent++;
-      // Update re_engagement_sent_at so we don't double-nudge
-      await supabase
-        .from('profiles')
-        .update({ re_engagement_sent_at: now.toISOString() })
-        .eq('id', sub.user_id);
+      // Update re_engagement_sent_at so we don't double-nudge within 6 hours
+      await fetch(
+        `${SUPABASE_URL}/rest/v1/profiles?id=eq.${sub.user_id}`,
+        {
+          method: 'PATCH',
+          headers: supabaseHeaders,
+          body: JSON.stringify({ re_engagement_sent_at: now.toISOString() }),
+        }
+      );
     } else if (result.gone) {
       expired.push(sub.id);
     } else {
@@ -104,7 +110,11 @@ exports.handler = async () => {
 
   // Clean up expired subscriptions
   if (expired.length > 0) {
-    await supabase.from('push_subscriptions').delete().in('id', expired);
+    const ids = expired.map(id => `"${id}"`).join(',');
+    await fetch(
+      `${SUPABASE_URL}/rest/v1/push_subscriptions?id=in.(${ids})`,
+      { method: 'DELETE', headers: supabaseHeaders }
+    );
   }
 
   console.log(`coach-nudge-push: checked=${checked}, sent=${sent}, skipped=${skipped}, errors=${errors}, expired=${expired.length}`);
@@ -112,7 +122,7 @@ exports.handler = async () => {
 };
 
 // Decide if there's something worth nudging about — returns {title, body} or null
-async function decideNudge(plannerData) {
+function decideNudge(plannerData) {
   const weeks = plannerData.weeks || [];
   const anvilLog = plannerData.anvilProject?.log || [];
   const goals = (plannerData.goals || []).filter(g => g.title?.trim());
@@ -134,10 +144,7 @@ async function decideNudge(plannerData) {
   const anvilYesterday = anvilLog.some(e => new Date(e.date).toDateString() === yesterday.toDateString());
   const anvilProject = plannerData.anvilProject?.project;
 
-  const weeksWithData = weeks.filter(w => w.wins?.some(x => x.trim()) || w.focus?.trim());
-  const latestWeek = weeksWithData[weeksWithData.length - 1];
-
-  // Stuck habits
+  // Stuck habits (below 50% for 2+ recent weeks)
   const recentWeeks = weeks.slice(-4);
   const habitIssues = {};
   recentWeeks.forEach(w => (w.aActivities || []).forEach(a => {
@@ -151,10 +158,7 @@ async function decideNudge(plannerData) {
   // Stagnant goals
   const stuckGoals = goals.filter(g => (g.completion || 0) > 0 && (g.completion || 0) < 100);
 
-  // Last commitment
-  const lastCommitment = null; // Can't access localStorage server-side
-
-  // Priority: broken streak > stuck habit > stagnant goal > general nudge
+  // Priority: broken streak > at-risk streak > stuck habit > stagnant goal
   if (anvilProject && anvilStreak === 0 && anvilLog.length > 3 && !anvilYesterday) {
     return {
       title: 'Streak Alert',
@@ -183,6 +187,6 @@ async function decideNudge(plannerData) {
     };
   }
 
-  // Only nudge if there was a real trigger — don't send generic ones
+  // Only nudge if there's a real trigger — no generic messages
   return null;
 }

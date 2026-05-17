@@ -1,24 +1,35 @@
 // weekly-ritual-reminder.js — sends 8 AM Eastern Sunday push to all subscribed users
-// Cron: 0 12 * * 0 (12:00 UTC = 8 AM EDT / 9 AM EST — uses Eastern offset dynamically)
+// Cron: 0 12 * * 0 (12:00 UTC = 8 AM EDT / 9 AM EST)
 
-const { createClient } = require('@supabase/supabase-js');
 const { sendPush } = require('./send-push');
 
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY;
+
+const supabaseHeaders = {
+  'apikey': SUPABASE_SERVICE_KEY,
+  'Authorization': `Bearer ${SUPABASE_SERVICE_KEY}`,
+  'Content-Type': 'application/json',
+};
+
 exports.handler = async () => {
-  const supabase = createClient(
-    process.env.SUPABASE_URL,
-    process.env.SUPABASE_SERVICE_KEY
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) {
+    console.error('weekly-ritual-reminder: missing env vars');
+    return { statusCode: 500, body: JSON.stringify({ error: 'Missing env vars' }) };
+  }
+
+  const res = await fetch(
+    `${SUPABASE_URL}/rest/v1/push_subscriptions?weekly_ritual=eq.true&select=*`,
+    { headers: supabaseHeaders }
   );
 
-  const { data: subs, error } = await supabase
-    .from('push_subscriptions')
-    .select('*')
-    .eq('weekly_ritual', true);
-
-  if (error) {
-    console.error('weekly-ritual-reminder fetch error:', error);
-    return { statusCode: 500, body: error.message };
+  if (!res.ok) {
+    const text = await res.text();
+    console.error('weekly-ritual-reminder fetch error:', text);
+    return { statusCode: 500, body: JSON.stringify({ error: text }) };
   }
+
+  const subs = await res.json();
 
   if (!subs || subs.length === 0) {
     console.log('weekly-ritual-reminder: no subscribers');
@@ -55,7 +66,11 @@ exports.handler = async () => {
   }
 
   if (expired.length > 0) {
-    await supabase.from('push_subscriptions').delete().in('id', expired);
+    const ids = expired.map(id => `"${id}"`).join(',');
+    await fetch(
+      `${SUPABASE_URL}/rest/v1/push_subscriptions?id=in.(${ids})`,
+      { method: 'DELETE', headers: supabaseHeaders }
+    );
     console.log(`weekly-ritual-reminder: removed ${expired.length} expired subscriptions`);
   }
 
