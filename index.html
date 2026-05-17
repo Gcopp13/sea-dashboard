@@ -591,6 +591,49 @@
     );
   };
 
+  // ── HABIT ROW (local state for targetDays input)
+  const HabitRow = ({ act, ai, onUpdate, onRemove }) => {
+    const [localTarget, setLocalTarget] = React.useState(String(act.targetDays || 7));
+    React.useEffect(() => { setLocalTarget(String(act.targetDays || 7)); }, [act.targetDays]);
+    const commitTarget = (val) => {
+      const n = parseInt(val);
+      const final = (!val || isNaN(n) || n < 1) ? 7 : Math.min(n, 7);
+      setLocalTarget(String(final));
+      onUpdate({ ...act, targetDays: final });
+    };
+    return (
+      <div className="space-y-2">
+        <div className="flex items-center gap-2">
+          <input value={act.name||''} onChange={e=>onUpdate({...act,name:e.target.value})} placeholder={`Habit ${ai+1}`} className="flex-1 bg-slate-700/50 border border-slate-600/50 rounded-xl p-3 text-white placeholder-slate-500 text-sm focus:border-yellow-500 focus:outline-none"/>
+          <div className="flex items-center gap-1 flex-shrink-0">
+            <span className="text-slate-500 text-xs">Target:</span>
+            <input
+              type="text" inputMode="numeric" maxLength={1}
+              value={localTarget}
+              onChange={e=>{ const v=e.target.value; if(v===''||/^[1-7]$/.test(v)) setLocalTarget(v); }}
+              onBlur={e=>commitTarget(e.target.value)}
+              onKeyDown={e=>{ if(e.key==='Enter') { e.target.blur(); } }}
+              className="w-10 bg-slate-700/50 border border-slate-600/50 rounded-lg p-1.5 text-yellow-400 text-xs font-bold text-center focus:border-yellow-500 focus:outline-none"
+            />
+            <span className="text-slate-500 text-xs">x/wk</span>
+          </div>
+          <button onClick={onRemove} className="flex-shrink-0 w-8 h-8 rounded-lg text-slate-600 hover:text-red-400 hover:bg-red-500/10 transition-all flex items-center justify-center text-lg">✕</button>
+        </div>
+        {act.name && (
+          <div className="flex justify-around">
+            {['M','T','W','T','F','S','S'].map((d,di)=>(
+              <button key={di} onClick={()=>{ const days=[...(act.days||[false,false,false,false,false,false,false])]; days[di]=!days[di]; onUpdate({...act,days}); }}
+                className={`w-9 h-9 rounded-full text-xs font-bold transition-all ${(act.days||[])[di]?'text-white scale-110':'bg-slate-700/50 text-slate-500'}`}
+                style={(act.days||[])[di]?{background:'linear-gradient(135deg,#f59e0b,#f97316)'}:{}}>
+                {d}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  };
+
   // ── SCORING ENGINE ─────────────────────────────────────────────────────────
   const calcSEAScore = (data, weekIdx) => {
     const week = data.weeks[weekIdx];
@@ -2095,28 +2138,10 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
           </div>
           <div className="space-y-5">
             {(data.weeks[weekNum-1].aActivities||[]).map((act,ai)=>(
-              <div key={ai} className="space-y-2">
-                <div className="flex items-center gap-2">
-                  <input value={act.name||''} onChange={e=>{const ws=JSON.parse(JSON.stringify(data.weeks));const a=ws[weekNum-1].aActivities||[];a[ai]={...a[ai],name:e.target.value};ws[weekNum-1].aActivities=a;updateField('weeks',ws);}} placeholder={`Habit ${ai+1}`} className="flex-1 bg-slate-700/50 border border-slate-600/50 rounded-xl p-3 text-white placeholder-slate-500 text-sm focus:border-yellow-500 focus:outline-none"/>
-                  <div className="flex items-center gap-1 flex-shrink-0">
-                    <span className="text-slate-500 text-xs">Target:</span>
-                    <input type="text" inputMode="numeric" pattern="[1-7]" maxLength={1} value={act.targetDays||7} onChange={e=>{const v=e.target.value;if(v===''||/^[1-7]$/.test(v)){const ws=JSON.parse(JSON.stringify(data.weeks));const a=ws[weekNum-1].aActivities||[];a[ai]={...a[ai],targetDays:v===''?'':parseInt(v)};ws[weekNum-1].aActivities=a;updateField('weeks',ws);}}} onBlur={e=>{if(!e.target.value||parseInt(e.target.value)<1){const ws=JSON.parse(JSON.stringify(data.weeks));const a=ws[weekNum-1].aActivities||[];a[ai]={...a[ai],targetDays:7};ws[weekNum-1].aActivities=a;updateField('weeks',ws);}}} className="w-10 bg-slate-700/50 border border-slate-600/50 rounded-lg p-1.5 text-yellow-400 text-xs font-bold text-center focus:border-yellow-500 focus:outline-none"/>
-                    <span className="text-slate-500 text-xs">x/wk</span>
-                  </div>
-                  <button onClick={()=>{const ws=JSON.parse(JSON.stringify(data.weeks));const a=ws[weekNum-1].aActivities||[];a.splice(ai,1);ws[weekNum-1].aActivities=a;updateField('weeks',ws);}} className="flex-shrink-0 w-8 h-8 rounded-lg text-slate-600 hover:text-red-400 hover:bg-red-500/10 transition-all flex items-center justify-center text-lg">✕</button>
-                </div>
-                {act.name && (
-                  <div className="flex justify-around">
-                    {['M','T','W','T','F','S','S'].map((d,di)=>(
-                      <button key={di} onClick={()=>{const ws=JSON.parse(JSON.stringify(data.weeks));const a=ws[weekNum-1].aActivities;const days=[...(a[ai].days||[false,false,false,false,false,false,false])];days[di]=!days[di];a[ai]={...a[ai],days};ws[weekNum-1].aActivities=a;updateField('weeks',ws);}}
-                        className={`w-9 h-9 rounded-full text-xs font-bold transition-all ${(act.days||[])[di]?'text-white scale-110':'bg-slate-700/50 text-slate-500'}`}
-                        style={(act.days||[])[di]?{background:'linear-gradient(135deg,#f59e0b,#f97316)'}:{}}>
-                        {d}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
+              <HabitRow key={ai} act={act} ai={ai}
+                onUpdate={updated=>{ const ws=JSON.parse(JSON.stringify(data.weeks)); ws[weekNum-1].aActivities[ai]=updated; updateField('weeks',ws); }}
+                onRemove={()=>{ const ws=JSON.parse(JSON.stringify(data.weeks)); ws[weekNum-1].aActivities.splice(ai,1); updateField('weeks',ws); }}
+              />
             ))}
             {(data.weeks[weekNum-1].aActivities||[]).length === 0 && (
               <p className="text-center text-slate-500 text-sm py-2">No habits yet — tap Add Habit to get started</p>
@@ -2347,28 +2372,10 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
             </div>
             <div className="space-y-4 mb-4">
               {(week.aActivities||[]).map((act,ai)=>(
-                <div key={ai} className="space-y-2">
-                  <div className="flex items-center gap-2">
-                    <input value={act.name||''} onChange={e=>{const a=JSON.parse(JSON.stringify(week.aActivities||[]));a[ai]={...a[ai],name:e.target.value};updateWeek('aActivities',a);}} placeholder={`Habit ${ai+1}`} className="flex-1 bg-slate-700/50 border border-slate-600/50 rounded-xl p-2.5 text-white placeholder-slate-500 text-sm focus:border-yellow-500 focus:outline-none"/>
-                    <div className="flex items-center gap-1 flex-shrink-0">
-                      <span className="text-slate-500 text-xs">Target:</span>
-                      <input type="text" inputMode="numeric" pattern="[1-7]" maxLength={1} value={act.targetDays||7} onChange={e=>{const v=e.target.value;if(v===''||/^[1-7]$/.test(v)){const a=JSON.parse(JSON.stringify(week.aActivities||[]));a[ai]={...a[ai],targetDays:v===''?'':parseInt(v)};updateWeek('aActivities',a);}}} onBlur={e=>{if(!e.target.value||parseInt(e.target.value)<1){const a=JSON.parse(JSON.stringify(week.aActivities||[]));a[ai]={...a[ai],targetDays:7};updateWeek('aActivities',a);}}} className="w-10 bg-slate-700/50 border border-slate-600/50 rounded-lg p-1.5 text-yellow-400 text-xs font-bold text-center focus:border-yellow-500 focus:outline-none"/>
-                      <span className="text-slate-500 text-xs">x/wk</span>
-                    </div>
-                    <button onClick={()=>{const a=JSON.parse(JSON.stringify(week.aActivities||[]));a.splice(ai,1);updateWeek('aActivities',a);}} className="w-8 h-8 rounded-lg text-slate-600 hover:text-red-400 hover:bg-red-500/10 transition-all flex items-center justify-center text-lg">✕</button>
-                  </div>
-                  {act.name && (
-                    <div className="flex justify-around">
-                      {['M','T','W','T','F','S','S'].map((d,di)=>(
-                        <button key={di} onClick={()=>{const a=JSON.parse(JSON.stringify(week.aActivities));const days=[...(a[ai].days||[false,false,false,false,false,false,false])];days[di]=!days[di];a[ai]={...a[ai],days};updateWeek('aActivities',a);}}
-                          className={`w-9 h-9 rounded-full text-xs font-bold transition-all ${(act.days||[])[di]?'text-white scale-110':'bg-slate-700/50 text-slate-500'}`}
-                          style={(act.days||[])[di]?{background:'linear-gradient(135deg,#f59e0b,#f97316)'}:{}}>
-                          {d}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
+                <HabitRow key={ai} act={act} ai={ai}
+                  onUpdate={updated=>{ const a=JSON.parse(JSON.stringify(week.aActivities||[])); a[ai]=updated; updateWeek('aActivities',a); }}
+                  onRemove={()=>{ const a=JSON.parse(JSON.stringify(week.aActivities||[])); a.splice(ai,1); updateWeek('aActivities',a); }}
+                />
               ))}
               {(week.aActivities||[]).length===0&&<p className="text-center text-slate-500 text-sm py-2">No habits yet — tap Add to get started</p>}
             </div>
