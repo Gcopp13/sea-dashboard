@@ -3689,10 +3689,18 @@ Message should be 1-2 sentences, direct, specific to their data. No generic fluf
 
                     const mergedPrefs = { eveningReminder: prefs.eveningReminder ?? true, weeklyRitual: prefs.weeklyRitual ?? true, coachNudge: prefs.coachNudge ?? true, timezone: Intl.DateTimeFormat().resolvedOptions().timeZone };
 
+                    // Get userId directly from session in case authUser closure isn't populated yet
+                    let userId = authUser?.id;
+                    if (!userId && typeof _supabase !== 'undefined') {
+                      const { data: sessionData } = await _supabase.auth.getSession();
+                      userId = sessionData?.session?.user?.id;
+                    }
+                    if (!userId) { setStatus('Error: not logged in. Please refresh and try again.'); setLoading(false); return; }
+
                     const saveRes = await fetch('/.netlify/functions/save-push-subscription', {
                       method: 'POST',
                       headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ userId: authUser?.id, subscription: { endpoint: sub.endpoint, keys: { p256dh, auth } }, preferences: mergedPrefs })
+                      body: JSON.stringify({ userId, subscription: { endpoint: sub.endpoint, keys: { p256dh, auth } }, preferences: mergedPrefs })
                     });
                     if (!saveRes.ok) {
                       const errText = await saveRes.text();
