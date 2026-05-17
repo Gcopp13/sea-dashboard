@@ -14,6 +14,12 @@
 [functions]
   node_bundler = "esbuild"
 
+# Serve sw.js directly — must not be caught by the SPA redirect
+[[redirects]]
+  from = "/sw.js"
+  to = "/sw.js"
+  status = 200
+
 [[redirects]]
   from = "/*"
   to = "/index.html"
