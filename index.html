@@ -699,291 +699,69 @@
   };
 
   // ── AI COACH ──────────────────────────────────────────────────────────────
-  const AICoach = ({ isOpen, onClose, plannerData, currentContext, onUnreadChange, onProactiveMessage, personality }) => {
-    const [messages, setMessages] = useState([]);
-    const [input, setInput] = useState('');
-    const [loading, setLoading] = useState(false);
-    const [showSettings, setShowSettings] = useState(false);
-    const [unread, setUnread] = useState(0);
-    const endRef = useRef(null);
-
-    const setupCheckDone = useRef(false);
-    const setupCheckTimer = useRef(null);
-    const plannerDataRef = useRef(plannerData);
-
-    // Keep ref current so the delayed check always reads latest data
-    useEffect(() => { plannerDataRef.current = plannerData; }, [plannerData]);
-
-    useEffect(() => {
-      const saved = localStorage.getItem('ai-coach-messages');
-      if (saved) { setMessages(JSON.parse(saved)); setupCheckDone.current = true; }
-      checkAccountabilityTriggers();
-    }, []);
-
-    // Debounced setup check — waits for plannerData to settle before evaluating
-    useEffect(() => {
-      if (setupCheckDone.current) return;
-      const saved = localStorage.getItem('ai-coach-messages');
-      if (saved) { setupCheckDone.current = true; return; }
-      if (setupCheckTimer.current) clearTimeout(setupCheckTimer.current);
-      setupCheckTimer.current = setTimeout(() => {
-        if (setupCheckDone.current) return;
-        setupCheckDone.current = true;
-        // Use ref so we always read the latest plannerData, not a stale closure
-        const d = plannerDataRef.current;
-        const lastCheck = localStorage.getItem('last-trigger-check');
-        const now = new Date().toISOString();
-        if (lastCheck && new Date(now).getDate() === new Date(lastCheck).getDate()) return;
-        const t = [];
-        if (!d.slightEdge?.trim()) t.push({ role:'assistant', content:"Your Slight Edges aren't defined yet — these are the daily habits that compound and give you an edge over time. Things like working out, reading, journaling. What are yours? Head to More → Setup to add them." });
-        if (!d.goals?.some(g=>g.title?.trim())) t.push({ role:'assistant', content:"Your goals aren't set yet — up to 4 goals for this 120-day period. Specific enough that someone else could tell if you hit them. Ready to define them?" });
-        if (!d.vision120Day?.trim()) t.push({ role:'assistant', content:"Your 120-Day Vision is blank. This is who you need to BE in the next 120 days. Want help creating it?" });
-        if (!d.anvilProject?.project?.trim()) t.push({ role:'assistant', content:"Your Anvil isn't set yet. What's the one activity that, done consistently, would change everything? Tap More → Anvil to set it up." });
-        const weeksWithData = d.weeks?.filter(w=>w.wins?.some(x=>x.trim())||(w.focus?.trim())).length||0;
-        if (weeksWithData === 0 && d.slightEdge?.trim()) t.push({ role:'assistant', content:"Foundation is set but no weekly planning yet. The weekly ritual is where S.E.A. comes alive. Head to the Week tab to start!" });
-        if (t.length > 0) { addTriggers(t); localStorage.setItem('last-trigger-check', now); }
-      }, 800);
-      return () => clearTimeout(setupCheckTimer.current);
-    }, [plannerData]);
-
-    useEffect(() => {
-      if (isOpen && currentContext?.test) {
-        const testMsg = { role:'user', content:"Introduce yourself briefly as my coach and ask what's on my mind today — keep it warm, short, and direct like Gino would." };
-        setMessages(prev=>{
-          const already = prev.some(m=>m.content===testMsg.content);
-          if(already) return prev;
-          return [...prev, testMsg];
+  // Helper: save a conversation to Supabase
+  const saveConversation = async (userId, convId, messages, titleHint) => {
+    if (!userId) return convId;
+    const SUPABASE_URL = 'https://vilsfabrovxwgdrhkvso.supabase.co';
+    const ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZpbHNmYWJyb3Z4d2dkcmhrdnNvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQxMjIxMjgsImV4cCI6MjA4OTY5ODEyOH0.3GGxaTgxZHxn_hFOcwNyBs9XxridjeWEdM3a5lRPomU';
+    try {
+      if (convId) {
+        // Update existing
+        await fetch(`${SUPABASE_URL}/rest/v1/coach_conversations?id=eq.${convId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json', 'apikey': ANON_KEY, 'Authorization': `Bearer ${ANON_KEY}`, 'Prefer': 'return=minimal' },
+          body: JSON.stringify({ messages, updated_at: new Date().toISOString() })
         });
-        setTimeout(async ()=>{
-          setLoading(true);
-          try {
-            const res = await fetch('/.netlify/functions/ai-coach',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({systemPrompt:buildSystemPrompt(),maxTokens:200,messages:[{role:'user',content:"Introduce yourself briefly as my coach and ask what's on my mind today — keep it warm, short, and direct like Gino would."}]})});
-            if(!res.ok) throw new Error(await res.text());
-            const d=await res.json();
-            if(d.content?.[0]) setMessages(prev=>[...prev,{role:'assistant',content:d.content[0].text}]);
-          } catch(e){console.log('Test error',e);}
-          finally{setLoading(false);}
-        },300);
+        return convId;
+      } else {
+        // Insert new
+        const res = await fetch(`${SUPABASE_URL}/rest/v1/coach_conversations`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'apikey': ANON_KEY, 'Authorization': `Bearer ${ANON_KEY}`, 'Prefer': 'return=representation' },
+          body: JSON.stringify({ user_id: userId, title: titleHint || 'Coaching Session', messages })
+        });
+        const rows = await res.json();
+        return rows?.[0]?.id || null;
       }
-    }, [isOpen, currentContext]);
+    } catch(e) { console.error('saveConversation', e); return convId; }
+  };
 
-    useEffect(() => {
-      if (messages.length > 0) localStorage.setItem('ai-coach-messages', JSON.stringify(messages));
-      endRef.current?.scrollIntoView({ behavior: 'smooth' });
-    }, [messages]);
+  // Helper: load all conversations for a user
+  const loadConversations = async (userId) => {
+    if (!userId) return [];
+    const SUPABASE_URL = 'https://vilsfabrovxwgdrhkvso.supabase.co';
+    const ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZpbHNmYWJyb3Z4d2dkcmhrdnNvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQxMjIxMjgsImV4cCI6MjA4OTY5ODEyOH0.3GGxaTgxZHxn_hFOcwNyBs9XxridjeWEdM3a5lRPomU';
+    try {
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/coach_conversations?user_id=eq.${userId}&order=created_at.desc&limit=50`, {
+        headers: { 'apikey': ANON_KEY, 'Authorization': `Bearer ${ANON_KEY}` }
+      });
+      return await res.json() || [];
+    } catch(e) { console.error('loadConversations', e); return []; }
+  };
 
-    useEffect(() => { if (isOpen) { setUnread(0); if (onUnreadChange) onUnreadChange(0); } }, [isOpen]);
-    useEffect(() => { if (onUnreadChange) onUnreadChange(unread); }, [unread]);
+  // Helper: delete a conversation
+  const deleteConversation = async (userId, convId) => {
+    if (!userId || !convId) return;
+    const SUPABASE_URL = 'https://vilsfabrovxwgdrhkvso.supabase.co';
+    const ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZpbHNmYWJyb3Z4d2dkcmhrdnNvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQxMjIxMjgsImV4cCI6MjA4OTY5ODEyOH0.3GGxaTgxZHxn_hFOcwNyBs9XxridjeWEdM3a5lRPomU';
+    try {
+      await fetch(`${SUPABASE_URL}/rest/v1/coach_conversations?id=eq.${convId}`, {
+        method: 'DELETE',
+        headers: { 'apikey': ANON_KEY, 'Authorization': `Bearer ${ANON_KEY}` }
+      });
+    } catch(e) { console.error('deleteConversation', e); }
+  };
 
-    // iOS keyboard fix — reliable viewport-based approach
-    useEffect(() => {
-      if (!isOpen || !window.visualViewport) return;
-
-      const handleViewportResize = () => {
-        const panel = document.querySelector('.coach-panel');
-        if (!panel || window.innerWidth > 768) return;
-        const vvh = window.visualViewport.height;
-        const vvTop = window.visualViewport.offsetTop;
-        panel.style.top = vvTop + 'px';
-        panel.style.height = vvh + 'px';
-        panel.style.maxHeight = vvh + 'px';
-        panel.style.bottom = 'auto';
-      };
-
-      const handleBlur = () => {
-        setTimeout(() => {
-          const panel = document.querySelector('.coach-panel');
-          if (panel) { panel.style.top = ''; panel.style.height = ''; panel.style.maxHeight = ''; panel.style.bottom = ''; }
-        }, 100);
-      };
-
-      window.visualViewport.addEventListener('resize', handleViewportResize);
-      window.visualViewport.addEventListener('scroll', handleViewportResize);
-      document.addEventListener('focusout', handleBlur);
-
-      return () => {
-        window.visualViewport.removeEventListener('resize', handleViewportResize);
-        window.visualViewport.removeEventListener('scroll', handleViewportResize);
-        document.removeEventListener('focusout', handleBlur);
-        const panel = document.querySelector('.coach-panel');
-        if (panel) { panel.style.top = ''; panel.style.height = ''; panel.style.maxHeight = ''; panel.style.bottom = ''; }
-      };
-    }, [isOpen]);
-
-    const addTriggers = (triggers) => {
-      if (!triggers.length) return;
-      setMessages(prev => [...prev, ...triggers]);
-      setUnread(prev => prev + triggers.length);
-    };
-
-    const checkSetupTriggers = () => {
-      const lastCheck = localStorage.getItem('last-trigger-check');
-      const now = new Date().toISOString();
-      if (lastCheck && new Date(now).getDate() === new Date(lastCheck).getDate()) return;
-      const t = [];
-      if (!plannerData.slightEdge?.trim()) t.push({ role:'assistant', content:"Your Slight Edges aren't defined yet — these are the daily habits that compound and give you an edge over time. Things like working out, reading, journaling. What are yours? Head to More → Setup to add them." });
-      if (!plannerData.goals.some(g=>g.title?.trim())) t.push({ role:'assistant', content:"Your goals aren't set yet — up to 4 goals for this 120-day period. Specific enough that someone else could tell if you hit them. Ready to define them?" });
-      if (!plannerData.vision120Day?.trim()) t.push({ role:'assistant', content:"Your 120-Day Vision is blank. This is who you need to BE in the next 120 days. Want help creating it?" });
-      if (!plannerData.anvilProject?.project?.trim()) t.push({ role:'assistant', content:"Your Anvil isn't set yet. What's the one activity that, done consistently, would change everything? Tap More → Anvil to set it up." });
-      const weeksWithData = plannerData.weeks.filter(w=>w.wins.some(x=>x.trim())||(w.focus?.trim())).length;
-      if (weeksWithData === 0 && plannerData.slightEdge?.trim()) t.push({ role:'assistant', content:"Foundation is set but no weekly planning yet. The weekly ritual is where S.E.A. comes alive. Head to the Week tab to start!" });
-      if (t.length > 0) { addTriggers(t); localStorage.setItem('last-trigger-check', now); }
-    };
-
-    const checkAccountabilityTriggers = () => {
-      const today = new Date();
-      const dow = today.getDay();
-      const hour = today.getHours();
-      const t = [];
-
-      // ── Behavioral context ─────────────────────────────────────────────────
-      const goals = plannerData.goals.filter(g=>g.title?.trim());
-      const anvilProject = plannerData.anvilProject?.project || 'your Anvil';
-      const anvilLog = plannerData.anvilProject?.log||[];
-      const getStreak = () => {
-        if(!anvilLog.length) return 0;
-        const now=new Date();now.setHours(0,0,0,0);
-        const unique=[...new Set(anvilLog.map(e=>{const d=new Date(e.date);d.setHours(0,0,0,0);return d.toDateString()}))].map(s=>new Date(s)).sort((a,b)=>b-a);
-        let str=0;for(let i=0;i<unique.length;i++){const exp=new Date(now);exp.setDate(now.getDate()-i);if(unique[i].toDateString()===exp.toDateString())str++;else break;}return str;
-      };
-      const anvilStreak = getStreak();
-      const weeksWithData = plannerData.weeks.filter(w=>w.wins.some(x=>x.trim())||w.focus?.trim());
-      const latestWeek = weeksWithData.length > 0 ? weeksWithData[weeksWithData.length-1] : null;
-
-      // Commitment tracking
-      const lastCommitment = localStorage.getItem('coach-commitment');
-      const lastCommitmentDate = localStorage.getItem('coach-commitment-date');
-      const yesterday = new Date(today);yesterday.setDate(today.getDate()-1);
-      const commitmentFromYesterday = lastCommitment && lastCommitmentDate && new Date(lastCommitmentDate).toDateString()===yesterday.toDateString();
-
-      // Anvil logged today/yesterday
-      const anvilToday = anvilLog.some(e=>new Date(e.date).toDateString()===today.toDateString());
-      const anvilYesterday = anvilLog.some(e=>new Date(e.date).toDateString()===yesterday.toDateString());
-      const anvilStreakBroken = anvilStreak===0 && anvilLog.length>3 && !anvilYesterday;
-
-      // Wheel drop
-      const recentWheels = plannerData.weeks.filter(w=>w.wheelOfJohn&&Object.values(w.wheelOfJohn).some(v=>v!==5)).slice(-2);
-      const wheelDrop = recentWheels.length===2 ? Object.values(recentWheels[1].wheelOfJohn).reduce((a,b)=>a+(b||5),0)/5 - Object.values(recentWheels[0].wheelOfJohn).reduce((a,b)=>a+(b||5),0)/5 : 0;
-      const worstWheel = latestWeek?.wheelOfJohn ? Object.entries(latestWeek.wheelOfJohn).sort((a,b)=>a[1]-b[1])[0] : null;
-
-      // Ritual skips
-      const ritualSkips = weeksWithData.slice(-2).filter(w=>!w.wins.some(x=>x.trim())||!w.focus?.trim()).length;
-
-      // Reflection gap
-      const reflectionDays = plannerData.dailyPlans?.flat().filter(d=>d?.reflection?.trim()).length||0;
-      const daysUsed = plannerData.dailyPlans?.flat().filter(d=>d?.grateful?.some(x=>x.trim())||d?.tasks?.some(t=>t.text?.trim())).length||0;
-      const reflectionGap = daysUsed > 5 && reflectionDays === 0;
-
-      // Stuck goals — no progress in 2+ weeks
-      const stuckGoals = goals.filter(g=>(g.completion||0)>0&&(g.completion||0)<100);
-
-      // ── MORNING ───────────────────────────────────────────────────────────
-      const mKey = 'morning-' + today.toDateString();
-      if (hour >= 5 && hour < 11 && !localStorage.getItem(mKey)) {
-        let msg;
-        if (commitmentFromYesterday) {
-          msg = `Good morning. Yesterday you said you'd ${lastCommitment}. Did you follow through — yes or no?`;
-        } else if (anvilStreakBroken) {
-          msg = `Good morning. Your ${anvilProject} streak is broken. What specifically got in the way yesterday — and what are you doing differently today?`;
-        } else if (anvilStreak >= 14) {
-          msg = `Good morning — ${anvilStreak} days straight on ${anvilProject}. That's a real pattern now. What does today's session look like?`;
-        } else if (stuckGoals.length > 0) {
-          msg = `Good morning. "${stuckGoals[0].title}" is at ${stuckGoals[0].completion||0}% and hasn't moved. What's the ONE action today that changes that number?`;
-        } else if (goals.length > 0) {
-          msg = `Good morning. What is the ONE specific action you take today on "${goals[0].title}"? Not a task — a commitment. Name it.`;
-        } else {
-          msg = `Good morning. What does winning today actually look like? Name one thing that, if done, makes today a success.`;
-        }
-        t.push({ role:'assistant', content:msg, _type:'morning', _label:'Morning Check-In', _emoji:'🌅' });
-        localStorage.setItem(mKey, 'true');
-      }
-
-      // ── MIDDAY ────────────────────────────────────────────────────────────
-      const mdKey = 'midday-' + today.toDateString();
-      if (hour >= 11 && hour < 14 && !localStorage.getItem(mdKey)) {
-        let msg;
-        const todayCommitment = lastCommitment && lastCommitmentDate===today.toDateString();
-        if (todayCommitment) {
-          msg = `Midday check — this morning you committed to ${lastCommitment}. Where are you on that right now?`;
-        } else if (wheelDrop < -1 && worstWheel) {
-          msg = `Midday check. Your ${worstWheel[0]} score has been dropping. What's actually going on in that area that you haven't said out loud yet?`;
-        } else if (reflectionGap) {
-          msg = `Midday check. You're using the app daily but skipping the reflection prompt. What are you avoiding thinking about?`;
-        } else if (goals.length > 0) {
-          msg = `Midday — have you moved the needle on "${goals[0].title}" yet today? If not, what specifically happens in the next 90 minutes?`;
-        } else {
-          msg = `Midday check — 1 to 10, how intentional has your morning been? What's the most important thing left to do today?`;
-        }
-        t.push({ role:'assistant', content:msg, _type:'midday', _label:'Midday Check-In', _emoji:'☀️' });
-        localStorage.setItem(mdKey, 'true');
-      }
-
-      // ── EVENING ───────────────────────────────────────────────────────────
-      const eKey = 'evening-' + today.toDateString();
-      if (hour >= 17 && hour < 22 && !localStorage.getItem(eKey)) {
-        let msg;
-        if (!anvilToday && plannerData.anvilProject?.project?.trim()) {
-          msg = `End of day — ${anvilProject} isn't logged yet. Did it happen and you forgot to log it, or did it not happen? Either way — honest answer.`;
-        } else if (anvilToday && anvilStreak >= 5) {
-          msg = `${anvilProject} done — ${anvilStreak} days straight. Scale of 1-10, how present were you during it? What's one thing you'd sharpen tomorrow?`;
-        } else if (ritualSkips >= 2) {
-          msg = `End of day. You've skipped the weekly ritual ${ritualSkips} weeks in a row. That's not a scheduling issue — what's the real reason you're avoiding it?`;
-        } else {
-          msg = `End of day. One win, one miss, one thing you're carrying into tomorrow. Go.`;
-        }
-        t.push({ role:'assistant', content:msg, _type:'evening', _label:'Evening Check-In', _emoji:'🌙' });
-        localStorage.setItem(eKey, 'true');
-      }
-
-      // ── SUNDAY ────────────────────────────────────────────────────────────
-      const wKey = 'weekly-plan-' + today.toDateString();
-      if (dow === 0 && hour >= 7 && hour < 14 && !localStorage.getItem(wKey)) {
-        const lastScore = weeksWithData.length > 0 ? calcSEAScore(plannerData, plannerData.weeks.indexOf(weeksWithData[weeksWithData.length-1])).total : null;
-        const msg = lastScore !== null
-          ? `Sunday. Last week you scored ${lastScore}/100. ${lastScore>=80?'Strong week — what do you build on this week?':lastScore>=60?'Decent week. What was the ONE thing that kept you from 80+?':'That score tells a story. What are you doing differently this week? Head to the Week tab — 15 minutes now.'}`
-          : `Sunday morning — blank slate. Head to the Week tab and design the week intentionally. 15 minutes now determines how the next 7 days go.`;
-        t.push({ role:'assistant', content:msg, _type:'sunday', _label:'Sunday Planning', _emoji:'📋' });
-        localStorage.setItem(wKey, 'true');
-        const summaryEmail = localStorage.getItem('summary-email');
-        if (summaryEmail && localStorage.getItem('summary-optin')==='true' && localStorage.getItem('last-summary-sent')!==today.toDateString()) {
-          localStorage.setItem('last-summary-sent', today.toDateString());
-          fetch('/.netlify/functions/send-summary',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:summaryEmail,name:localStorage.getItem('summary-name')||'',plannerData})}).catch(()=>{});
-        }
-      }
-
-      // ── HABIT PATTERN ─────────────────────────────────────────────────────
-      const recent = weeksWithData.slice(-3);
-      if (recent.length >= 2) {
-        const issues = {};
-        recent.forEach(w=>(w.aActivities||[]).forEach(a=>{if(!a.name?.trim())return;const d=(a.days||[]).filter(Boolean).length;if(d<3)issues[a.name]=(issues[a.name]||0)+1;}));
-        const struggling = Object.entries(issues).filter(([,v])=>v>=2).map(([k])=>k);
-        const pKey = 'pattern-' + today.toDateString();
-        if (struggling.length > 0 && !localStorage.getItem(pKey)) {
-          t.push({ role:'assistant', content:`Pattern detected — "${struggling[0]}" has been under 3 days for ${issues[struggling[0]]} weeks straight. Is the habit wrong, the timing wrong, or are you just not prioritizing it? What's really going on?`, _type:'pattern', _label:'Pattern Alert', _emoji:'⚠️' });
-          localStorage.setItem(pKey, 'true');
-        }
-      }
-
-      if (t.length > 0) {
-        addTriggers(t);
-        if (onProactiveMessage) setTimeout(()=>onProactiveMessage(t[0]), 1500);
-      }
-    };
-
-    const buildSystemPrompt = () => {
+  // buildSystemPrompt — extracted so both AICoach and the smart trigger can use it
+  const buildCoachSystemPrompt = (plannerData, personality, currentContext) => {
       const p = personality || {style:2,tone:2,approach:2,energy:2};
       const styleLabel = p.style<=1?'a hands-on coach who pushes for action':p.style>=3?'a strategic advisor who informs and guides':'a coaching advisor who balances pushing with guidance';
       const toneLabel = p.tone<=1?'deeply empathetic and emotionally warm — acknowledge feelings first':p.tone>=3?'direct and no-nonsense — skip the fluff, get to the point':'warm but direct — brief acknowledgment then straight to substance';
       const approachLabel = p.approach<=1?'supportive and accepting — meet them where they are, celebrate progress':'high-standards and challenging — push hard, expect more, call out excuses';
       const energyLabel = p.energy<=1?'calm and measured — steady, thoughtful, no hype':p.energy>=3?'fired up and intense — high energy, urgent, motivational':'steady with clear urgency — focused energy, no wasted words';
-      const personalitySummary = `COACH PERSONALITY (user-configured):
-- Style: Act as ${styleLabel}
-- Tone: Be ${toneLabel}
-- Approach: Be ${approachLabel}
-- Energy: Be ${energyLabel}`;
+      const personalitySummary = `COACH PERSONALITY (user-configured):\n- Style: Act as ${styleLabel}\n- Tone: Be ${toneLabel}\n- Approach: Be ${approachLabel}\n- Energy: Be ${energyLabel}`;
 
-      // Build rich session memory so coach never repeats generic setup questions
-      const weeksWithData = plannerData.weeks.filter(w=>w.wins.some(x=>x.trim())||w.focus?.trim());
+      const weeksWithData = (plannerData.weeks||[]).filter(w=>w.wins?.some(x=>x.trim())||w.focus?.trim());
       const latestWeek = weeksWithData.length > 0 ? weeksWithData[weeksWithData.length-1] : null;
       const recentWins = latestWeek?.wins?.filter(x=>x.trim()).join(', ') || 'None logged';
       const recentFocus = latestWeek?.focus || 'Not set';
@@ -1001,9 +779,9 @@
         if(!acts.length) return 'No habits tracked';
         return acts.map(a=>`${a.name} (${(a.days||[]).filter(Boolean).length}/7 days)`).join(', ');
       })();
-      const goalSummary = plannerData.goals.filter(g=>g.title?.trim()).map((g,i)=>`${i+1}. ${g.title} (${g.completion||0}%)`).join(', ') || 'No goals set';
+      const goalSummary = (plannerData.goals||[]).filter(g=>g.title?.trim()).map((g,i)=>`${i+1}. ${g.title} (${g.completion||0}%)`).join(', ') || 'No goals set';
       const latestWheel = (()=>{
-        const w=[...plannerData.weeks].reverse().find(wk=>wk.wheelOfJohn&&Object.values(wk.wheelOfJohn).some(v=>v!==5));
+        const w=[...(plannerData.weeks||[])].reverse().find(wk=>wk.wheelOfJohn&&Object.values(wk.wheelOfJohn).some(v=>v!==5));
         return w?Object.entries(w.wheelOfJohn).map(([k,v])=>`${k}:${v}`).join(', '):'Not scored';
       })();
       const lastCommitment = localStorage.getItem('coach-commitment');
@@ -1015,86 +793,39 @@
 
       const coachProfileRaw = localStorage.getItem('coach-profile');
       const cp = coachProfileRaw ? JSON.parse(coachProfileRaw) : {};
-      const profileContext = Object.values(cp).some(v=>v?.trim()) ? `
-WHO THIS USER IS (Coach Profile — use naturally, never recite back):
-- Years as advisor: ${cp.years||'Not specified'}
-- Production level: ${cp.production||'Not specified'}${cp.production==='Under $300K'?' → Stage I (Survival)':cp.production==='$300K–$750K'?' → Stage II (Thrival/Curse of Success)':cp.production==='$750K–$1.2M'?' → Stage III (Mastery)':cp.production==='$1.2M+'?' → Stage IV (Purpose)':''}
-- Team: ${cp.style||'Not specified'}
-- Client niche: ${cp.niche||'Not specified'}
-- What they need from coaching: ${cp.need||'Not specified'}
-- Biggest obstacle: ${cp.obstacle||'Not specified'}
-- Family: ${cp.family||'Not specified'}
-- Drift pattern (how they go off track): ${cp.drift||'Not specified'}
-- Why they became an advisor: ${cp.why||'Not shared yet'}
-Use the drift pattern to name avoidance when you see it in their data. Use their WHY to anchor big conversations. Use family context when connecting business to what really matters.
-- Biggest fear: ${cp.fear||'Not shared'}
-- Their definition of success: ${cp.successDef||'Not shared'}
-- What they are avoiding: ${cp.avoiding||'Not shared'}
-- What they are most proud of: ${cp.proud||'Not shared'}
-- 5-year life vision beyond money: ${cp.fiveYear||'Not shared'}
-- What is really holding them back: ${cp.holdingBack||'Not shared'}
+      const profileContext = Object.values(cp).some(v=>v?.trim()) ? `\nWHO THIS USER IS (Coach Profile — use naturally, never recite back):\n- Years as advisor: ${cp.years||'Not specified'}\n- Production level: ${cp.production||'Not specified'}${cp.production==='Under $300K'?' → Stage I (Survival)':cp.production==='$300K–$750K'?' → Stage II (Thrival/Curse of Success)':cp.production==='$750K–$1.2M'?' → Stage III (Mastery)':cp.production==='$1.2M+'?' → Stage IV (Purpose)':''}\n- Team: ${cp.style||'Not specified'}\n- Client niche: ${cp.niche||'Not specified'}\n- What they need from coaching: ${cp.need||'Not specified'}\n- Biggest obstacle: ${cp.obstacle||'Not specified'}\n- Family: ${cp.family||'Not specified'}\n- Drift pattern: ${cp.drift||'Not specified'}\n- Why they became an advisor: ${cp.why||'Not shared yet'}\nUse the drift pattern to name avoidance when you see it in their data.\n- Biggest fear: ${cp.fear||'Not shared'}\n- Their definition of success: ${cp.successDef||'Not shared'}\n- What they are avoiding: ${cp.avoiding||'Not shared'}\n- What they are most proud of: ${cp.proud||'Not shared'}\n- 5-year life vision beyond money: ${cp.fiveYear||'Not shared'}\n- What is really holding them back: ${cp.holdingBack||'Not shared'}` : '';
 
-DEEP COACHING — use these directly, never as trivia:
-Reference their fear when they play it safe. Anchor success conversations to THEIR definition not a generic one. Name what they are avoiding by name. Use their proud moment as a proof point when confidence is low. Test decisions against their 5-year vision. Name their holding-back pattern when you see it showing up.` : '';
-
-      // ── Deep user data — actual written words from the app ──────────────────
       const recentReflections = (()=>{
         const allDays = (plannerData.dailyPlans||[]).flat();
-        return allDays
-          .filter(d=>d?.reflection?.trim())
-          .slice(-5)
-          .map(d=>d.reflection.trim())
-          .join(' | ') || 'None yet';
+        return allDays.filter(d=>d?.reflection?.trim()).slice(-5).map(d=>d.reflection.trim()).join(' | ') || 'None yet';
       })();
-
       const recentGratitude = (()=>{
         const allDays = (plannerData.dailyPlans||[]).flat();
-        const entries = allDays
-          .filter(d=>d?.grateful?.some(x=>x.trim()))
-          .slice(-3)
-          .map(d=>(d.grateful||[]).filter(x=>x.trim()).join(', '));
+        const entries = allDays.filter(d=>d?.grateful?.some(x=>x.trim())).slice(-3).map(d=>(d.grateful||[]).filter(x=>x.trim()).join(', '));
         return entries.join(' | ') || 'None logged';
       })();
-
       const recentTodaysWins = (()=>{
         const allDays = (plannerData.dailyPlans||[]).flat();
-        const wins = allDays
-          .filter(d=>d?.todaysWins?.some(x=>x.trim()))
-          .slice(-3)
-          .map(d=>(d.todaysWins||[]).filter(x=>x.trim()).join(', '));
+        const wins = allDays.filter(d=>d?.todaysWins?.some(x=>x.trim())).slice(-3).map(d=>(d.todaysWins||[]).filter(x=>x.trim()).join(', '));
         return wins.join(' | ') || 'None logged';
       })();
-
       const hardThingsLog = (()=>{
         const allDays = (plannerData.dailyPlans||[]).flat();
-        const hard = allDays
-          .filter(d=>d?.hardThings?.trim())
-          .slice(-3)
-          .map(d=>`"${d.hardThings.trim()}" (${d.hardThingsCompleted?'done':'not done'})`);
+        const hard = allDays.filter(d=>d?.hardThings?.trim()).slice(-3).map(d=>`"${d.hardThings.trim()}" (${d.hardThingsCompleted?'done':'not done'})`);
         return hard.join(' | ') || 'None logged';
       })();
-
       const weeklyImprovements = (()=>{
-        return (plannerData.weeks||[])
-          .filter(w=>w.improvements?.trim())
-          .slice(-3)
-          .map(w=>w.improvements.trim())
-          .join(' | ') || 'None written';
+        return (plannerData.weeks||[]).filter(w=>w.improvements?.trim()).slice(-3).map(w=>w.improvements.trim()).join(' | ') || 'None written';
       })();
-
       const recentAnvilNotes = (()=>{
         const log = plannerData.anvilProject?.log||[];
         return log.slice(0,3).map(e=>e.note?.trim()).filter(Boolean).join(' | ') || 'No sessions logged';
       })();
-
       const weeklyWinsAll = (()=>{
-        return weeksWithData.slice(-3).map(w=>
-          (w.wins||[]).filter(x=>x.trim()).join(', ')
-        ).filter(Boolean).join(' | ') || 'None logged';
+        return weeksWithData.slice(-3).map(w=>(w.wins||[]).filter(x=>x.trim()).join(', ')).filter(Boolean).join(' | ') || 'None logged';
       })();
-
       const stuckHabits = (()=>{
-        const recent = plannerData.weeks.slice(-4);
+        const recent = (plannerData.weeks||[]).slice(-4);
         const issues = {};
         recent.forEach(w=>(w.aActivities||[]).forEach(a=>{
           if(!a.name?.trim()) return;
@@ -1104,221 +835,246 @@ Reference their fear when they play it safe. Anchor success conversations to THE
         const struggling = Object.entries(issues).filter(([,c])=>c>=2).map(([n])=>n);
         return struggling.length ? struggling.join(', ') : 'None identified';
       })();
-
       const goalTrends = (()=>{
-        return plannerData.goals.filter(g=>g.title?.trim()).map((g,i)=>{
+        return (plannerData.goals||[]).filter(g=>g.title?.trim()).map((g,i)=>{
           const pct = g.completion||0;
           const trend = pct===0?'not started':pct<25?'just beginning':pct<50?'early progress':pct<75?'halfway':pct<100?'near finish':'complete';
           return `${i+1}. "${g.title}" — ${pct}% (${trend})`;
         }).join(', ') || 'No goals set';
       })();
-
       const journalNotes = (()=>{
         return (plannerData.notes||[]).slice(0,3).map(n=>`[${n.tag||'Note'}] ${n.title||''}: ${n.content?.slice(0,80)||''}`).join(' | ') || 'No journal entries';
       })();
 
-      const sessionMemory = `
-SESSION MEMORY — use this to coach specifically, never generically. Reference their actual words back to them:
+      const sessionMemory = `\nSESSION MEMORY — use this to coach specifically, never generically. Reference their actual words back to them:\n\nFOUNDATION:\n- Slight Edge habits: ${plannerData.slightEdge||'Not defined'}\n- Year Theme: ${plannerData.yearTheme||'Not set'}\n- 120-Day Vision: ${plannerData.vision120Day||'Not defined'}\n- Weeks into cycle: ${weeksWithData.length} of 17\n\nGOALS & PROGRESS:\n${goalTrends}\n\nPERFORMANCE DATA:\n- Anvil project: ${plannerData.anvilProject?.project||'Not set'} | Streak: ${anvilStreak} days\n- Recent Anvil session notes: ${recentAnvilNotes}\n- Habits tracked: ${habitSummary}\n- Habits struggling (under 3/7 for 2+ weeks): ${stuckHabits}\n- Wheel of Life scores: ${latestWheel}\n\nTHEIR ACTUAL WORDS — quote these back, reference them directly:\n- Recent reflections: ${recentReflections}\n- Recent gratitude entries: ${recentGratitude}\n- Recent wins they logged: ${weeklyWinsAll}\n- Today's wins: ${recentTodaysWins}\n- Hard things they're working on: ${hardThingsLog}\n- What they want to improve: ${weeklyImprovements}\n- Latest weekly focus: ${recentFocus}\n- Journal notes: ${journalNotes}\n\nACCOUNTABILITY:\n${commitmentContext}\n- Current context: ${currentContext?JSON.stringify(currentContext):'General'}`;
 
-FOUNDATION:
-- Slight Edge habits: ${plannerData.slightEdge||'Not defined'}
-- Year Theme: ${plannerData.yearTheme||'Not set'}
-- 120-Day Vision: ${plannerData.vision120Day||'Not defined'}
-- Weeks into cycle: ${weeksWithData.length} of 17
-
-GOALS & PROGRESS:
-${goalTrends}
-
-PERFORMANCE DATA:
-- S.E.A. Score this week: based on habits/anvil/wheel/goals
-- Anvil project: ${plannerData.anvilProject?.project||'Not set'} | Cadence: ${plannerData.anvilProject?.cadence||'Not set'} | Streak: ${anvilStreak} days
-- Recent Anvil session notes: ${recentAnvilNotes}
-- Habits tracked: ${habitSummary}
-- Habits they're struggling with (under 3/7 for 2+ weeks): ${stuckHabits}
-- Wheel of Life scores: ${latestWheel}
-
-THEIR ACTUAL WORDS — quote these back, reference them directly:
-- Recent reflections: ${recentReflections}
-- Recent gratitude entries: ${recentGratitude}
-- Recent wins they logged: ${weeklyWinsAll}
-- Today's wins: ${recentTodaysWins}
-- Hard things they're working on: ${hardThingsLog}
-- What they want to improve: ${weeklyImprovements}
-- Latest weekly focus: ${recentFocus}
-- Journal notes: ${journalNotes}
-
-ACCOUNTABILITY:
-${commitmentContext}
-- Current context: ${currentContext?JSON.stringify(currentContext):'General'}
-
-COACHING INSTRUCTIONS:
-- Reference their actual written words — if they wrote "struggling with prospecting calls", say that back to them specifically
-- Call out stuck habits by name — don't say "some habits are slipping", say "your [habit name] has been under 3 days for two weeks"
-- Connect their gratitude and wins to momentum — "you said X was a win last week, how are you building on that?"
-- If reflections show a pattern (stress, avoidance, excitement), name it
-- If hard things are marked "not done", address it directly
-- Never ask questions you already know the answer to from the data above
-- Do NOT ask generic onboarding questions if setup is complete`;
-
-      // Cycle-aware coaching phase
       const weeksIn = weeksWithData.length;
       const cyclePhase = weeksIn <= 2 ? 'foundation' : weeksIn <= 6 ? 'execution' : weeksIn <= 12 ? 'deepening' : 'finishing';
       const cycleContext = {
-        foundation: `COACHING PHASE — Foundation (Week ${weeksIn} of 17):
-The user is early in their cycle. Your job is to establish identity and momentum, not push hard. Help them get clear, build early wins, and feel the power of the system. Ask questions that deepen their WHY. Celebrate early consistency. Don't overwhelm — anchor them.`,
-        execution: `COACHING PHASE — Execution (Week ${weeksIn} of 17):
-The user is in the critical execution window. This is where most people drift. Your job is to push hard, call out avoidance, and keep them focused on the scoreboard. The honeymoon is over — now it's about doing the work when it's not exciting. Be direct. Expect follow-through.`,
-        deepening: `COACHING PHASE — Deepening (Week ${weeksIn} of 17):
-The user is deep in the cycle. Patterns are clear now — good and bad. Your job is to go beneath the surface. Ask harder questions about what's really going on. Challenge assumptions. Notice what's NOT being said. This is where real growth happens or where people go through the motions. Don't let them coast.`,
-        finishing: `COACHING PHASE — Finishing Strong (Week ${weeksIn} of 17):
-The user is in the final stretch. Your job is to drive urgency without panic. Help them finish what they started, lock in the habits that will carry into the next cycle, and extract the lessons. Ask: what will you carry forward? What are you leaving behind? Create legacy thinking — this 120 days is a chapter, not the whole book.`
+        foundation: `COACHING PHASE — Foundation (Week ${weeksIn} of 17):\nThe user is early in their cycle. Establish identity and momentum. Help them build early wins and feel the power of the system.`,
+        execution: `COACHING PHASE — Execution (Week ${weeksIn} of 17):\nCritical window. Push hard, call out avoidance, keep them focused. The honeymoon is over.`,
+        deepening: `COACHING PHASE — Deepening (Week ${weeksIn} of 17):\nPatterns are clear. Go beneath the surface. Ask harder questions.`,
+        finishing: `COACHING PHASE — Finishing Strong (Week ${weeksIn} of 17):\nDrive urgency. Help them finish what they started and lock in habits for the next cycle.`
       }[cyclePhase];
 
-      return `You are the AI coaching assistant inside the S.E.A. Dashboard for a financial advisor. Results-focused.
+      return `You are the AI coaching assistant inside the S.E.A. Dashboard for a financial advisor. Results-focused.\n\nPHILOSOPHY: "Structure sets you free" | "Live by design, not default" | "Strategy without execution is hallucination"\nS.E.A.: Strategic (12X thinking) | Executable (next action NOW) | Accountable (weekly scorecards)\nFIVE CATEGORIES: Family | Fun | Fitness | Finance | Faith\nPRIORITY TREE: You → Spouse → Kids → Staff → Clients → Community\n${profileContext}\n${cycleContext}\n\n${personalitySummary}\n${sessionMemory}\n\nGETTING RESULTS INC — CORE PHILOSOPHY:\n\nThe Cascade Effect: Every consistent action is a grain of sand. The cascade — the breakthrough — is inevitable but unpredictable. Keep piling. The cascade is going to happen.\n\nStructure Sets You Free: Motivation is unreliable. What matters is structure. Remove barriers — put the pull-up bar in the living room, not the garage. Set your structure then surrender to it.\n\nThe 4 Stages:\n- Stage I Survival ($0–$300K): Zombie clients, no niche, just surviving.\n- Stage II Thrival ($300K–$750K): THE CURSE OF SUCCESS. Overwhelmed but underwhelmed. This is the LEVERAGE phase.\n- Stage III Mastery ($750K–$1.2M): Business is a game like golf — never won, only played.\n- Stage IV Purpose ($1M+): Financial services may be the funding mechanism, not the path itself.\n\nOVERWHELM: "Overwhelm is a failure to prioritize." The law of unequal distribution — there is always ONE priority. 1% of a day = 15 minutes = 50% of the value.\n\nABCD People: A people lift you. B people are solid. C people are draining. D people are toxic.\n\nGINO'S VOICE:\n- Open warm and get straight to what's on their mind\n- Use "Quick check" to clarify before diving in\n- Treat emotions as data, not problems\n- Name the dangerous place directly\n- Force specificity — never let them stay vague: "Solid options. Now pick just ONE."\n- Always end with ONE specific question — never lecture\n- Keep responses tight and punchy — 2-4 sentences max\n- Summarize at end of session: "Quick recap:" then 2-3 sharp bullets\n- Use these naturally: "Love that", "Got it", "Totally fair", "Let's get practical", "That's gold"\n\nACCOUNTABILITY: Call out avoidance. Name slipping habits. Follow up on commitments. Never let them off the hook.\n\nRESPONSE RULES: 2-4 sentences max. One powerful question per response. Match personality settings precisely.\nDONT: Give financial advice. Make decisions for them. Be a cheerleader without substance. Ask questions you already know the answer to from SESSION MEMORY. Give long monologues.`;
+  };
 
-PHILOSOPHY: "Structure sets you free" | "Live by design, not default" | "Strategy without execution is hallucination"
-S.E.A.: Strategic (12X thinking) | Executable (next action NOW) | Accountable (weekly scorecards)
-FIVE CATEGORIES: Family | Fun | Fitness | Finance | Faith
-PRIORITY TREE: You → Spouse → Kids → Staff → Clients → Community
-${profileContext}
-${cycleContext}
+  // Smart app-open trigger — reads full state, calls AI to decide if there's something worth saying
+  const runSmartTrigger = async (plannerData, personality, authUserId) => {
+    const triggerKey = 'smart-trigger-' + new Date().toDateString() + '-' + new Date().getHours();
+    if (localStorage.getItem(triggerKey)) return null;
 
-${personalitySummary}
-${sessionMemory}
+    // Build a compact dashboard snapshot for the trigger decision
+    const anvilLog = plannerData.anvilProject?.log||[];
+    const today = new Date(); today.setHours(0,0,0,0);
+    const yesterday = new Date(today); yesterday.setDate(today.getDate()-1);
+    const anvilToday = anvilLog.some(e=>new Date(e.date).toDateString()===today.toDateString());
+    const anvilYesterday = anvilLog.some(e=>new Date(e.date).toDateString()===yesterday.toDateString());
 
-GETTING RESULTS INC — CORE PHILOSOPHY (reference these naturally in coaching):
+    // Compute streak
+    const unique=[...new Set(anvilLog.map(e=>{const d=new Date(e.date);d.setHours(0,0,0,0);return d.toDateString()}))].map(s=>new Date(s)).sort((a,b)=>b-a);
+    let anvilStreak=0;for(let i=0;i<unique.length;i++){const exp=new Date(today);exp.setDate(today.getDate()-i);if(unique[i].toDateString()===exp.toDateString())anvilStreak++;else break;}
 
-The Cascade Effect: Every consistent action is a grain of sand. The cascade — the breakthrough — is inevitable but unpredictable. It could happen at 12 grains of sand or 12,466. The question is never "when" — it's whether you have the persistence and structure to stay in the conversation long enough. Keep piling. The cascade is going to happen.
+    const weeksWithData = (plannerData.weeks||[]).filter(w=>w.wins?.some(x=>x.trim())||w.focus?.trim());
+    const latestWeek = weeksWithData[weeksWithData.length-1];
+    const habits = (latestWeek?.aActivities||[]).filter(a=>a.name?.trim()).map(a=>({name:a.name,days:(a.days||[]).filter(Boolean).length,target:a.targetDays||7}));
+    const goals = (plannerData.goals||[]).filter(g=>g.title?.trim()).map(g=>({title:g.title,pct:g.completion||0}));
 
-Structure Sets You Free: Motivation is unreliable — it's almost always AWOL when you need it most. What matters is structure. When you have structure, discipline gets easier. Structure is the secret sauce. Remove barriers to entry. Put the pull-up bar in the living room, not the garage. Make the right thing easy to do. What you give your attention to, you get more of. Set your structure then surrender to it. Just show up. Just do it.
+    // Stuck habits (under half target for 2+ weeks)
+    const recentWeeks = (plannerData.weeks||[]).slice(-4);
+    const habitIssues = {};
+    recentWeeks.forEach(w=>(w.aActivities||[]).forEach(a=>{
+      if(!a.name?.trim()) return;
+      const target = a.targetDays||7;
+      const done = (a.days||[]).filter(Boolean).length;
+      if(done < target/2) habitIssues[a.name]=(habitIssues[a.name]||0)+1;
+    }));
+    const stuckHabits = Object.entries(habitIssues).filter(([,c])=>c>=2).map(([n])=>n);
 
-Coaches Are Disinterested: A great coach doesn't have a vested interest in your outcome — they're disinterested, not uninterested. That's what makes them valuable. Your spouse, friends, and boss all have a stake in what you decide. A coach can wrestle with you as a stranger — which brings out the best in you because they don't have a preconceived listening of who you are.
+    const lastCommitment = localStorage.getItem('coach-commitment');
+    const lastCommitmentDate = localStorage.getItem('coach-commitment-date');
+    const todayStr = new Date().toISOString().split('T')[0];
+    const yesterdayStr = new Date(Date.now()-86400000).toISOString().split('T')[0];
 
-The Game: The game can never be won — only played. When you love the game you're playing, everything gets easier. Financial services doesn't have to be the path. It can be the funding mechanism that enables the true path. The most successful people find their satisfaction not in numbers, but in serving others and the belief that what they do is noble and right.
+    const wheelScores = (()=>{
+      const w=[...(plannerData.weeks||[])].reverse().find(wk=>wk.wheelOfJohn&&Object.values(wk.wheelOfJohn).some(v=>v!==5));
+      return w?Object.entries(w.wheelOfJohn).map(([k,v])=>`${k}:${v}`).join(', '):'Not scored';
+    })();
 
-Way Leads on to Way: When one door closes, it leads to another. Failures are not endings — they're redirects. The path becomes more obvious through the process of working on it.
-
-A People, A Activities, A Places: The more you involve yourself with A people, A activities, and A places, the greater your probability of success. When it's enjoyable, it's easier to repeat. Shit works when you execute it.
-
-ABCD People framework: A people lift you, challenge you, and make you better. B people are solid but not inspiring. C people are draining. D people are toxic. Know which ones you're spending time with.
-
-THE PRIORITY TREE — in order, non-negotiable:
-1. YOU — self-alignment first. Mind, body, spirit. Are you at war within yourself? Is your compelling future clear?
-2. SPOUSE/PARTNER — consistent communication. "When you think you have enough communication, you probably don't." Daily check: "How are you doing? How are WE doing?"
-3. KIDS — structured time, know what lights them up, support their vision
-4. STAFF — know their vision, invest in them, help them meet their goals
-5. CLIENTS — are you delivering on your promise and working your service model?
-6. CORPORATE/MOTHERSHIP — always last
-"Too many advisors place clients at the top — that creates friction that flows right down the whole tree."
-Alignment = further, faster, less fuel. Misalignment = friction = fire.
-
-OVERWHELM — how to handle it:
-- "Overwhelm is a failure to prioritize."
-- Call it out directly: "You're being mentally lazy — not because you don't have a lot going on, but because you're ignoring the importance of discernment."
-- The law of unequal distribution: nothing is equally important. There is always ONE priority.
-- 1% of a day = 15 minutes = 50% of the value. 1% of a week = 90 minutes = 50% of the value.
-- "How can you really be overwhelmed when 50% of the value comes from 15 minutes a day?"
-- "Overwhelm only exists in the space between your ears. The trees aren't overwhelmed. The fish aren't overwhelmed."
-- Return to the priority tree. Start with yourself.
-
-GETTING RESULTS INC — CORE FRAMEWORKS:
-MISSION: "Enhance the Experience of your Life through the Success of your Business."
-THE 4 STAGES — use to diagnose where an advisor is:
-- Stage I Survival ($0–$300K, yrs 1-9): Zombie clients, no niche, just surviving. Identity shift needed.
-- Stage II Thrival ($300K–$750K, yrs 10-18): THE CURSE OF SUCCESS. Overwhelmed with tasks, underwhelmed by enjoyment. Trying to grow same way as Stage I. This is the LEVERAGE phase. Majority of GRI clients live here. "Frustrated or bored? That's Stage II. The curse of success. Does that resonate?"
-- Stage III Mastery ($750K–$1.2M, 18+ yrs): Business is a game like golf — never won, only played. The day after hitting $1M feels the same as the day before.
-- Stage IV Purpose ($1M+): "But what for?" Financial services may be the funding mechanism, not the path itself.
-STRUCTURE PRINCIPLE: "Motivation gets you nowhere. Structure is the secret sauce. Set your structure then surrender to it. Just show up. Just do it." Remove barriers — pull-up bar in the living room, not the garage.
-ATTENTION PRINCIPLE: "What you give attention to, you get more of." Does your attention support your mission or distract from it?
-MARKET/EMOTION (for volatility talk): "The account is worth $800,000." Nothing more. "Anything else is drama. More drama = more stress = less awareness = worse decisions. The hooks are all yours — straighten your hooks and nothing can bind you."
-COACHING VALUE: "A good coach is disinterested — impartial, with no stake in the outcome. Spouse, friends, family all have a vested interest. A coach doesn't. That's the value."
-THE GAME: "The game can never be won, only played. But when you love the game you're playing, everything gets easier."
-CURIOSITY OVER DEFENSIVENESS: When a client pushes back — "Tell me more about why you think that." Curiosity creates understanding. Defensiveness clouds awareness.
-
-FINANCIAL ADVISOR SPECIFIC — use naturally when relevant:
-- The servicing trap: "You get busy servicing clients and before you know it, the business starts running you instead of the other way around."
-- Client tiers: advisors segment clients into A (top/custom), B (mid-tier), C (smaller) — use when discussing time allocation, reviews, or capacity
-- Annual review batching: "Batch reviews by client tier. Block two-week windows for C clients, then Bs, reserve A clients for custom scheduling. Use Calendly or ScheduleOnce for self-booking — removes the back-and-forth."
-- Delegation/assistant issues — capacity vs clarity diagnostic: "When an assistant isn't fast enough, it's usually a capacity issue or a clarity issue. Which one is it?"
-- The "done right" standard: "Describe what 'done right' looks like for one task your assistant handles — in specific terms."
-- The reinforcing pattern: "Every time you step in and do it yourself, you reinforce the pattern that they can't handle it. Let's flip that."
-
-ANVIL-SPECIFIC COACHING — when the user mentions struggling with their Anvil:
-- Diagnostic: "When someone struggles with their Anvil, it usually means one of two things: the project isn't clearly defined, or the structure around it isn't being protected. Which one is it for you?"
-- If clarity: "Quick check — unclear on what the Anvil should BE, or on how to structure and protect the time for it?"
-- If structure: "Your Anvil should live inside the 17-week cycle. Define the outcome, break into weekly actions, protect specific time blocks. What's the result you want by week 17?"
-- TIME OBJECTION: "'I don't have time' usually means 'it's not a priority right now.' That's not a judgment — it's just clarity. If you did have the time, what would you use it for? What keeps getting pushed aside?"
-
-ACCOUNTABILITY: Call out avoidance. Name slipping habits. Follow up on commitments. Never let them off the hook.
-
-GINO'S VOICE — speak like this:
-- Open warm and get straight to what's on their mind: "What's on your mind today?" or "Where do you feel the most friction right now?"
-- Use a "Quick check" to clarify before diving in: "Quick check — are we talking about X or Y?"
-- Treat emotions as data, not problems: "Boredom is a big red flag. It's your business telling you something's off."
-- Name the dangerous place directly: "You're probably successful on paper, but inside you're checked out. That's a dangerous place to stay."
-- Meet them where they are, name it, then move: "Classic post-lunch slump. Let's snap out of it." — acknowledge reality fast then get going
-- Handle off-topic questions with curiosity, not redirection — "Ha! Love that question." then find the coaching angle
-- The reward vs distraction test: "Is this a reward for something, or a distraction from something you don't want to deal with right now?"
-- Always ask "What feeling are you chasing?" — for any goal, desire, or decision
-- Find the deeper meaning in their image or story: "That's not just a car you're after — it's a moment."
-- Name the real thing underneath the surface want: translate what they said into the core need (connection, freedom, control, legacy)
-- Use legacy framing: "That's more than just [surface thing] — it's legacy."
-- The earned it question: "Do you feel like you've earned that right now, or would it mean more as a reward for hitting a specific milestone?"
-- Validate briefly then pivot immediately to action: "Love hearing that. So let me ask you this..."
-- When everything feels broken, use the "what would you keep" reframe: "If you could wipe the slate clean and rebuild from scratch, what would you keep?"
-- Follow the energy, not the agenda — if something lights them up, go there
-- Meet unexpected or raw answers with curiosity, not judgment: "Now THAT sounds like serious energy."
-- Always find what lit them up and ask WHY: "What was it about that experience that fired you up?"
-- Force specificity — never let them stay vague: "Solid options. Now pick just ONE."
-- Go under the surface: "Let's not brush this off. Let's get under it." / "Name it. Let's drag it into the light."
-- Use "So the real question is..." to redirect to the deeper issue
-- Reframe fear as a growth signal: "What if this isn't a sign something's wrong — but that you're growing into a bigger version of yourself?"
-- Core Gino principle — attention = energy: "Anything you give your attention to gets energy. It grows. So are you feeding the right things?"
-- Give concrete tools, not just motivation: proof lists, specific actions, named next steps
-- When they say something raw or honest, just say "Good." and keep moving — no moralizing, no over-praising
-- Use these phrases naturally: "Love that", "Got it", "Totally fair", "Let's get practical", "That's gold", "You're in the pocket", "That's leadership", "That's a strong close", "Let's snap out of it", "Now THAT", "Man, that's a powerful image"
-- Always end with ONE specific question — never lecture
-- Summarize at the end of a session: "Quick recap:" then 2-3 sharp bullets
-- Keep responses tight and punchy — 2-4 sentences max, never a monologue
-
-RESPONSE RULES: 2-4 sentences max. One powerful question per response. Match personality settings precisely.
-DONT: Give financial advice. Make decisions for them. Be a cheerleader without substance. Ask questions you already know the answer to from SESSION MEMORY. Give long monologues — keep it tight and punchy like Gino does.`;
+    const snapshot = {
+      anvilProject: plannerData.anvilProject?.project||'Not set',
+      anvilStreak,
+      anvilToday,
+      anvilYesterday,
+      habits,
+      stuckHabits,
+      goals,
+      weeklyRitual: latestWeek ? { focus: latestWeek.focus, hasWins: latestWeek.wins?.some(x=>x.trim()) } : null,
+      wheelScores,
+      lastCommitment: lastCommitment ? `"${lastCommitment}" on ${lastCommitmentDate}` : null,
+      commitmentFollowUpDue: lastCommitment && (lastCommitmentDate===yesterdayStr || lastCommitmentDate===todayStr),
+      weeksInCycle: weeksWithData.length,
+      setupComplete: !!(plannerData.slightEdge?.trim() && plannerData.vision120Day?.trim() && goals.length > 0),
     };
 
-    // Trim messages sent to API to last 12 to avoid token limits
-    // Full history still shows on screen — only trimmed on the wire
+    const decisionPrompt = `You are an AI coach reviewing a user's dashboard data when they open the app. Your job: decide if there is something GENUINELY worth noting right now — something specific, data-backed, and actionable. Not generic encouragement.
+
+DASHBOARD SNAPSHOT:
+${JSON.stringify(snapshot, null, 2)}
+
+RULES:
+- Only speak up if there is a real pattern, gap, streak, or follow-up commitment worth addressing
+- Do NOT speak up just to say hello or be encouraging in a generic way
+- Do NOT speak up if everything looks consistent and there's nothing specific to say
+- DO speak up for: broken streaks, outstanding commitments to follow up, stuck habits (2+ weeks), goal stagnation, missing weekly ritual, strong streaks worth acknowledging, Wheel of Life drops
+
+Respond with JSON only: { "shouldTrigger": true/false, "message": "...", "label": "...", "emoji": "..." }
+If shouldTrigger is false, message/label/emoji can be empty strings.
+Message should be 1-2 sentences, direct, specific to their data. No generic fluff.`;
+
+    try {
+      const res = await fetch('/.netlify/functions/ai-coach', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({
+          systemPrompt: 'You are a decision-making AI that reviews dashboard data and decides whether to send a coaching message. Respond only with valid JSON.',
+          maxTokens: 200,
+          messages: [{role:'user', content: decisionPrompt}]
+        })
+      });
+      if (!res.ok) return null;
+      const d = await res.json();
+      const text = d.content?.[0]?.text || '';
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) return null;
+      const parsed = JSON.parse(jsonMatch[0]);
+      if (!parsed.shouldTrigger) return null;
+      localStorage.setItem(triggerKey, 'true');
+      return { content: parsed.message, _label: parsed.label || 'AI Coach', _emoji: parsed.emoji || '🤖' };
+    } catch(e) { console.error('Smart trigger error', e); return null; }
+  };
+
+  const AICoach = ({ isOpen, onClose, plannerData, authUserId, personality, conversations, onConversationsChange, activeConvId, onActiveConvIdChange }) => {
+    const [messages, setMessages] = useState([]);
+    const [input, setInput] = useState('');
+    const [loading, setLoading] = useState(false);
+    const [convId, setConvId] = useState(activeConvId || null);
+    const [saving, setSaving] = useState(false);
+    const endRef = useRef(null);
+    const saveTimer = useRef(null);
+
+    // Load messages when opening a specific conversation
+    useEffect(() => {
+      if (!isOpen) return;
+      if (activeConvId) {
+        const conv = conversations.find(c => c.id === activeConvId);
+        if (conv) { setMessages(conv.messages || []); setConvId(activeConvId); }
+      } else {
+        // New conversation
+        setMessages([]);
+        setConvId(null);
+      }
+    }, [isOpen, activeConvId]);
+
+    useEffect(() => {
+      if (isOpen) endRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }, [messages, isOpen]);
+
+    // iOS keyboard fix
+    useEffect(() => {
+      if (!isOpen || !window.visualViewport) return;
+      const handleViewportResize = () => {
+        const panel = document.querySelector('.coach-panel');
+        if (!panel || window.innerWidth > 768) return;
+        const vvh = window.visualViewport.height;
+        const vvTop = window.visualViewport.offsetTop;
+        panel.style.top = vvTop + 'px';
+        panel.style.height = vvh + 'px';
+        panel.style.maxHeight = vvh + 'px';
+        panel.style.bottom = 'auto';
+      };
+      const handleBlur = () => {
+        setTimeout(() => {
+          const panel = document.querySelector('.coach-panel');
+          if (panel) { panel.style.top = ''; panel.style.height = ''; panel.style.maxHeight = ''; panel.style.bottom = ''; }
+        }, 100);
+      };
+      window.visualViewport.addEventListener('resize', handleViewportResize);
+      window.visualViewport.addEventListener('scroll', handleViewportResize);
+      document.addEventListener('focusout', handleBlur);
+      return () => {
+        window.visualViewport.removeEventListener('resize', handleViewportResize);
+        window.visualViewport.removeEventListener('scroll', handleViewportResize);
+        document.removeEventListener('focusout', handleBlur);
+        const panel = document.querySelector('.coach-panel');
+        if (panel) { panel.style.top = ''; panel.style.height = ''; panel.style.maxHeight = ''; panel.style.bottom = ''; }
+      };
+    }, [isOpen]);
+
     const buildApiMessages = (allMessages, newMsg) => {
       const combined = [...allMessages, newMsg].filter(m=>m.role==='user'||m.role==='assistant');
       const trimmed = combined.slice(-12);
-      // Ensure first message is always from user (API requirement)
       const firstUserIdx = trimmed.findIndex(m=>m.role==='user');
       const valid = firstUserIdx >= 0 ? trimmed.slice(firstUserIdx) : trimmed;
       return valid.map(({role,content})=>({role,content}));
+    };
+
+    const persistMessages = async (msgs, currentConvId) => {
+      if (!authUserId || msgs.length === 0) return currentConvId;
+      // Generate a short title from first user message
+      const firstUser = msgs.find(m=>m.role==='user');
+      const titleHint = firstUser ? firstUser.content.slice(0,60) : 'Coaching Session';
+      const newId = await saveConversation(authUserId, currentConvId, msgs, titleHint);
+      return newId;
     };
 
     const send = async () => {
       if (!input.trim()) return;
       const userMsg = { role:'user', content:input };
 
-      // Commitment capture — detect "I will..." or "I'll..." statements
+      // Commitment capture
       const commitmentMatch = input.match(/\b(i will|i'll|i am going to|i'm going to|i plan to|i commit to)\b(.{5,80})/i);
       if (commitmentMatch) {
-        const commitment = commitmentMatch[0].trim();
-        localStorage.setItem('coach-commitment', commitment);
+        localStorage.setItem('coach-commitment', commitmentMatch[0].trim());
         localStorage.setItem('coach-commitment-date', new Date().toISOString().split('T')[0]);
       }
 
-      setMessages(prev=>[...prev, userMsg]);
+      const newMessages = [...messages, userMsg];
+      setMessages(newMessages);
       setInput(''); setLoading(true);
       try {
         const res = await fetch('/.netlify/functions/ai-coach', {
           method:'POST',
           headers:{'Content-Type':'application/json'},
-          body: JSON.stringify({systemPrompt:buildSystemPrompt(),maxTokens:1024,messages:buildApiMessages(messages,userMsg)})
+          body: JSON.stringify({
+            systemPrompt: buildCoachSystemPrompt(plannerData, personality, null),
+            maxTokens: 1024,
+            messages: buildApiMessages(messages, userMsg)
+          })
         });
         if (!res.ok) throw new Error(`${res.status} - ${await res.text()}`);
         const d = await res.json();
-        if (d.content?.[0]) setMessages(prev=>[...prev,{role:'assistant',content:d.content[0].text}]);
+        if (d.content?.[0]) {
+          const withReply = [...newMessages, {role:'assistant', content:d.content[0].text}];
+          setMessages(withReply);
+          // Persist to Supabase (debounced)
+          clearTimeout(saveTimer.current);
+          saveTimer.current = setTimeout(async () => {
+            setSaving(true);
+            const newId = await persistMessages(withReply, convId);
+            if (newId && newId !== convId) {
+              setConvId(newId);
+              if (onActiveConvIdChange) onActiveConvIdChange(newId);
+            }
+            // Refresh conversations list
+            if (authUserId && onConversationsChange) {
+              const updated = await loadConversations(authUserId);
+              onConversationsChange(updated);
+            }
+            setSaving(false);
+          }, 1500);
+        }
       } catch(e) { alert('Coach error: ' + e.message); }
       finally { setLoading(false); }
     };
@@ -1329,14 +1085,25 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
         <div className="coach-overlay md:hidden" onClick={onClose}/>
         <div className="coach-panel bg-slate-900 flex flex-col shadow-2xl">
           <div className="bg-gradient-to-r from-blue-600 to-purple-600 p-4 flex items-center justify-between" style={{borderRadius:'1.5rem 1.5rem 0 0'}}>
-            <div className="flex items-center gap-2"><BotIcon/><span className="font-bold text-white">AI Coach</span></div>
             <div className="flex items-center gap-2">
-              <button onClick={()=>{if(confirm('Clear conversation?')){setMessages([]);localStorage.removeItem('ai-coach-messages');}}} className="text-xs text-white/70 hover:text-white px-2 py-1 hover:bg-white/20 rounded">Clear</button>
+              <BotIcon/>
+              <div>
+                <span className="font-bold text-white text-sm">AI Coach</span>
+                {saving && <span className="text-xs text-white/60 ml-2">Saving...</span>}
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <button onClick={()=>{ if(confirm('Start a new conversation?')){ setMessages([]); setConvId(null); if(onActiveConvIdChange) onActiveConvIdChange(null); }}} className="text-xs text-white/70 hover:text-white px-2 py-1 hover:bg-white/20 rounded">New</button>
               <button onClick={onClose} className="p-1.5 hover:bg-white/20 rounded-lg"><XIcon/></button>
             </div>
           </div>
           <div className="flex-1 overflow-y-auto p-4 space-y-3 chat-messages coach-messages">
-            {messages.length === 0 && <div className="text-center text-slate-500 mt-12"><div className="text-4xl mb-3">🤖</div><p className="text-sm">Your accountability coach is ready.<br/>Ask anything about your S.E.A. plan.</p></div>}
+            {messages.length === 0 && (
+              <div className="text-center text-slate-500 mt-12">
+                <div className="text-4xl mb-3">🤖</div>
+                <p className="text-sm">Your accountability coach is ready.<br/>What's on your mind?</p>
+              </div>
+            )}
             {messages.map((m,i)=>(
               <div key={i} className={`flex ${m.role==='user'?'justify-end':'justify-start'}`}>
                 <div className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${m.role==='user'?'bg-blue-600 text-white':'bg-slate-800 text-slate-200'}`}>{m.content}</div>
@@ -1347,12 +1114,128 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
           </div>
           <div className="p-4 border-t border-slate-800 coach-input-bar">
             <div className="flex gap-2">
-              <input value={input} onChange={e=>setInput(e.target.value)} onKeyPress={e=>e.key==='Enter'&&send()} onFocus={()=>setTimeout(()=>endRef.current?.scrollIntoView({behavior:'smooth'}),400)} placeholder="Ask your coach..." disabled={loading} inputMode="text" className="flex-1 bg-slate-800 border border-slate-700 rounded-xl p-3 text-white placeholder-slate-500 text-sm focus:border-blue-500 focus:outline-none"/>
+              <input value={input} onChange={e=>setInput(e.target.value)} onKeyPress={e=>e.key==='Enter'&&send()} onFocus={()=>setTimeout(()=>endRef.current?.scrollIntoView({behavior:'smooth'}),400)} placeholder="Talk to your coach..." disabled={loading} inputMode="text" className="flex-1 bg-slate-800 border border-slate-700 rounded-xl p-3 text-white placeholder-slate-500 text-sm focus:border-blue-500 focus:outline-none"/>
               <button onClick={send} disabled={loading||!input.trim()} className="bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white p-3 rounded-xl"><SendIcon/></button>
             </div>
           </div>
         </div>
       </>
+    );
+  };
+
+  // ── AI COACH TAB (history hub) ───────────────────────────────────────────
+  const AICoachTab = ({ plannerData, authUserId, personality, conversations, onConversationsChange }) => {
+    const [openConvId, setOpenConvId] = useState(null);
+    const [chatOpen, setChatOpen] = useState(false);
+
+    const openConversation = (id) => {
+      setOpenConvId(id);
+      setChatOpen(true);
+    };
+
+    const startNew = () => {
+      setOpenConvId(null);
+      setChatOpen(true);
+    };
+
+    const handleDelete = async (id, e) => {
+      e.stopPropagation();
+      if (!confirm('Delete this conversation?')) return;
+      await deleteConversation(authUserId, id);
+      if (onConversationsChange) {
+        const updated = await loadConversations(authUserId);
+        onConversationsChange(updated);
+      }
+    };
+
+    // Group conversations by date
+    const grouped = (() => {
+      const groups = {};
+      (conversations||[]).forEach(c => {
+        const d = new Date(c.created_at);
+        const label = (() => {
+          const now = new Date();
+          const diff = Math.floor((now - d) / 86400000);
+          if (diff === 0) return 'Today';
+          if (diff === 1) return 'Yesterday';
+          if (diff < 7) return d.toLocaleDateString('en-US',{weekday:'long'});
+          return d.toLocaleDateString('en-US',{month:'long',day:'numeric'});
+        })();
+        if (!groups[label]) groups[label] = [];
+        groups[label].push(c);
+      });
+      return groups;
+    })();
+
+    const getPreview = (conv) => {
+      const msgs = conv.messages || [];
+      const last = [...msgs].reverse().find(m => m.role === 'assistant');
+      return last ? last.content.slice(0, 80) + (last.content.length > 80 ? '\u2026' : '') : 'No messages yet';
+    };
+
+    return (
+      <div className="page-content px-4 py-5 space-y-5">
+        <AICoach
+          isOpen={chatOpen}
+          onClose={()=>setChatOpen(false)}
+          plannerData={plannerData}
+          authUserId={authUserId}
+          personality={personality}
+          conversations={conversations}
+          onConversationsChange={onConversationsChange}
+          activeConvId={openConvId}
+          onActiveConvIdChange={setOpenConvId}
+        />
+
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-xl font-bold text-white">AI Coach</h2>
+            <p className="text-xs text-slate-400">{(conversations||[]).length} conversation{(conversations||[]).length !== 1 ? 's' : ''}</p>
+          </div>
+          <button onClick={startNew} className="flex items-center gap-2 px-4 py-2 rounded-2xl text-sm font-bold text-white" style={{background:'linear-gradient(135deg,#3b82f6,#8b5cf6)'}}>
+            <span>+</span> New Chat
+          </button>
+        </div>
+
+        {/* Empty state */}
+        {(conversations||[]).length === 0 && (
+          <div className="text-center py-16">
+            <div className="text-5xl mb-4">🤖</div>
+            <p className="text-white font-bold mb-1">No conversations yet</p>
+            <p className="text-slate-400 text-sm mb-6">Your coach will check in when there's something worth discussing — or start a conversation anytime.</p>
+            <button onClick={startNew} className="px-6 py-3 rounded-2xl text-sm font-bold text-white" style={{background:'linear-gradient(135deg,#3b82f6,#8b5cf6)'}}>
+              Start a Conversation
+            </button>
+          </div>
+        )}
+
+        {/* Conversation list grouped by date */}
+        {Object.entries(grouped).map(([dateLabel, convs]) => (
+          <div key={dateLabel}>
+            <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">{dateLabel}</p>
+            <div className="space-y-2">
+              {convs.map(conv => (
+                <button key={conv.id} onClick={()=>openConversation(conv.id)} className="w-full text-left bg-slate-800/60 hover:bg-slate-800 border border-slate-700/50 rounded-2xl p-4 transition-all">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-white text-sm font-semibold truncate">{conv.title}</p>
+                      <p className="text-slate-400 text-xs mt-0.5 line-clamp-2">{getPreview(conv)}</p>
+                    </div>
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      <span className="text-xs text-slate-500">{new Date(conv.created_at).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'})}</span>
+                      <button onClick={(e)=>handleDelete(conv.id, e)} className="text-slate-600 hover:text-red-400 text-xs p-1 rounded transition-colors">✕</button>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 mt-2">
+                    <span className="text-xs text-slate-500">{(conv.messages||[]).filter(m=>m.role==='user').length} messages</span>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
     );
   };
 
@@ -3749,6 +3632,11 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
     const [coachCtx, setCoachCtx]   = useState(null);
     const [coachBadge, setCoachBadge] = useState(0);
     const [popup, setPopup]         = useState(null);
+    const [chatBubbleMsg, setChatBubbleMsg] = useState(null);
+    const [chatBubbleExpanded, setChatBubbleExpanded] = useState(false);
+    const [activeConvId, setActiveConvId] = useState(null);
+    const [conversations, setConversations] = useState([]);
+    const [convLoaded, setConvLoaded] = useState(false);
     const [anvilModal, setAnvilModal] = useState(false);
     const [anvilEntry, setAnvilEntry] = useState('');
     const [anvilDate, setAnvilDate] = useState('');
@@ -3797,6 +3685,24 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
         setWeekNum(calcWeekNum(data.startDate));
       }
     },[loading, data.startDate]);
+
+    // Load conversation history from Supabase
+    useEffect(() => {
+      if (authUser && !convLoaded) {
+        setConvLoaded(true);
+        loadConversations(authUser.id).then(convs => setConversations(convs));
+      }
+    }, [authUser, convLoaded]);
+
+    // Smart app-open trigger — runs once per hour max
+    useEffect(() => {
+      if (!authUser || loading || !data.startDate) return;
+      const timer = setTimeout(async () => {
+        const msg = await runSmartTrigger(data, coachPersonality, authUser.id);
+        if (msg) setChatBubbleMsg(msg);
+      }, 2000); // 2 second delay after app load
+      return () => clearTimeout(timer);
+    }, [authUser, loading, data.startDate]);
 
     useEffect(()=>{
       if(onboardingData&&!loading){
@@ -4088,9 +3994,9 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
       {id:'today',  label:'Today',  Icon:SunIcon},
       {id:'anvil',  label:'Anvil',  Icon:()=><span style={{fontSize:'18px'}}>🔨</span>},
       {id:'score',  label:'Score',  Icon:StarIcon},
-      {id:'journal',label:'Journal',Icon:JournalIcon},
+      {id:'aicoach',label:'Coach',  Icon:BotIcon},
       {id:'more',   label:'More',   Icon:MenuIcon},
-      ...(isCoachOrAdmin?[{id:'coach',label:'Coach',Icon:CoachTabIcon}]:[]),
+      ...(isCoachOrAdmin?[{id:'coach',label:'My Coach',Icon:CoachTabIcon}]:[]),
       ...(userRole==='admin'?[{id:'admin',label:'Admin',Icon:()=><span style={{fontSize:'18px'}}>⚙️</span>}]:[]),
     ];
 
@@ -4098,37 +4004,6 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
 
     return (
       <div className="min-h-screen" style={{background:'#0f172a'}}>
-        {/* Proactive Check-In Modal — impossible to miss */}
-        {popup&&(
-          <div className="fixed inset-0 z-50 flex items-center justify-center px-5 no-print" style={{backgroundColor:'rgba(0,0,0,0.85)',backdropFilter:'blur(6px)'}}>
-            <div className="max-w-sm w-full pop-in" style={{animation:'popIn 0.4s cubic-bezier(0.34,1.56,0.64,1)'}}>
-              {/* Pulsing glow ring */}
-              <div className="rounded-3xl p-0.5 ring-pulse" style={{background:'linear-gradient(135deg,#3b82f6,#8b5cf6,#3b82f6)',backgroundSize:'200%'}}>
-                <div className="bg-slate-900 rounded-3xl p-6 max-w-sm w-full">
-                  {/* Label row */}
-                  <div className="flex items-center gap-2 mb-4">
-                    <span className="text-3xl">{popup._emoji||'🤖'}</span>
-                    <div>
-                      <p className="text-xs font-black uppercase tracking-widest" style={{color:'#a78bfa'}}>{popup._label||'AI Coach'}</p>
-                      <p className="text-xs text-slate-500">{new Date().toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'})}</p>
-                    </div>
-                  </div>
-                  {/* Message */}
-                  <p className="text-white text-base leading-relaxed font-medium mb-6">{popup.content||popup}</p>
-                  {/* Actions */}
-                  <div className="space-y-2">
-                    <button onClick={()=>{setPopup(null);setCoachOpen(true);}} className="w-full py-4 rounded-2xl font-black text-white text-sm tracking-wide" style={{background:'linear-gradient(135deg,#3b82f6,#8b5cf6)'}}>
-                      💬 Reply to Coach
-                    </button>
-                    <button onClick={()=>setPopup(null)} className="w-full py-3 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white rounded-2xl text-sm transition-colors">
-                      Got it — Dismiss
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
 
         {/* Goal Milestone Celebration */}
         {milestone && (
@@ -4232,7 +4107,7 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
             </div>
           </div>
         )}
-        <AICoach isOpen={coachOpen} onClose={()=>setCoachOpen(false)} plannerData={data} currentContext={coachCtx} onUnreadChange={setCoachBadge} onProactiveMessage={setPopup} personality={coachPersonality}/>
+        <AICoach isOpen={coachOpen} onClose={()=>setCoachOpen(false)} plannerData={data} authUserId={authUser?.id} personality={coachPersonality} conversations={conversations} onConversationsChange={setConversations} activeConvId={activeConvId} onActiveConvIdChange={setActiveConvId}/>
 
         {/* Header */}
         <div className="fixed top-0 left-0 right-0 z-40 no-print" style={{height:'58px',background:'rgba(15,23,42,0.95)',backdropFilter:'blur(12px)',borderBottom:'1px solid rgba(51,65,85,0.5)'}}>
@@ -4243,10 +4118,7 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
             </div>
             <div className="flex items-center gap-2">
               {saveStatus&&<span className="text-xs text-slate-500">{saveStatus}</span>}
-              <button onClick={()=>openCoach({section:activeTab})} className="relative p-2.5 rounded-2xl" style={{background:'linear-gradient(135deg,#3b82f6,#8b5cf6)'}}>
-                <BotIcon/>
-                {coachBadge>0&&<span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full text-xs text-white flex items-center justify-center font-bold">{coachBadge}</span>}
-              </button>
+
             </div>
           </div>
         </div>
@@ -4257,6 +4129,7 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
             {activeTab==='today'&&<TodayView data={data} updateField={updateField} weekNum={weekNum} dayIdx={dayIdx} setDayIdx={setDayIdx} openCoach={openCoach} score={score} onPrint={printTab} setActiveTab={setActiveTab}/>}
             {activeTab==='anvil'&&<AnvilView data={data} updateField={updateField} openCoach={openCoach}/>}
             {activeTab==='score'&&<ScoreView data={data} updateField={updateField} weekNum={weekNum} setWeekNum={setWeekNum} setActiveTab={setActiveTab} openCoach={openCoach} onPrint={printTab} onMilestone={setMilestone} setShowResetModal={setShowResetModal}/>}
+            {activeTab==='aicoach'&&<AICoachTab plannerData={data} authUserId={authUser?.id} personality={coachPersonality} conversations={conversations} onConversationsChange={setConversations}/>}
             {activeTab==='journal'&&<JournalView data={data} updateField={updateField}/>}
             {activeTab==='more'&&<MoreView data={data} updateField={updateField} saveData={saveData} openCoach={openCoach} personality={coachPersonality} setPersonality={setCoachPersonality} onReopenOnboarding={onReopenOnboarding} onMilestone={setMilestone} weekNum={weekNum} setWeekNum={setWeekNum} onSignOut={async()=>{await _supabase.auth.signOut();setAuthUser(null);}} onMetaChange={()=>{ if(authUser) savePlannerDataToCloud(authUser.id, data); }}/>}
             <div style={{display:activeTab==='coach'&&isCoachOrAdmin?'block':'none'}}>
@@ -4265,6 +4138,44 @@ DONT: Give financial advice. Make decisions for them. Be a cheerleader without s
             {activeTab==='admin'&&userRole==='admin'&&<AdminPanel authUser={authUser}/>}
           </div>
         </div>
+
+        {/* AI Coach Chat Bubble (bottom-left) */}
+        {chatBubbleMsg && !chatBubbleExpanded && (
+          <div className="fixed z-50 no-print" style={{bottom:'90px',left:'16px',maxWidth:'260px'}}>
+            <div className="bg-slate-900 border border-blue-500/40 rounded-2xl shadow-2xl overflow-hidden pop-in" style={{animation:'popIn 0.4s cubic-bezier(0.34,1.56,0.64,1)'}}>
+              <div className="bg-gradient-to-r from-blue-600 to-purple-600 px-3 py-2 flex items-center justify-between">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-sm">{chatBubbleMsg._emoji||'🤖'}</span>
+                  <span className="text-xs font-bold text-white">{chatBubbleMsg._label||'AI Coach'}</span>
+                </div>
+                <button onClick={()=>setChatBubbleMsg(null)} className="text-white/60 hover:text-white text-xs p-0.5">✕</button>
+              </div>
+              <div className="p-3">
+                <p className="text-white text-xs leading-relaxed mb-3">{chatBubbleMsg.content}</p>
+                <button onClick={()=>{
+                  setActiveConvId(null);
+                  setChatBubbleExpanded(true);
+                  setChatBubbleMsg(null);
+                  setCoachOpen(true);
+                }} className="w-full py-2 rounded-xl text-xs font-bold text-white" style={{background:'linear-gradient(135deg,#3b82f6,#8b5cf6)'}}>
+                  Reply →
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+        {/* Floating coach button (bottom-left) — shown when no bubble message */}
+        {!chatBubbleMsg && (
+          <div className="fixed z-40 no-print" style={{bottom:'90px',left:'16px'}}>
+            <button
+              onClick={()=>{setActiveConvId(null);setCoachOpen(true);}}
+              className="w-12 h-12 rounded-full shadow-2xl flex items-center justify-center transition-all active:scale-95"
+              style={{background:'linear-gradient(135deg,#3b82f6,#8b5cf6)'}}>
+              <BotIcon/>
+              {coachBadge>0&&<span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full text-xs text-white flex items-center justify-center font-bold">{coachBadge}</span>}
+            </button>
+          </div>
+        )}
 
         {/* Anvil FAB */}
         <div className="fixed z-40 no-print" style={{bottom:'90px',right:'20px'}}>
