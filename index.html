@@ -699,25 +699,33 @@
   };
 
   // ── AI COACH ──────────────────────────────────────────────────────────────
+  // Helper: get current session JWT for authenticated Supabase REST calls
+  const getSessionToken = async () => {
+    try {
+      const { data } = await _supabase.auth.getSession();
+      return data?.session?.access_token || null;
+    } catch(e) { return null; }
+  };
+
   // Helper: save a conversation to Supabase
   const saveConversation = async (userId, convId, messages, titleHint) => {
     if (!userId) return convId;
     const SUPABASE_URL = 'https://vilsfabrovxwgdrhkvso.supabase.co';
     const ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZpbHNmYWJyb3Z4d2dkcmhrdnNvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQxMjIxMjgsImV4cCI6MjA4OTY5ODEyOH0.3GGxaTgxZHxn_hFOcwNyBs9XxridjeWEdM3a5lRPomU';
+    const token = await getSessionToken();
+    const authHeader = token ? `Bearer ${token}` : `Bearer ${ANON_KEY}`;
     try {
       if (convId) {
-        // Update existing
         await fetch(`${SUPABASE_URL}/rest/v1/coach_conversations?id=eq.${convId}`, {
           method: 'PATCH',
-          headers: { 'Content-Type': 'application/json', 'apikey': ANON_KEY, 'Authorization': `Bearer ${ANON_KEY}`, 'Prefer': 'return=minimal' },
+          headers: { 'Content-Type': 'application/json', 'apikey': ANON_KEY, 'Authorization': authHeader, 'Prefer': 'return=minimal' },
           body: JSON.stringify({ messages, updated_at: new Date().toISOString() })
         });
         return convId;
       } else {
-        // Insert new
         const res = await fetch(`${SUPABASE_URL}/rest/v1/coach_conversations`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'apikey': ANON_KEY, 'Authorization': `Bearer ${ANON_KEY}`, 'Prefer': 'return=representation' },
+          headers: { 'Content-Type': 'application/json', 'apikey': ANON_KEY, 'Authorization': authHeader, 'Prefer': 'return=representation' },
           body: JSON.stringify({ user_id: userId, title: titleHint || 'Coaching Session', messages })
         });
         const rows = await res.json();
@@ -731,9 +739,11 @@
     if (!userId) return [];
     const SUPABASE_URL = 'https://vilsfabrovxwgdrhkvso.supabase.co';
     const ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZpbHNmYWJyb3Z4d2dkcmhrdnNvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQxMjIxMjgsImV4cCI6MjA4OTY5ODEyOH0.3GGxaTgxZHxn_hFOcwNyBs9XxridjeWEdM3a5lRPomU';
+    const token = await getSessionToken();
+    const authHeader = token ? `Bearer ${token}` : `Bearer ${ANON_KEY}`;
     try {
       const res = await fetch(`${SUPABASE_URL}/rest/v1/coach_conversations?user_id=eq.${userId}&order=created_at.desc&limit=50`, {
-        headers: { 'apikey': ANON_KEY, 'Authorization': `Bearer ${ANON_KEY}` }
+        headers: { 'apikey': ANON_KEY, 'Authorization': authHeader }
       });
       return await res.json() || [];
     } catch(e) { console.error('loadConversations', e); return []; }
@@ -744,10 +754,12 @@
     if (!userId || !convId) return;
     const SUPABASE_URL = 'https://vilsfabrovxwgdrhkvso.supabase.co';
     const ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZpbHNmYWJyb3Z4d2dkcmhrdnNvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQxMjIxMjgsImV4cCI6MjA4OTY5ODEyOH0.3GGxaTgxZHxn_hFOcwNyBs9XxridjeWEdM3a5lRPomU';
+    const token = await getSessionToken();
+    const authHeader = token ? `Bearer ${token}` : `Bearer ${ANON_KEY}`;
     try {
       await fetch(`${SUPABASE_URL}/rest/v1/coach_conversations?id=eq.${convId}`, {
         method: 'DELETE',
-        headers: { 'apikey': ANON_KEY, 'Authorization': `Bearer ${ANON_KEY}` }
+        headers: { 'apikey': ANON_KEY, 'Authorization': authHeader }
       });
     } catch(e) { console.error('deleteConversation', e); }
   };
