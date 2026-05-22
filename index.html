@@ -384,26 +384,29 @@
   };
 
   // ── Auth Router — handles all auth states + URL tokens ───────────────────
-  const AuthRouter = () => {
+  const AuthRouter = ({ needsPasswordReset = false, onResetDone = () => {} }) => {
     // screen: 'login' | 'magic' | 'forgot' | 'set-password' | 'reset-password'
-    const [screen, setScreen] = useState('login');
+    const [screen, setScreen] = useState(needsPasswordReset ? 'reset-password' : 'login');
 
     useEffect(() => {
-      // Detect Supabase hash tokens in URL (magic link callback or password reset)
+      // If parent already detected PASSWORD_RECOVERY, stay on reset screen
+      if (needsPasswordReset) {
+        setScreen('reset-password');
+        return;
+      }
+
+      // Detect legacy implicit-flow hash tokens (magic link callback)
       const hash = window.location.hash;
       const params = new URLSearchParams(window.location.search);
 
-      // Check for recovery type BEFORE cleaning the URL
-      const isRecovery = hash.includes('type=recovery') || params.get('reset') === '1';
-
       if (hash && hash.includes('access_token')) {
+        const isRecovery = hash.includes('type=recovery');
         // Auto-connect coach if invite link includes ?coach=ID
         const coachIdFromInvite = params.get('coach');
         if (coachIdFromInvite) {
           localStorage.setItem('sea_coach_id', coachIdFromInvite);
         }
         if (isRecovery) {
-          // Show reset screen immediately — don't wait for auth event
           setScreen('reset-password');
         } else {
           // Magic link login — show set-password (new users set password, existing users can skip)
@@ -412,24 +415,12 @@
         // Clean URL only after reading all params
         window.history.replaceState({}, '', window.location.pathname);
       }
-
-      // Also listen for onAuthStateChange — catches recovery even if hash was already clean
-      const { data: { subscription } } = _supabase.auth.onAuthStateChange((event) => {
-        if (event === 'PASSWORD_RECOVERY') {
-          setScreen('reset-password');
-        }
-        // SIGNED_IN: only navigate away if we're NOT on a password screen
-        if (event === 'SIGNED_IN') {
-          setScreen(prev => (prev === 'reset-password' || prev === 'set-password') ? prev : 'login');
-        }
-      });
-      return () => subscription.unsubscribe();
-    }, []);
+    }, [needsPasswordReset]);
 
     if (screen === 'magic')          return <MagicLinkScreen onBack={() => setScreen('login')} />;
     if (screen === 'forgot')         return <ForgotPasswordScreen onBack={() => setScreen('login')} />;
     if (screen === 'set-password')   return <SetPasswordScreen isReset={false} onDone={() => setScreen('login')} />;
-    if (screen === 'reset-password') return <SetPasswordScreen isReset={true}  onDone={() => setScreen('login')} />;
+    if (screen === 'reset-password') return <SetPasswordScreen isReset={true}  onDone={() => { onResetDone(); setScreen('login'); }} />;
     return <LoginScreen onShowForgot={() => setScreen('forgot')} onShowMagicLink={() => setScreen('magic')} />;
   };
 
@@ -5758,6 +5749,7 @@ Message should be 1-2 sentences, direct, specific to their data. No generic fluf
   const AppRoot = () => {
     const [authUser, setAuthUser] = useState(null);
     const [authLoading, setAuthLoading] = useState(true);
+    const [needsPasswordReset, setNeedsPasswordReset] = useState(false);
 
     useEffect(() => {
       _supabase.auth.getSession().then(({ data: { session } }) => {
@@ -5765,6 +5757,17 @@ Message should be 1-2 sentences, direct, specific to their data. No generic fluf
         setAuthLoading(false);
       });
       const { data: { subscription } } = _supabase.auth.onAuthStateChange((_event, session) => {
+        // PASSWORD_RECOVERY: user clicked reset link — keep them on AuthRouter reset screen
+        if (_event === 'PASSWORD_RECOVERY') {
+          setNeedsPasswordReset(true);
+          setAuthUser(session?.user ?? null);
+          setAuthLoading(false);
+          return;
+        }
+        // USER_UPDATED: password was just changed — clear reset flag and let them in
+        if (_event === 'USER_UPDATED') {
+          setNeedsPasswordReset(false);
+        }
         setAuthUser(session?.user ?? null);
         setAuthLoading(false);
         // Update last_seen on every login / session refresh
@@ -5811,7 +5814,8 @@ Message should be 1-2 sentences, direct, specific to their data. No generic fluf
     }
 
     if (authLoading) return React.createElement('div', { style: { display:'flex', alignItems:'center', justifyContent:'center', height:'100vh', background:'#0f1229', color:'white', fontSize:'1.2rem' } }, 'Loading...');
-    if (!authUser) return React.createElement(AuthRouter, null);
+    // If user clicked a password reset link, show AuthRouter (reset screen) even if already signed in
+    if (!authUser || needsPasswordReset) return React.createElement(AuthRouter, { needsPasswordReset, onResetDone: () => setNeedsPasswordReset(false) });
     return React.createElement(AuthenticatedApp, { authUser, setAuthUser });
   };
 
