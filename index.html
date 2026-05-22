@@ -703,7 +703,7 @@
     const goalAvg = goals.length > 0 ? goals.reduce((s,g)=>s+(g.completion||0),0)/goals.length : 0;
     const goalScore = (goalAvg/100)*10;
     const total = Math.round(habitScore+anvilScore+wheelScore+ritualScore+goalScore);
-    return { total, stars: total>=80?5:total>=60?4:total>=40?3:total>=20?2:1, habitPct:Math.round(habitPct*100), anvilStreak:streak, wheelAvg:wheelAvg.toFixed(1), ritualDone, goalAvg:Math.round(goalAvg) };
+    return { total, stars: total>=80?5:total>=60?4:total>=40?3:total>=20?2:1, habitPct:Math.round(habitPct*100), anvilStreak:streak, anvilScore:Math.round(anvilScore), anvilLogs:currentLogs, anvilTarget:Math.round(prorated), wheelAvg:wheelAvg.toFixed(1), ritualDone, goalAvg:Math.round(goalAvg) };
   };
 
   // ── AI COACH ──────────────────────────────────────────────────────────────
@@ -2751,7 +2751,7 @@ Message should be 1-2 sentences, direct, specific to their data. No generic fluf
 
     const COMPONENTS = [
       {label:'Habit Completion',value:score.habitPct+'%',max:30,earned:Math.round(score.habitPct*0.3),color:'#f59e0b'},
-      {label:'Anvil Streak',value:score.anvilStreak+' days',max:25,earned:Math.round(Math.min(score.anvilStreak/30,1)*25),color:'#f97316'},
+      {label:'Anvil Streak',value:score.anvilLogs+' / '+score.anvilTarget+' this week',max:25,earned:score.anvilScore,color:'#f97316'},
       {label:'Wheel Average',value:score.wheelAvg,max:20,earned:Math.round((parseFloat(score.wheelAvg)/10)*20),color:'#6366f1'},
       {label:'Weekly Ritual',value:score.ritualDone?'Done':'Not done',max:15,earned:score.ritualDone?15:0,color:'#10b981'},
       {label:'Goal Progress',value:score.goalAvg+'%',max:10,earned:Math.round(score.goalAvg*0.1),color:'#3b82f6'},
