@@ -674,11 +674,8 @@
     const today2 = new Date(); today2.setHours(23,59,59,999);
     const currentLogs = logsInPeriod(curStart, today2);
     const hitCurrent = currentLogs >= freqCount;
-    // Partial credit: how far through the period are we? Scale freqCount proportionally.
-    const periodDays = freqPeriod === 'week' ? 7 : freqPeriod === 'biweekly' ? 14 : 30;
-    const dayOfPeriod = Math.max(1, Math.round((today2 - curStart) / 86400000));
-    const prorated = freqCount * Math.min(dayOfPeriod / periodDays, 1);
-    const currentPct = Math.min(currentLogs / prorated, 1); // partial credit vs prorated target
+    // Partial credit: logs done vs target (regardless of day of week)
+    const currentPct = Math.min(currentLogs / freqCount, 1);
     // Count consecutive periods hit (streak)
     let streak = hitCurrent ? 1 : 0;
     if (hitCurrent) {
@@ -688,9 +685,8 @@
         if (logsInPeriod(s, e) >= freqCount) streak++; else break;
       }
     }
-    // Score: partial credit based on prorated progress this period, bonus for multi-period streak
-    const streakBonus = Math.min(streak / 4, 1);
-    const anvilScore = hitCurrent ? 25 : Math.max(currentPct * 25, streakBonus * 25);
+    // Score: partial credit = logs / target × 25 pts
+    const anvilScore = currentPct * 25;
     // 3. Wheel avg (20pts)
     const w = week.wheelOfJohn||{family:5,fun:5,fitness:5,finance:5,faith:5};
     const wheelAvg = Object.values(w).reduce((a,b)=>a+(b||5),0)/5;
@@ -703,7 +699,7 @@
     const goalAvg = goals.length > 0 ? goals.reduce((s,g)=>s+(g.completion||0),0)/goals.length : 0;
     const goalScore = (goalAvg/100)*10;
     const total = Math.round(habitScore+anvilScore+wheelScore+ritualScore+goalScore);
-    return { total, stars: total>=80?5:total>=60?4:total>=40?3:total>=20?2:1, habitPct:Math.round(habitPct*100), anvilStreak:streak, anvilScore:Math.round(anvilScore), anvilLogs:currentLogs, anvilTarget:Math.round(prorated), wheelAvg:wheelAvg.toFixed(1), ritualDone, goalAvg:Math.round(goalAvg) };
+    return { total, stars: total>=80?5:total>=60?4:total>=40?3:total>=20?2:1, habitPct:Math.round(habitPct*100), anvilStreak:streak, anvilScore:Math.round(anvilScore), anvilLogs:currentLogs, anvilTarget:freqCount, wheelAvg:wheelAvg.toFixed(1), ritualDone, goalAvg:Math.round(goalAvg) };
   };
 
   // ── AI COACH ──────────────────────────────────────────────────────────────
