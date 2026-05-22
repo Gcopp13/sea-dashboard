@@ -672,7 +672,13 @@
     // Current period: did they hit it?
     const curStart = getPeriodStart(0);
     const today2 = new Date(); today2.setHours(23,59,59,999);
-    const hitCurrent = logsInPeriod(curStart, today2) >= freqCount;
+    const currentLogs = logsInPeriod(curStart, today2);
+    const hitCurrent = currentLogs >= freqCount;
+    // Partial credit: how far through the period are we? Scale freqCount proportionally.
+    const periodDays = freqPeriod === 'week' ? 7 : freqPeriod === 'biweekly' ? 14 : 30;
+    const dayOfPeriod = Math.max(1, Math.round((today2 - curStart) / 86400000));
+    const prorated = freqCount * Math.min(dayOfPeriod / periodDays, 1);
+    const currentPct = Math.min(currentLogs / prorated, 1); // partial credit vs prorated target
     // Count consecutive periods hit (streak)
     let streak = hitCurrent ? 1 : 0;
     if (hitCurrent) {
@@ -682,8 +688,9 @@
         if (logsInPeriod(s, e) >= freqCount) streak++; else break;
       }
     }
-    // Full points = hitting target this period. Streak bonus scales up to 4 consecutive periods.
-    const anvilScore = hitCurrent ? 25 : Math.min(streak / 4, 1) * 25;
+    // Score: partial credit based on prorated progress this period, bonus for multi-period streak
+    const streakBonus = Math.min(streak / 4, 1);
+    const anvilScore = hitCurrent ? 25 : Math.max(currentPct * 25, streakBonus * 25);
     // 3. Wheel avg (20pts)
     const w = week.wheelOfJohn||{family:5,fun:5,fitness:5,finance:5,faith:5};
     const wheelAvg = Object.values(w).reduce((a,b)=>a+(b||5),0)/5;
