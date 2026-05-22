@@ -392,29 +392,35 @@
       // Detect Supabase hash tokens in URL (magic link callback or password reset)
       const hash = window.location.hash;
       const params = new URLSearchParams(window.location.search);
+
+      // Check for recovery type BEFORE cleaning the URL
+      const isRecovery = hash.includes('type=recovery') || params.get('reset') === '1';
+
       if (hash && hash.includes('access_token')) {
         // Auto-connect coach if invite link includes ?coach=ID
         const coachIdFromInvite = params.get('coach');
-        const isInvite = params.get('invite') === '1';
         if (coachIdFromInvite) {
           localStorage.setItem('sea_coach_id', coachIdFromInvite);
         }
-        // Detect reset flow
-        if (params.get('reset') === '1' || hash.includes('type=recovery')) {
+        if (isRecovery) {
+          // Show reset screen immediately — don't wait for auth event
           setScreen('reset-password');
         } else {
           // Magic link login — show set-password (new users set password, existing users can skip)
           setScreen('set-password');
         }
-        // Clean URL
+        // Clean URL only after reading all params
         window.history.replaceState({}, '', window.location.pathname);
       }
-      // Also listen for onAuthStateChange events
+
+      // Also listen for onAuthStateChange — catches recovery even if hash was already clean
       const { data: { subscription } } = _supabase.auth.onAuthStateChange((event) => {
-        if (event === 'PASSWORD_RECOVERY') setScreen('reset-password');
+        if (event === 'PASSWORD_RECOVERY') {
+          setScreen('reset-password');
+        }
+        // SIGNED_IN: only navigate away if we're NOT on a password screen
         if (event === 'SIGNED_IN') {
-          // If we're on set-password or reset-password, stay there
-          // Otherwise AppRoot will handle routing
+          setScreen(prev => (prev === 'reset-password' || prev === 'set-password') ? prev : 'login');
         }
       });
       return () => subscription.unsubscribe();
