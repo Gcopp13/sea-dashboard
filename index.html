@@ -4251,6 +4251,14 @@ Message should be 1-2 sentences, direct, specific to their data. No generic fluf
     };
     const score = loading?{total:0,stars:1}:calcSEAScore(data,weekNum-1);
 
+    // Auto-dismiss Sunday ritual modal if ritual is already complete
+    useEffect(()=>{
+      if (!loading && score.ritualDone && showSundayModal) {
+        setShowSundayModal(false);
+        localStorage.setItem('sunday-modal-shown', new Date().toDateString());
+      }
+    }, [loading, score.ritualDone]);
+
     const [myCoachId, setMyCoachId] = useState(()=>localStorage.getItem('sea_coach_id')||'');
     const [userRole, setUserRole] = useState('advisor');
 
