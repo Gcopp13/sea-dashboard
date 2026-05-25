@@ -10,7 +10,9 @@
   <script>
     const SUPABASE_URL = 'https://vilsfabrovxwgdrhkvso.supabase.co';
     const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZpbHNmYWJyb3Z4d2dkcmhrdnNvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQxMjIxMjgsImV4cCI6MjA4OTY5ODEyOH0.3GGxaTgxZHxn_hFOcwNyBs9XxridjeWEdM3a5lRPomU';
-    const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      auth: { flowType: 'implicit', detectSessionInUrl: true }
+    });
     window._supabase = _supabase; // expose for push notification component
   </script>
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
@@ -389,6 +391,8 @@
     const getInitialScreen = () => {
       if (needsPasswordReset) return 'reset-password';
       if (needsSetPassword) return 'set-password';
+      // Detect recovery hash immediately on first render (implicit flow)
+      if (window.location.hash.includes('type=recovery')) return 'reset-password';
       // If arriving via coach invite link, go straight to signup (magic link) screen
       const params = new URLSearchParams(window.location.search);
       if (params.get('invite') === '1') return 'magic';
