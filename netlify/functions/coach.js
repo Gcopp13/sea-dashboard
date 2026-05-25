@@ -81,27 +81,60 @@ async function handleGetAdvisors(params) {
   const coachId = params.coachId;
   if (!coachId) return err('coachId is required', 400);
 
-  const { data, ok: success, status } = await supabase('GET', 'advisor_scores', {
-    query: `?coach_id=eq.${encodeURIComponent(coachId)}&order=last_updated.desc`,
+  // Pull all clients assigned to this coach from profiles
+  const profilesRes = await supabase('GET', 'profiles', {
+    query: `?coach_id=eq.${encodeURIComponent(coachId)}&select=id,full_name,email`,
   });
+  if (!profilesRes.ok) {
+    console.error('[get-advisors] profiles error:', profilesRes.data);
+    return err(profilesRes.data?.message || 'Failed to load advisors', profilesRes.status);
+  }
+  const clients = profilesRes.data || [];
 
-  if (!success) {
-    console.error('[get-advisors] error:', data);
-    return err(data?.message || 'Failed to load advisors', status);
+  // Pull any existing advisor_scores rows for richer data (score, habits, streak, goals)
+  const scoresRes = await supabase('GET', 'advisor_scores', {
+    query: `?coach_id=eq.${encodeURIComponent(coachId)}&select=advisor_id,advisor_data,last_updated`,
+  });
+  const scoresMap = {};
+  if (scoresRes.ok && Array.isArray(scoresRes.data)) {
+    scoresRes.data.forEach(row => { scoresMap[row.advisor_id] = row; });
   }
 
-  // For each advisor, attach unread reply count from coach inbox
-  const advisors = data || [];
+  // Unread message counts
   const inboxRes = await supabase('GET', 'coach_messages', {
     query: `?coach_id=eq.${encodeURIComponent(coachId)}&sender=eq.advisor&read=eq.false&select=advisor_id`,
   });
   const unreadMap = {};
   if (inboxRes.ok && Array.isArray(inboxRes.data)) {
-    inboxRes.data.forEach(m => {
-      unreadMap[m.advisor_id] = (unreadMap[m.advisor_id] || 0) + 1;
-    });
+    inboxRes.data.forEach(m => { unreadMap[m.advisor_id] = (unreadMap[m.advisor_id] || 0) + 1; });
   }
-  return ok(advisors.map(a => ({ ...a, unreadReplies: unreadMap[a.advisor_id] || 0 })));
+
+  // Merge: every profile client appears, enriched with score data if available
+  const advisors = clients.map(client => {
+    const scoreRow = scoresMap[client.id];
+    const advisorData = scoreRow?.advisor_data || scoreRow?.advisorData || {};
+    // If no shared score yet, show name from profile
+    if (!advisorData.n && !advisorData.name) {
+      advisorData.n = client.full_name || client.email || 'Unnamed Advisor';
+    }
+    return {
+      advisorId: client.id,
+      advisor_id: client.id,
+      advisorData,
+      lastUpdated: scoreRow?.last_updated || null,
+      unreadReplies: unreadMap[client.id] || 0,
+    };
+  });
+
+  // Sort: clients with recent score updates first, then by name
+  advisors.sort((a, b) => {
+    if (a.lastUpdated && b.lastUpdated) return new Date(b.lastUpdated) - new Date(a.lastUpdated);
+    if (a.lastUpdated) return -1;
+    if (b.lastUpdated) return 1;
+    return 0;
+  });
+
+  return ok(advisors);
 }
 
 // POST ?action=send-message  (coach → advisor)
