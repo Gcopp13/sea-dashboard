@@ -885,9 +885,10 @@
     const anvilToday = anvilLog.some(e=>new Date(e.date).toDateString()===today.toDateString());
     const anvilYesterday = anvilLog.some(e=>new Date(e.date).toDateString()===yesterday.toDateString());
 
-    // Compute streak
+    // Compute streak — start from yesterday if no log yet today (avoids false "streak broke" at early morning)
     const unique=[...new Set(anvilLog.map(e=>{const d=new Date(e.date);d.setHours(0,0,0,0);return d.toDateString()}))].map(s=>new Date(s)).sort((a,b)=>b-a);
-    let anvilStreak=0;for(let i=0;i<unique.length;i++){const exp=new Date(today);exp.setDate(today.getDate()-i);if(unique[i].toDateString()===exp.toDateString())anvilStreak++;else break;}
+    const streakBase = anvilToday ? today : yesterday;
+    let anvilStreak=0;for(let i=0;i<unique.length;i++){const exp=new Date(streakBase);exp.setDate(streakBase.getDate()-i);if(unique[i].toDateString()===exp.toDateString())anvilStreak++;else break;}
 
     const weeksWithData = (plannerData.weeks||[]).filter(w=>w.wins?.some(x=>x.trim())||w.focus?.trim());
     const latestWeek = weeksWithData[weeksWithData.length-1];
