@@ -2777,7 +2777,7 @@ Message should be 1-2 sentences, direct, specific to their data. No generic fluf
     const [shareUrl, setShareUrl] = useState('');
     const [showShareModal, setShowShareModal] = useState(false);
 
-    const generateShareLink = () => {
+    const generateShareLink = async () => {
       const weeksWithData = data.weeks.filter(w=>w.wins?.some(x=>x.trim())||w.focus?.trim());
       const latestWeek = weeksWithData.length > 0 ? weeksWithData[weeksWithData.length-1] : data.weeks[0];
       const shareData = {
@@ -2801,7 +2801,8 @@ Message should be 1-2 sentences, direct, specific to their data. No generic fluf
       // Also push snapshot to Netlify Blobs if a coach ID is configured
       const coachId = localStorage.getItem('sea_coach_id');
       // Use real Supabase auth user ID for advisor identity (falls back to local anon ID)
-      const advisorId = (await _supabase.auth.getSession()).data.session?.user?.id || getOrCreateAdvisorId();
+      const _session = await _supabase.auth.getSession().catch(()=>({data:{session:null}}));
+      const advisorId = _session.data.session?.user?.id || getOrCreateAdvisorId();
       if (coachId?.trim()) {
         fetch(`${COACH_API}?action=share`, {
           method: 'POST', headers: {'Content-Type':'application/json'},
