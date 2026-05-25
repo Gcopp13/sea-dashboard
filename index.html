@@ -3983,6 +3983,7 @@ Message should be 1-2 sentences, direct, specific to their data. No generic fluf
     useEffect(()=>{
       if (authUser && !loading) {
         syncPlannerData(authUser.id);
+        syncCoachIdToProfile(authUser.id);
       }
     },[authUser, loading]);
 
@@ -4130,6 +4131,37 @@ Message should be 1-2 sentences, direct, specific to their data. No generic fluf
         }
       } catch (e) {
         console.error('syncPlannerData error:', e);
+      }
+    };
+
+    // Sync coach ID from localStorage → Supabase profile (runs once on login)
+    const syncCoachIdToProfile = async (userId) => {
+      try {
+        const localCoachId = localStorage.getItem('sea_coach_id');
+        if (!localCoachId) return;
+        const session = await _supabase.auth.getSession();
+        const token = session.data.session?.access_token;
+        if (!token) return;
+        // Only write if profile coach_id is currently null
+        const profileRes = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${userId}&select=coach_id`, {
+          headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': `Bearer ${token}` }
+        });
+        const profileRows = await profileRes.json();
+        const currentCoachId = profileRows?.[0]?.coach_id;
+        if (!currentCoachId) {
+          await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${userId}`, {
+            method: 'PATCH',
+            headers: {
+              'apikey': SUPABASE_ANON_KEY,
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json',
+              'Prefer': 'return=minimal',
+            },
+            body: JSON.stringify({ coach_id: localCoachId }),
+          });
+        }
+      } catch (e) {
+        console.error('syncCoachIdToProfile error:', e);
       }
     };
 
