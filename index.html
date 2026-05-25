@@ -415,10 +415,14 @@
       const hash = window.location.hash;
       const params = new URLSearchParams(window.location.search);
 
-      // Save coach ID from invite link before cleaning URL
+      // Save coach ID from invite link — always overwrite localStorage so fresh link always wins
       const coachIdFromInvite = params.get('coach');
       if (coachIdFromInvite) {
         localStorage.setItem('sea_coach_id', coachIdFromInvite);
+        // Clear any stale anonymous coach IDs
+        if (localStorage.getItem('sea_coach_id') && localStorage.getItem('sea_coach_id').startsWith('adv_')) {
+          localStorage.setItem('sea_coach_id', coachIdFromInvite);
+        }
       }
 
       // Arriving via invite link — go to signup screen and flag for set-password after sign-in
@@ -4151,7 +4155,8 @@ Message should be 1-2 sentences, direct, specific to their data. No generic fluf
     const syncCoachIdToProfile = async (userId) => {
       try {
         const localCoachId = localStorage.getItem('sea_coach_id');
-        if (!localCoachId) return;
+        // Reject missing or anonymous IDs (adv_ prefix = old local format, not a real Supabase UUID)
+        if (!localCoachId || localCoachId.startsWith('adv_')) return;
         const session = await _supabase.auth.getSession();
         const token = session.data.session?.access_token;
         if (!token) return;
