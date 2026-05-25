@@ -5268,7 +5268,7 @@ Message should be 1-2 sentences, direct, specific to their data. No generic fluf
 
     const [coachLinkCopied, setCoachLinkCopied] = React.useState(false);
     const copyCoachLink = () => {
-      const url = `${window.location.origin}${window.location.pathname}?coach=${encodeURIComponent(coachId)}`;
+      const url = `${window.location.origin}${window.location.pathname}?coach=${encodeURIComponent(coachId)}&invite=1`;
       // Try clipboard API first, fall back to execCommand
       const doCopy = (text) => {
         if (navigator.clipboard && navigator.clipboard.writeText) {
@@ -5326,37 +5326,41 @@ Message should be 1-2 sentences, direct, specific to their data. No generic fluf
           </div>
         )}
 
-        {/* Invite User panel */}
-        {embedded && (
-          <div style={{background:'rgba(99,102,241,0.08)',padding:'14px 16px',borderRadius:'12px',marginBottom:'16px',border:'1px solid rgba(99,102,241,0.2)'}}>
-            <div style={{fontSize:'12px',color:'#94a3b8',marginBottom:'8px',fontWeight:'600'}}>✉️ Invite a client</div>
-            <form onSubmit={sendInvite} style={{display:'flex',gap:'8px',flexWrap:'wrap'}}>
-              <input type="email" placeholder="client@email.com" value={inviteEmail} onChange={e=>setInviteEmail(e.target.value)} required
-                style={{flex:1,minWidth:'180px',padding:'8px 12px',borderRadius:'8px',border:'1px solid rgba(99,102,241,0.3)',background:'rgba(15,18,41,0.8)',color:'#f8fafc',fontSize:'13px',outline:'none'}}/>
-              <button type="submit" disabled={inviteStatus==='sending'}
-                style={{padding:'8px 16px',borderRadius:'8px',background:inviteStatus==='sent'?'#10b981':'#6366f1',color:'white',border:'none',cursor:'pointer',fontSize:'12px',fontWeight:'700',whiteSpace:'nowrap'}}>
-                {inviteStatus==='sending'?'Sending…':inviteStatus==='sent'?'✓ Invite Sent!':'Send Invite'}
-              </button>
-            </form>
-            {inviteStatus==='error' && <p style={{color:'#f87171',fontSize:'11px',margin:'6px 0 0'}}>{inviteError}</p>}
-          </div>
-        )}
-        {!embedded && (
-          <div style={{background:'#151d2e',padding:'12px 20px',borderBottom:'1px solid #1e293b'}}>
-            <div style={{maxWidth:'720px',margin:'0 auto'}}>
-              <div style={{fontSize:'12px',color:'#94a3b8',marginBottom:'8px',fontWeight:'600'}}>✉️ Invite a client to the S.E.A. Dashboard</div>
-              <form onSubmit={sendInvite} style={{display:'flex',gap:'8px',flexWrap:'wrap'}}>
-                <input type="email" placeholder="client@email.com" value={inviteEmail} onChange={e=>setInviteEmail(e.target.value)} required
-                  style={{flex:1,minWidth:'200px',padding:'8px 12px',borderRadius:'8px',border:'1px solid #334155',background:'#0f172a',color:'#f8fafc',fontSize:'13px',outline:'none'}}/>
-                <button type="submit" disabled={inviteStatus==='sending'}
-                  style={{padding:'8px 18px',borderRadius:'8px',background:inviteStatus==='sent'?'#10b981':'#6366f1',color:'white',border:'none',cursor:'pointer',fontSize:'13px',fontWeight:'700',whiteSpace:'nowrap'}}>
-                  {inviteStatus==='sending'?'Sending…':inviteStatus==='sent'?'✓ Invite Sent!':'Send Invite'}
-                </button>
-              </form>
-              {inviteStatus==='error' && <p style={{color:'#f87171',fontSize:'11px',margin:'6px 0 0'}}>{inviteError}</p>}
+        {/* Coach Link panel — replaces email invite */}
+        {(() => {
+          const coachLink = `${window.location.origin}${window.location.pathname}?coach=${encodeURIComponent(coachId)}&invite=1`;
+          const qrSrc = `https://api.qrserver.com/v1/create-qr-code/?size=140x140&data=${encodeURIComponent(coachLink)}`;
+          const [showQR, setShowQR] = React.useState(false);
+          return (
+            <div style={{background: embedded ? 'rgba(99,102,241,0.08)' : '#151d2e', padding: embedded ? '14px 16px' : '16px 20px', borderRadius: embedded ? '12px' : '0', marginBottom: embedded ? '16px' : '0', border: embedded ? '1px solid rgba(99,102,241,0.2)' : 'none', borderBottom: embedded ? undefined : '1px solid #1e293b'}}>
+              <div style={{maxWidth:'720px',margin:'0 auto'}}>
+                <div style={{fontSize:'12px',color:'#94a3b8',marginBottom:'10px',fontWeight:'700',letterSpacing:'0.05em',textTransform:'uppercase'}}>🔗 Your Client Invite Link</div>
+                <div style={{fontSize:'11px',color:'#64748b',marginBottom:'10px'}}>Share this link anywhere — text, email, Zoom chat. Anyone who clicks it will be connected to you as their coach automatically.</div>
+                <div style={{display:'flex',gap:'8px',flexWrap:'wrap',alignItems:'center'}}>
+                  <div style={{flex:1,minWidth:'180px',padding:'8px 12px',borderRadius:'8px',border:'1px solid rgba(99,102,241,0.3)',background:'rgba(15,18,41,0.6)',color:'#94a3b8',fontSize:'12px',fontFamily:'monospace',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
+                    {coachLink}
+                  </div>
+                  <button onClick={copyCoachLink}
+                    style={{padding:'8px 16px',borderRadius:'8px',background:coachLinkCopied?'#10b981':'#6366f1',color:'white',border:'none',cursor:'pointer',fontSize:'12px',fontWeight:'700',whiteSpace:'nowrap',transition:'background 0.2s'}}>
+                    {coachLinkCopied ? '✓ Copied!' : '📋 Copy Link'}
+                  </button>
+                  <button onClick={()=>setShowQR(p=>!p)}
+                    style={{padding:'8px 14px',borderRadius:'8px',background:'rgba(99,102,241,0.15)',color:'#a5b4fc',border:'1px solid rgba(99,102,241,0.3)',cursor:'pointer',fontSize:'12px',fontWeight:'700',whiteSpace:'nowrap'}}>
+                    {showQR ? 'Hide QR' : '⊞ QR Code'}
+                  </button>
+                </div>
+                {showQR && (
+                  <div style={{marginTop:'12px',display:'flex',alignItems:'center',gap:'14px',flexWrap:'wrap'}}>
+                    <img src={qrSrc} alt="Coach invite QR code" style={{width:'120px',height:'120px',borderRadius:'8px',border:'2px solid rgba(99,102,241,0.3)',background:'white',padding:'4px'}}/>
+                    <div style={{fontSize:'12px',color:'#64748b',lineHeight:'1.6'}}>
+                      Show this in a Zoom call or meeting.<br/>Clients scan it with their phone camera<br/>and land directly on sign-up connected to you.
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
 
         {/* Tab switcher */}
         <div style={{padding:embedded?'0 0 12px':'12px 20px 0',maxWidth:'720px',margin:'0 auto'}}>
