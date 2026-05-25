@@ -384,10 +384,11 @@
   };
 
   // ── Auth Router — handles all auth states + URL tokens ───────────────────
-  const AuthRouter = ({ needsPasswordReset = false, onResetDone = () => {} }) => {
+  const AuthRouter = ({ needsPasswordReset = false, onResetDone = () => {}, needsSetPassword = false, onSetPasswordDone = () => {} }) => {
     // screen: 'login' | 'magic' | 'forgot' | 'set-password' | 'reset-password'
     const getInitialScreen = () => {
       if (needsPasswordReset) return 'reset-password';
+      if (needsSetPassword) return 'set-password';
       // If arriving via coach invite link, go straight to signup (magic link) screen
       const params = new URLSearchParams(window.location.search);
       if (params.get('invite') === '1') return 'magic';
@@ -396,9 +397,14 @@
     const [screen, setScreen] = useState(getInitialScreen);
 
     useEffect(() => {
-      // If parent already detected PASSWORD_RECOVERY, stay on reset screen
+      // If parent detected PASSWORD_RECOVERY, show reset screen
       if (needsPasswordReset) {
         setScreen('reset-password');
+        return;
+      }
+      // If parent detected invite sign-in, show set-password screen
+      if (needsSetPassword) {
+        setScreen('set-password');
         return;
       }
 
@@ -411,8 +417,9 @@
         localStorage.setItem('sea_coach_id', coachIdFromInvite);
       }
 
-      // Arriving via invite link — go to signup screen
+      // Arriving via invite link — go to signup screen and flag for set-password after sign-in
       if (params.get('invite') === '1') {
+        localStorage.setItem('sea_invite_flow', '1');
         setScreen('magic');
         window.history.replaceState({}, '', window.location.pathname);
         return;
@@ -434,7 +441,7 @@
 
     if (screen === 'magic')          return <MagicLinkScreen onBack={() => setScreen('login')} />;
     if (screen === 'forgot')         return <ForgotPasswordScreen onBack={() => setScreen('login')} />;
-    if (screen === 'set-password')   return <SetPasswordScreen isReset={false} onDone={() => setScreen('login')} />;
+    if (screen === 'set-password')   return <SetPasswordScreen isReset={false} onDone={() => { onSetPasswordDone(); setScreen('login'); }} />;
     if (screen === 'reset-password') return <SetPasswordScreen isReset={true}  onDone={() => { onResetDone(); setScreen('login'); }} />;
     return <LoginScreen onShowForgot={() => setScreen('forgot')} onShowMagicLink={() => setScreen('magic')} />;
   };
@@ -5807,6 +5814,7 @@ Message should be 1-2 sentences, direct, specific to their data. No generic fluf
     const [authUser, setAuthUser] = useState(null);
     const [authLoading, setAuthLoading] = useState(true);
     const [needsPasswordReset, setNeedsPasswordReset] = useState(false);
+    const [needsSetPassword, setNeedsSetPassword] = useState(false);
 
     useEffect(() => {
       _supabase.auth.getSession().then(({ data: { session } }) => {
@@ -5824,6 +5832,19 @@ Message should be 1-2 sentences, direct, specific to their data. No generic fluf
         // USER_UPDATED: password was just changed — clear reset flag and let them in
         if (_event === 'USER_UPDATED') {
           setNeedsPasswordReset(false);
+          setNeedsSetPassword(false);
+        }
+        // SIGNED_IN via magic link (invite) — new users must set a password before entering
+        if (_event === 'SIGNED_IN') {
+          const isInviteFlow = new URLSearchParams(window.location.search).get('invite') === '1'
+            || localStorage.getItem('sea_invite_flow') === '1';
+          if (isInviteFlow) {
+            localStorage.removeItem('sea_invite_flow');
+            setNeedsSetPassword(true);
+            setAuthUser(session?.user ?? null);
+            setAuthLoading(false);
+            return;
+          }
         }
         setAuthUser(session?.user ?? null);
         setAuthLoading(false);
@@ -5871,8 +5892,11 @@ Message should be 1-2 sentences, direct, specific to their data. No generic fluf
     }
 
     if (authLoading) return React.createElement('div', { style: { display:'flex', alignItems:'center', justifyContent:'center', height:'100vh', background:'#0f1229', color:'white', fontSize:'1.2rem' } }, 'Loading...');
-    // If user clicked a password reset link, show AuthRouter (reset screen) even if already signed in
-    if (!authUser || needsPasswordReset) return React.createElement(AuthRouter, { needsPasswordReset, onResetDone: () => setNeedsPasswordReset(false) });
+    // Password reset flow: show reset screen even if already signed in
+    if (needsPasswordReset) return React.createElement(AuthRouter, { needsPasswordReset: true, onResetDone: () => setNeedsPasswordReset(false) });
+    // Invite set-password flow: new user must set a password before entering app
+    if (needsSetPassword) return React.createElement(AuthRouter, { needsSetPassword: true, onSetPasswordDone: () => setNeedsSetPassword(false) });
+    if (!authUser) return React.createElement(AuthRouter, { needsPasswordReset: false, onResetDone: () => setNeedsPasswordReset(false) });
     return React.createElement(AuthenticatedApp, { authUser, setAuthUser });
   };
 
