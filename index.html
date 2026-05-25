@@ -386,7 +386,14 @@
   // ── Auth Router — handles all auth states + URL tokens ───────────────────
   const AuthRouter = ({ needsPasswordReset = false, onResetDone = () => {} }) => {
     // screen: 'login' | 'magic' | 'forgot' | 'set-password' | 'reset-password'
-    const [screen, setScreen] = useState(needsPasswordReset ? 'reset-password' : 'login');
+    const getInitialScreen = () => {
+      if (needsPasswordReset) return 'reset-password';
+      // If arriving via coach invite link, go straight to signup (magic link) screen
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('invite') === '1') return 'magic';
+      return 'login';
+    };
+    const [screen, setScreen] = useState(getInitialScreen);
 
     useEffect(() => {
       // If parent already detected PASSWORD_RECOVERY, stay on reset screen
@@ -395,17 +402,25 @@
         return;
       }
 
-      // Detect legacy implicit-flow hash tokens (magic link callback)
       const hash = window.location.hash;
       const params = new URLSearchParams(window.location.search);
 
+      // Save coach ID from invite link before cleaning URL
+      const coachIdFromInvite = params.get('coach');
+      if (coachIdFromInvite) {
+        localStorage.setItem('sea_coach_id', coachIdFromInvite);
+      }
+
+      // Arriving via invite link — go to signup screen
+      if (params.get('invite') === '1') {
+        setScreen('magic');
+        window.history.replaceState({}, '', window.location.pathname);
+        return;
+      }
+
+      // Detect legacy implicit-flow hash tokens (magic link callback)
       if (hash && hash.includes('access_token')) {
         const isRecovery = hash.includes('type=recovery');
-        // Auto-connect coach if invite link includes ?coach=ID
-        const coachIdFromInvite = params.get('coach');
-        if (coachIdFromInvite) {
-          localStorage.setItem('sea_coach_id', coachIdFromInvite);
-        }
         if (isRecovery) {
           setScreen('reset-password');
         } else {

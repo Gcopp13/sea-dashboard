@@ -37,16 +37,18 @@ const inviteEmailHTML = (coachName, appUrl) => `
       <tr>
         <td style="padding:40px;">
           <h2 style="color:#1e293b;font-size:1.5rem;margin:0 0 16px;">You've been invited!</h2>
+          <p style="color:#475569;line-height:1.7;margin:0 0 12px;">
+            <strong>${coachName || 'Your coach'}</strong> has invited you to join the S.E.A. Dashboard as their client.
+          </p>
           <p style="color:#475569;line-height:1.7;margin:0 0 32px;">
-            <strong>${coachName || 'Your coach'}</strong> has invited you to connect as your S.E.A. coach.
-            Accept the invitation to access your personal dashboard and get started.
+            Click the button below to <strong>create your account</strong>. You'll enter your email, receive a sign-in link, and be connected to your coach automatically.
           </p>
           <!-- CTA -->
           <table cellpadding="0" cellspacing="0" style="margin:0 auto 32px;">
             <tr>
               <td style="background:linear-gradient(135deg,#6366f1,#8b5cf6);border-radius:12px;padding:16px 40px;text-align:center;">
                 <a href="${appUrl}" style="color:white;text-decoration:none;font-weight:700;font-size:1rem;letter-spacing:0.5px;">
-                  Accept Invitation &rarr;
+                  Create Your Account &rarr;
                 </a>
               </td>
             </tr>
