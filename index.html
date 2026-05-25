@@ -2793,7 +2793,8 @@ Message should be 1-2 sentences, direct, specific to their data. No generic fluf
 
       // Also push snapshot to Netlify Blobs if a coach ID is configured
       const coachId = localStorage.getItem('sea_coach_id');
-      const advisorId = getOrCreateAdvisorId();
+      // Use real Supabase auth user ID for advisor identity (falls back to local anon ID)
+      const advisorId = (await _supabase.auth.getSession()).data.session?.user?.id || getOrCreateAdvisorId();
       if (coachId?.trim()) {
         fetch(`${COACH_API}?action=share`, {
           method: 'POST', headers: {'Content-Type':'application/json'},
@@ -2839,9 +2840,9 @@ Message should be 1-2 sentences, direct, specific to their data. No generic fluf
                 {shareCopied ? '✓ Link Copied!' : '📤 Share Score'}
               </button>
               {localStorage.getItem('sea_coach_id') && (
-                <button onClick={()=>{
+                <button onClick={async ()=>{
                   const coachId = localStorage.getItem('sea_coach_id');
-                  const advisorId = getOrCreateAdvisorId();
+                  const advisorId = (await _supabase.auth.getSession()).data.session?.user?.id || getOrCreateAdvisorId();
                   const firstName = (data?.name||'').split(' ')[0]||'';
                   fetch(`${COACH_API}?action=share`,{
                     method:'POST',headers:{'Content-Type':'application/json'},
@@ -3111,7 +3112,7 @@ Message should be 1-2 sentences, direct, specific to their data. No generic fluf
     );
   };
 
-  const MoreView = ({ data, updateField, saveData, openCoach, personality, setPersonality, onReopenOnboarding, onMilestone, weekNum, setWeekNum, onSignOut, onMetaChange, setActiveTab }) => {
+  const MoreView = ({ data, updateField, saveData, openCoach, personality, setPersonality, onReopenOnboarding, onMilestone, weekNum, setWeekNum, onSignOut, onMetaChange, setActiveTab, authUser }) => {
     const [section, setSection] = useState(null);
     const [newNote, setNewNote] = useState('');
     const [noteTitle, setNoteTitle] = useState('');
@@ -3270,7 +3271,7 @@ Message should be 1-2 sentences, direct, specific to their data. No generic fluf
             </div>
             <ChevRight/>
           </button>
-          <CoachMessages advisorId={getOrCreateAdvisorId()} coachId={localStorage.getItem('sea_coach_id')||''} advisorName={data?.name||data?.fullName||''}/>
+          <CoachMessages advisorId={authUser?.id || getOrCreateAdvisorId()} coachId={localStorage.getItem('sea_coach_id')||''} advisorName={data?.name||data?.fullName||''}/>
         </div>
 
         {/* TOOLS */}
@@ -4478,7 +4479,7 @@ Message should be 1-2 sentences, direct, specific to their data. No generic fluf
             {activeTab==='score'&&<ScoreView data={data} updateField={updateField} weekNum={weekNum} setWeekNum={setWeekNum} setActiveTab={setActiveTab} openCoach={openCoach} onPrint={printTab} onMilestone={setMilestone} setShowResetModal={setShowResetModal}/>}
             {activeTab==='aicoach'&&<AICoachTab plannerData={data} authUserId={authUser?.id} personality={coachPersonality} conversations={conversations} onConversationsChange={setConversations}/>}
             {activeTab==='journal'&&<JournalView data={data} updateField={updateField}/>}
-            {activeTab==='more'&&<MoreView data={data} updateField={updateField} saveData={saveData} openCoach={openCoach} personality={coachPersonality} setPersonality={setCoachPersonality} onReopenOnboarding={onReopenOnboarding} onMilestone={setMilestone} weekNum={weekNum} setWeekNum={setWeekNum} onSignOut={async()=>{await _supabase.auth.signOut();setAuthUser(null);}} onMetaChange={()=>{ if(authUser) savePlannerDataToCloud(authUser.id, data); }} setActiveTab={setActiveTab}/>}
+            {activeTab==='more'&&<MoreView data={data} updateField={updateField} saveData={saveData} openCoach={openCoach} personality={coachPersonality} setPersonality={setCoachPersonality} onReopenOnboarding={onReopenOnboarding} onMilestone={setMilestone} weekNum={weekNum} setWeekNum={setWeekNum} onSignOut={async()=>{await _supabase.auth.signOut();setAuthUser(null);}} onMetaChange={()=>{ if(authUser) savePlannerDataToCloud(authUser.id, data); }} setActiveTab={setActiveTab} authUser={authUser}/>}
             <div style={{display:activeTab==='coach'&&isCoachOrAdmin?'block':'none'}}>
               {isCoachOrAdmin&&<CoachDashboard coachId={authUser?.id||myCoachId} embedded={true} authUser={authUser}/>}
             </div>
