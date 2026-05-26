@@ -387,65 +387,47 @@
 
   // ── Auth Router — handles all auth states + URL tokens ───────────────────
   const AuthRouter = ({ needsPasswordReset = false, onResetDone = () => {}, needsSetPassword = false, onSetPasswordDone = () => {} }) => {
-    // screen: 'login' | 'magic' | 'forgot' | 'set-password' | 'reset-password'
+    // Read ALL URL params synchronously before anything else — params may be gone after first render
     const getInitialScreen = () => {
+      // Parent-driven states take priority
       if (needsPasswordReset) return 'reset-password';
       if (needsSetPassword) return 'set-password';
-      // Detect recovery hash immediately on first render (implicit flow)
-      if (window.location.hash.includes('type=recovery')) return 'reset-password';
-      // If arriving via coach invite link, go straight to signup (magic link) screen
-      const params = new URLSearchParams(window.location.search);
-      if (params.get('invite') === '1') return 'magic';
-      return 'login';
-    };
-    const [screen, setScreen] = useState(getInitialScreen);
-
-    useEffect(() => {
-      // If parent detected PASSWORD_RECOVERY, show reset screen
-      if (needsPasswordReset) {
-        setScreen('reset-password');
-        return;
-      }
-      // If parent detected invite sign-in, show set-password screen
-      if (needsSetPassword) {
-        setScreen('set-password');
-        return;
-      }
 
       const hash = window.location.hash;
       const params = new URLSearchParams(window.location.search);
 
-      // Save coach ID from invite link — always overwrite localStorage so fresh link always wins
-      const coachIdFromInvite = params.get('coach');
-      if (coachIdFromInvite) {
-        localStorage.setItem('sea_coach_id', coachIdFromInvite);
-        // Clear any stale anonymous coach IDs
-        if (localStorage.getItem('sea_coach_id') && localStorage.getItem('sea_coach_id').startsWith('adv_')) {
-          localStorage.setItem('sea_coach_id', coachIdFromInvite);
-        }
+      // Save coach ID from URL immediately (always overwrite stale/anonymous values)
+      const coachIdFromUrl = params.get('coach');
+      if (coachIdFromUrl) {
+        localStorage.setItem('sea_coach_id', coachIdFromUrl);
       }
 
-      // Arriving via invite link — go to signup screen and flag for set-password after sign-in
+      // Implicit flow: password recovery hash
+      if (hash.includes('type=recovery')) return 'reset-password';
+
+      // Magic link login hash (non-recovery) — show set-password for new users
+      if (hash.includes('access_token') && !hash.includes('type=recovery')) {
+        window.history.replaceState({}, '', window.location.pathname);
+        return 'set-password';
+      }
+
+      // Invite link — go to sign-up screen, flag for set-password after magic link click
       if (params.get('invite') === '1') {
         localStorage.setItem('sea_invite_flow', '1');
-        setScreen('magic');
         window.history.replaceState({}, '', window.location.pathname);
-        return;
+        return 'magic';
       }
 
-      // Detect legacy implicit-flow hash tokens (magic link callback)
-      if (hash && hash.includes('access_token')) {
-        const isRecovery = hash.includes('type=recovery');
-        if (isRecovery) {
-          setScreen('reset-password');
-        } else {
-          // Magic link login — show set-password (new users set password, existing users can skip)
-          setScreen('set-password');
-        }
-        // Clean URL only after reading all params
-        window.history.replaceState({}, '', window.location.pathname);
-      }
-    }, [needsPasswordReset]);
+      return 'login';
+    };
+
+    const [screen, setScreen] = useState(getInitialScreen);
+
+    // React to parent-driven state changes (PASSWORD_RECOVERY event, set-password after invite)
+    useEffect(() => {
+      if (needsPasswordReset) { setScreen('reset-password'); return; }
+      if (needsSetPassword)   { setScreen('set-password');   return; }
+    }, [needsPasswordReset, needsSetPassword]);
 
     if (screen === 'magic')          return <MagicLinkScreen onBack={() => setScreen('login')} />;
     if (screen === 'forgot')         return <ForgotPasswordScreen onBack={() => setScreen('login')} />;
