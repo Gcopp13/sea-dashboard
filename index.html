@@ -386,21 +386,15 @@
   };
 
   // ── Auth Router — handles all auth states + URL tokens ───────────────────
-  const AuthRouter = ({ needsPasswordReset = false, onResetDone = () => {}, needsSetPassword = false, onSetPasswordDone = () => {} }) => {
+  const AuthRouter = ({ needsPasswordReset = false, onResetDone = () => {}, needsSetPassword = false, onSetPasswordDone = () => {}, startOnSignup = false }) => {
     // Read ALL URL params synchronously before anything else — params may be gone after first render
     const getInitialScreen = () => {
       // Parent-driven states take priority
       if (needsPasswordReset) return 'reset-password';
-      if (needsSetPassword) return 'set-password';
+      if (needsSetPassword)   return 'set-password';
+      if (startOnSignup)      return 'magic';
 
       const hash = window.location.hash;
-      const params = new URLSearchParams(window.location.search);
-
-      // Save coach ID from URL immediately (always overwrite stale/anonymous values)
-      const coachIdFromUrl = params.get('coach');
-      if (coachIdFromUrl) {
-        localStorage.setItem('sea_coach_id', coachIdFromUrl);
-      }
 
       // Implicit flow: password recovery hash
       if (hash.includes('type=recovery')) return 'reset-password';
@@ -409,13 +403,6 @@
       if (hash.includes('access_token') && !hash.includes('type=recovery')) {
         window.history.replaceState({}, '', window.location.pathname);
         return 'set-password';
-      }
-
-      // Invite link — go to sign-up screen, flag for set-password after magic link click
-      if (params.get('invite') === '1') {
-        localStorage.setItem('sea_invite_flow', '1');
-        window.history.replaceState({}, '', window.location.pathname);
-        return 'magic';
       }
 
       return 'login';
@@ -5874,16 +5861,32 @@ Message should be 1-2 sentences, direct, specific to their data. No generic fluf
 
     // Check for coach dashboard param
     const coachParam = urlParams.get('coach');
+    const isInviteLink = urlParams.get('invite') === '1';
     if (coachParam) {
-      // If already logged in, show coach dashboard
-      if (authUser) return <CoachDashboard coachId={coachParam}/>;
-      // If NOT logged in: save the coach ID so client connects after login, then show login
-      // This means a tester clicking the coach link will log in and get connected automatically
-      localStorage.setItem('sea_coach_id', coachParam);
-      localStorage.setItem('pending_coach_param', coachParam);
-      // Clear the ?coach= from the URL so after login they don't end up on coach dashboard
-      if (window.history && window.history.replaceState) {
-        window.history.replaceState({}, '', window.location.pathname);
+      // Save coach ID immediately (always overwrite stale anonymous values)
+      if (!coachParam.startsWith('adv_')) {
+        localStorage.setItem('sea_coach_id', coachParam);
+      }
+      // If it's a client invite link (not a coach viewing their own dashboard)
+      if (isInviteLink) {
+        // Flag for invite flow so set-password screen shows after sign-in
+        localStorage.setItem('sea_invite_flow', '1');
+        // Clear URL now — AuthRouter will use localStorage flags
+        if (window.history && window.history.replaceState) {
+          window.history.replaceState({}, '', window.location.pathname);
+        }
+        // Show AuthRouter in invite/signup mode
+        if (!authUser) return React.createElement(AuthRouter, {
+          needsPasswordReset: false, onResetDone: () => {},
+          needsSetPassword: false, onSetPasswordDone: () => setNeedsSetPassword(false),
+          startOnSignup: true,
+        });
+      } else {
+        // Non-invite coach param: if logged in show coach dashboard, else just save and clear
+        if (authUser) return <CoachDashboard coachId={coachParam}/>;
+        if (window.history && window.history.replaceState) {
+          window.history.replaceState({}, '', window.location.pathname);
+        }
       }
     }
 
