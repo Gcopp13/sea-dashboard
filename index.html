@@ -940,15 +940,22 @@
 DASHBOARD SNAPSHOT:
 ${JSON.stringify(snapshot, null, 2)}
 
+CRITICAL — TWO COMPLETELY SEPARATE SYSTEMS, DO NOT CONFUSE THEM:
+1. ANVIL PROJECT: A single focused deep-work project (anvilProject field). anvilStreak = consecutive days they logged an Anvil session. anvilToday/anvilYesterday = whether they logged a session.
+2. HABITS: Daily habits tracked in the habit tracker (habits array). Each habit has its own name, days completed this week, and weekly target. These are entirely independent from the Anvil project — even if a habit has the same name as the Anvil project, they are different things.
+NEVER mix Anvil streak data with habit completion data. If you mention a habit, only reference that habit's own days/target numbers. If you mention Anvil, only reference anvilStreak/anvilToday.
+
 RULES:
 - Only speak up if there is a real pattern, gap, streak, or follow-up commitment worth addressing
 - Do NOT speak up just to say hello or be encouraging in a generic way
 - Do NOT speak up if everything looks consistent and there's nothing specific to say
-- DO speak up for: broken streaks, outstanding commitments to follow up, stuck habits (2+ weeks), goal stagnation, missing weekly ritual, strong streaks worth acknowledging, Wheel of Life drops
+- DO speak up for: broken Anvil streaks, outstanding commitments to follow up, stuck habits (2+ weeks under target), goal stagnation, missing weekly ritual, strong streaks worth acknowledging, Wheel of Life drops
+- If a habit is on track (days >= target or close), do NOT flag it as a problem
 
 Respond with JSON only: { "shouldTrigger": true/false, "message": "...", "label": "...", "emoji": "..." }
 If shouldTrigger is false, message/label/emoji can be empty strings.
-Message should be 1-2 sentences, direct, specific to their data. No generic fluff.`;
+Message should be 1-2 sentences, direct, specific to their data. No generic fluff.
+Label should clearly describe what is being coached (e.g. "Anvil Streak", "Meditation Habit", "Goal Check-in") — never just reuse the Anvil project name for habit coaching.`;
 
     try {
       const res = await fetch('/.netlify/functions/ai-coach', {
