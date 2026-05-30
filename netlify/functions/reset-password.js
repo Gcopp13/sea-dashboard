@@ -108,7 +108,7 @@ exports.handler = async (event) => {
       body: JSON.stringify({
         type: 'recovery',
         email: email.trim(),
-        options: { redirect_to: `${APP_URL}?reset=1` },
+        options: { redirect_to: `${APP_URL}?reset_password=1` },
       }),
     });
 

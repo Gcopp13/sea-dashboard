@@ -5859,16 +5859,19 @@ Message should be 1-2 sentences, direct, specific to their data. No generic fluf
       } catch(e) {}
     }
 
-    // ?set_password=1 means user clicked a magic link from invite flow — force set-password screen
-    if (urlParams.get('set_password') === '1') {
-      localStorage.setItem('sea_invite_flow', '1');
-      // Clear only the query string, preserve the hash so AuthRouter can detect the token
+    // ?set_password=1 — new user clicked magic link from invite flow
+    // ?reset_password=1 — existing user clicked password reset email
+    // Both: preserve hash so AuthRouter sees the token, then show the right screen
+    const isSetPassword = urlParams.get('set_password') === '1';
+    const isResetPassword = urlParams.get('reset_password') === '1';
+    if (isSetPassword || isResetPassword) {
+      if (isSetPassword) localStorage.setItem('sea_invite_flow', '1');
+      // Preserve hash, clear query string
       if (window.history && window.history.replaceState) {
         window.history.replaceState({}, '', window.location.pathname + window.location.hash);
       }
-      // AuthRouter will detect the hash token and show set-password screen
       if (!authUser) return React.createElement(AuthRouter, {
-        needsPasswordReset: false, onResetDone: () => {},
+        needsPasswordReset: isResetPassword, onResetDone: () => setNeedsPasswordReset(false),
         needsSetPassword: false, onSetPasswordDone: () => setNeedsSetPassword(false),
         startOnSignup: false,
       });
