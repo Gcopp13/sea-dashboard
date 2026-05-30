@@ -775,6 +775,8 @@
 
       const weeksWithData = (plannerData.weeks||[]).filter(w=>w.wins?.some(x=>x.trim())||w.focus?.trim());
       const latestWeek = weeksWithData.length > 0 ? weeksWithData[weeksWithData.length-1] : null;
+      // For habits, use the most recent week that actually has habit data (may differ from latestWeek)
+      const latestHabitWeek = [...(plannerData.weeks||[])].reverse().find(w=>(w.aActivities||[]).some(a=>a.name?.trim())) || latestWeek;
       const recentWins = latestWeek?.wins?.filter(x=>x.trim()).join(', ') || 'None logged';
       const recentFocus = latestWeek?.focus || 'Not set';
       const anvilStreak = (()=>{
@@ -787,7 +789,7 @@
         return streak;
       })();
       const habitSummary = (()=>{
-        const acts=(latestWeek?.aActivities||[]).filter(a=>a.name?.trim());
+        const acts=(latestHabitWeek?.aActivities||[]).filter(a=>a.name?.trim());
         if(!acts.length) return 'No habits tracked';
         return acts.map(a=>`${a.name} (${(a.days||[]).filter(Boolean).length}/7 days)`).join(', ');
       })();
@@ -891,7 +893,9 @@
 
     const weeksWithData = (plannerData.weeks||[]).filter(w=>w.wins?.some(x=>x.trim())||w.focus?.trim());
     const latestWeek = weeksWithData[weeksWithData.length-1];
-    const habits = (latestWeek?.aActivities||[]).filter(a=>a.name?.trim()).map(a=>({name:a.name,days:(a.days||[]).filter(Boolean).length,target:a.targetDays||7}));
+    // For habits snapshot, use the most recent week with actual habit data (not just wins/focus)
+    const latestHabitWeek = [...(plannerData.weeks||[])].reverse().find(w=>(w.aActivities||[]).some(a=>a.name?.trim())) || latestWeek;
+    const habits = (latestHabitWeek?.aActivities||[]).filter(a=>a.name?.trim()).map(a=>({name:a.name,days:(a.days||[]).filter(Boolean).length,target:a.targetDays||7}));
     const goals = (plannerData.goals||[]).filter(g=>g.title?.trim()).map(g=>({title:g.title,pct:g.completion||0}));
 
     // Stuck habits (under half target for 2+ weeks)
