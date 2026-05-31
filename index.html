@@ -3108,6 +3108,12 @@ Label should clearly describe what is being coached (e.g. "Anvil Streak", "Medit
     );
   };
 
+  // Wrapper so WeekView has its own local week nav — prevents nav arrows from changing global weekNum
+  const WeekViewWrapper = ({ data, updateField, initialWeekNum, openCoach, onPrint, onMilestone, onBack }) => {
+    const [localWeekNum, setLocalWeekNum] = useState(initialWeekNum);
+    return <WeekView data={data} updateField={updateField} weekNum={localWeekNum} setWeekNum={setLocalWeekNum} openCoach={openCoach} onPrint={onPrint} onMilestone={onMilestone} onBack={onBack}/>;
+  };
+
   const MoreView = ({ data, updateField, saveData, openCoach, personality, setPersonality, onReopenOnboarding, onMilestone, weekNum, setWeekNum, onSignOut, onMetaChange, setActiveTab, authUser, onRitualBack }) => {
     const [section, setSection] = useState(null);
     const [newNote, setNewNote] = useState('');
@@ -3310,7 +3316,7 @@ Label should clearly describe what is being coached (e.g. "Anvil Streak", "Medit
         {/* Vision & Goals */}
         {/* Weekly Ritual */}
         {section==='weekly' && (
-          <WeekView data={data} updateField={updateField} weekNum={weekNum} setWeekNum={setWeekNum} openCoach={openCoach} onPrint={()=>window.print()} onMilestone={onMilestone} onBack={()=>{setSection(null);onRitualBack&&onRitualBack();}}/>
+          <WeekViewWrapper data={data} updateField={updateField} initialWeekNum={weekNum} openCoach={openCoach} onPrint={()=>window.print()} onMilestone={onMilestone} onBack={()=>{setSection(null);onRitualBack&&onRitualBack();}}/>
         )}
 
         {/* Messes */}
