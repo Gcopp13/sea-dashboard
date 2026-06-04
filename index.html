@@ -3784,8 +3784,9 @@ Label should clearly describe what is being coached (e.g. "Anvil Streak", "Medit
                 if (permission === 'unsupported') return null;
 
                 const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+                const isAndroid = /android/i.test(navigator.userAgent);
                 const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
-                const needsHomeScreen = isIOS && !isStandalone && !subscribed;
+                const needsHomeScreen = (isIOS || isAndroid) && !isStandalone && !subscribed;
 
                 return (
                   <div className="bg-slate-800/60 rounded-2xl p-5 border border-slate-700">
@@ -3798,13 +3799,27 @@ Label should clearly describe what is being coached (e.g. "Anvil Streak", "Medit
                     {needsHomeScreen ? (
                       <div className="rounded-xl border border-blue-500/40 bg-blue-500/10 p-4 space-y-3">
                         <p className="text-sm font-bold text-blue-300">📲 Add to Home Screen First</p>
-                        <p className="text-xs text-slate-300 leading-relaxed">To enable push notifications on iPhone, you need to add S.E.A. Dashboard to your home screen:</p>
-                        <ol className="text-xs text-slate-300 space-y-1.5 leading-relaxed list-none">
-                          <li>1. Tap the <span className="text-white font-semibold">Share</span> button at the bottom of Safari <span className="text-slate-400">(the box with an arrow)</span></li>
-                          <li>2. Scroll down and tap <span className="text-white font-semibold">"Add to Home Screen"</span></li>
-                          <li>3. Tap <span className="text-white font-semibold">Add</span> in the top right</li>
-                          <li>4. Open the app from your home screen and come back here to enable notifications</li>
-                        </ol>
+                        {isAndroid ? (
+                          <>
+                            <p className="text-xs text-slate-300 leading-relaxed">To enable push notifications on Android, add S.E.A. Dashboard to your home screen:</p>
+                            <ol className="text-xs text-slate-300 space-y-1.5 leading-relaxed list-none">
+                              <li>1. Tap the <span className="text-white font-semibold">three-dot menu (⋮)</span> in the top right of Chrome</li>
+                              <li>2. Tap <span className="text-white font-semibold">"Add to Home Screen"</span></li>
+                              <li>3. Tap <span className="text-white font-semibold">Add</span> on the prompt</li>
+                              <li>4. Open the app from your home screen and come back here to enable notifications</li>
+                            </ol>
+                          </>
+                        ) : (
+                          <>
+                            <p className="text-xs text-slate-300 leading-relaxed">To enable push notifications on iPhone, add S.E.A. Dashboard to your home screen:</p>
+                            <ol className="text-xs text-slate-300 space-y-1.5 leading-relaxed list-none">
+                              <li>1. Tap the <span className="text-white font-semibold">Share</span> button at the bottom of Safari <span className="text-slate-400">(the box with an arrow)</span></li>
+                              <li>2. Scroll down and tap <span className="text-white font-semibold">"Add to Home Screen"</span></li>
+                              <li>3. Tap <span className="text-white font-semibold">Add</span> in the top right</li>
+                              <li>4. Open the app from your home screen and come back here to enable notifications</li>
+                            </ol>
+                          </>
+                        )}
                       </div>
                     ) : !subscribed ? (
                       <button onClick={subscribe} disabled={loading} className="w-full py-3 rounded-xl font-bold text-sm text-white disabled:opacity-50 transition-all" style={{background:'linear-gradient(135deg,#10b981,#059669)'}}>
