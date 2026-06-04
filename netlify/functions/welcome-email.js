@@ -1,142 +1,290 @@
-/**
- * welcome-email.js — Sends a welcome email when a new user signs up
- * Uses Resend API directly via fetch (no npm dependencies needed).
- *
- * Called from the front-end after first successful login.
- * POST { email, name }
- */
+// welcome-email.js — Sends branded welcome email to new SEA Dashboard users
+// Called after successful signup with { email, name, userId }
 
-const CORS_HEADERS = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'Content-Type',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
-  'Content-Type': 'application/json',
+import { readFileSync } from 'fs';
+import { join, dirname } from 'path';
+import { fileURLToPath } from 'url';
+
+const RESEND_API_KEY = process.env.RESEND_API_KEY;
+const APP_URL = process.env.APP_URL || 'https://sea-dashboard.netlify.app';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+
+const getPdfBase64 = () => {
+  try {
+    const pdfPath = join(__dirname, 'sea-onboarding-guide.pdf');
+    return readFileSync(pdfPath).toString('base64');
+  } catch (e) {
+    console.error('Could not read PDF attachment:', e.message);
+    return null;
+  }
 };
 
-function ok(data) {
-  return { statusCode: 200, headers: CORS_HEADERS, body: JSON.stringify(data) };
-}
-function err(message, statusCode = 500) {
-  return { statusCode, headers: CORS_HEADERS, body: JSON.stringify({ error: message }) };
-}
+const buildWelcomeEmail = (name) => {
+  const firstName = name ? name.split(' ')[0] : 'there';
 
-const welcomeHTML = (name, appUrl) => `
-<!DOCTYPE html>
-<html>
+  return `<!DOCTYPE html>
+<html lang="en">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Welcome to S.E.A. Dashboard</title>
 </head>
-<body style="margin:0;padding:0;background:#f4f4f7;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
-  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f7;padding:40px 20px;">
+<body style="margin:0;padding:0;background:#f4f4f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f5;padding:32px 16px;">
     <tr><td align="center">
-      <table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;">
+      <table width="100%" cellpadding="0" cellspacing="0" style="max-width:580px;background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,0.08);">
 
         <!-- Header -->
-        <tr><td style="background:linear-gradient(135deg,#1a1f3c 0%,#2d1b69 100%);border-radius:12px 12px 0 0;padding:40px;text-align:center;">
-          <div style="font-size:40px;margin-bottom:12px;">🌊</div>
-          <h1 style="color:#ffffff;margin:0;font-size:28px;font-weight:700;letter-spacing:-0.5px;">S.E.A. Dashboard</h1>
-          <p style="color:#a78bfa;margin:8px 0 0;font-size:15px;font-style:italic;">Live By Design, Not By Default</p>
-        </td></tr>
+        <tr>
+          <td style="background:linear-gradient(135deg,#1e3a5f 0%,#2563eb 100%);padding:36px 40px 28px;text-align:center;">
+            <p style="margin:0 0 8px;font-size:13px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:rgba(255,255,255,0.7);">Getting Results Inc.</p>
+            <h1 style="margin:0;font-size:28px;font-weight:800;color:#ffffff;letter-spacing:-0.5px;">S.E.A. Dashboard</h1>
+            <p style="margin:8px 0 0;font-size:13px;color:rgba(255,255,255,0.75);">Slight Edge Accelerator</p>
+          </td>
+        </tr>
 
         <!-- Body -->
-        <tr><td style="background:#ffffff;padding:40px;">
-          <h2 style="color:#1a1f3c;margin:0 0 16px;font-size:22px;">Welcome${name ? ', ' + name : ''}.</h2>
-          <p style="color:#4b5563;font-size:16px;line-height:1.6;margin:0 0 20px;">
-            You've just taken the first step toward running your practice with intention. S.E.A. stands for <strong>Slight Edge Accelerator</strong> — and also for <strong>Strategic, Accountable, Executable</strong>. It's about 5 minutes a day that compounds into something significant.
-          </p>
+        <tr>
+          <td style="padding:36px 40px 8px;">
+            <p style="margin:0 0 20px;font-size:18px;font-weight:700;color:#111827;">Hey ${firstName} 👋</p>
+            <p style="margin:0 0 16px;font-size:15px;line-height:1.65;color:#374151;">
+              Welcome to the S.E.A. Dashboard — I'm glad you're here. This app is built around one idea: <strong>small, consistent actions compound into extraordinary results.</strong>
+            </p>
+            <p style="margin:0 0 24px;font-size:15px;line-height:1.65;color:#374151;">
+              Here's how to get set up and start building momentum right away:
+            </p>
+          </td>
+        </tr>
 
-          <!-- 3 steps -->
-          <table width="100%" cellpadding="0" cellspacing="0" style="margin:24px 0;">
-            <tr>
-              <td style="background:#f8f7ff;border-left:4px solid #7c3aed;border-radius:0 8px 8px 0;padding:16px 20px;margin-bottom:12px;">
-                <p style="margin:0;color:#1a1f3c;font-weight:600;font-size:15px;">1. Set your foundation</p>
-                <p style="margin:4px 0 0;color:#6b7280;font-size:14px;">Define your Slight Edge habits, 120-Day Vision, and Anvil project.</p>
-              </td>
-            </tr>
-            <tr><td style="height:8px;"></td></tr>
-            <tr>
-              <td style="background:#f8f7ff;border-left:4px solid #7c3aed;border-radius:0 8px 8px 0;padding:16px 20px;">
-                <p style="margin:0;color:#1a1f3c;font-weight:600;font-size:15px;">2. Plan your week</p>
-                <p style="margin:4px 0 0;color:#6b7280;font-size:14px;">Use the Weekly Ritual every Sunday to set your focus and score your previous week.</p>
-              </td>
-            </tr>
-            <tr><td style="height:8px;"></td></tr>
-            <tr>
-              <td style="background:#f8f7ff;border-left:4px solid #7c3aed;border-radius:0 8px 8px 0;padding:16px 20px;">
-                <p style="margin:0;color:#1a1f3c;font-weight:600;font-size:15px;">3. Use your AI Coach</p>
-                <p style="margin:4px 0 0;color:#6b7280;font-size:14px;">Your coach knows your goals and holds you accountable. Ask it anything.</p>
-              </td>
-            </tr>
-          </table>
+        <!-- Steps -->
+        <tr>
+          <td style="padding:0 40px 8px;">
 
-          <p style="color:#4b5563;font-size:15px;line-height:1.6;margin:24px 0;">
-            Structure sets you free. Let's build yours.
-          </p>
+            <!-- Step 1 -->
+            <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:16px;">
+              <tr>
+                <td width="44" valign="top" style="padding-top:2px;">
+                  <div style="width:32px;height:32px;border-radius:50%;background:#2563eb;text-align:center;line-height:32px;font-size:14px;font-weight:800;color:#fff;">1</div>
+                </td>
+                <td style="padding-left:12px;">
+                  <p style="margin:0 0 4px;font-size:15px;font-weight:700;color:#111827;">Add to Your Home Screen 📲</p>
+                  <p style="margin:0;font-size:14px;line-height:1.6;color:#6b7280;">
+                    On iPhone: open the app in Safari → tap the <strong>Share</strong> button → tap <strong>"Add to Home Screen"</strong>. This is required for push notification reminders to work.
+                  </p>
+                </td>
+              </tr>
+            </table>
 
-          <!-- CTA Button -->
-          <table width="100%" cellpadding="0" cellspacing="0">
-            <tr><td align="center" style="padding:8px 0 24px;">
-              <a href="${appUrl}" style="display:inline-block;background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#ffffff;text-decoration:none;font-size:16px;font-weight:600;padding:14px 36px;border-radius:8px;letter-spacing:0.3px;">
-                Open Your Dashboard →
-              </a>
-            </td></tr>
-          </table>
-        </td></tr>
+            <!-- Step 2 -->
+            <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:16px;">
+              <tr>
+                <td width="44" valign="top" style="padding-top:2px;">
+                  <div style="width:32px;height:32px;border-radius:50%;background:#2563eb;text-align:center;line-height:32px;font-size:14px;font-weight:800;color:#fff;">2</div>
+                </td>
+                <td style="padding-left:12px;">
+                  <p style="margin:0 0 4px;font-size:15px;font-weight:700;color:#111827;">Enable Push Notifications 🔔</p>
+                  <p style="margin:0;font-size:14px;line-height:1.6;color:#6b7280;">
+                    Go to <strong>More → Settings → Push Notifications</strong> and tap Enable. You'll get an evening reminder at 7 PM, a Sunday planning reminder at 8 AM, and coach nudges when you've been inactive.
+                  </p>
+                </td>
+              </tr>
+            </table>
+
+            <!-- Step 3 -->
+            <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:16px;">
+              <tr>
+                <td width="44" valign="top" style="padding-top:2px;">
+                  <div style="width:32px;height:32px;border-radius:50%;background:#2563eb;text-align:center;line-height:32px;font-size:14px;font-weight:800;color:#fff;">3</div>
+                </td>
+                <td style="padding-left:12px;">
+                  <p style="margin:0 0 4px;font-size:15px;font-weight:700;color:#111827;">Set Up Your Anvil Project 🔨</p>
+                  <p style="margin:0;font-size:14px;line-height:1.6;color:#6b7280;">
+                    Your Anvil is your one most important deep-work project right now. Set it in the <strong>Anvil tab</strong> and log sessions daily — it's worth 25 points in your weekly score.
+                  </p>
+                </td>
+              </tr>
+            </table>
+
+            <!-- Step 4 -->
+            <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:16px;">
+              <tr>
+                <td width="44" valign="top" style="padding-top:2px;">
+                  <div style="width:32px;height:32px;border-radius:50%;background:#2563eb;text-align:center;line-height:32px;font-size:14px;font-weight:800;color:#fff;">4</div>
+                </td>
+                <td style="padding-left:12px;">
+                  <p style="margin:0 0 4px;font-size:15px;font-weight:700;color:#111827;">Track Your Habits Daily ✅</p>
+                  <p style="margin:0;font-size:14px;line-height:1.6;color:#6b7280;">
+                    Check off your habits on the <strong>Today tab</strong> each day. Habit completion is worth 30 points — the biggest single category in your score.
+                  </p>
+                </td>
+              </tr>
+            </table>
+
+            <!-- Step 5 -->
+            <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:16px;">
+              <tr>
+                <td width="44" valign="top" style="padding-top:2px;">
+                  <div style="width:32px;height:32px;border-radius:50%;background:#2563eb;text-align:center;line-height:32px;font-size:14px;font-weight:800;color:#fff;">5</div>
+                </td>
+                <td style="padding-left:12px;">
+                  <p style="margin:0 0 4px;font-size:15px;font-weight:700;color:#111827;">Do the Sunday Ritual 📋</p>
+                  <p style="margin:0;font-size:14px;line-height:1.6;color:#6b7280;">
+                    Every Sunday, complete your <strong>Weekly Ritual</strong> in the More tab — plan your week, set your focus, and document your wins. It takes 10 minutes and is worth 15 points.
+                  </p>
+                </td>
+              </tr>
+            </table>
+
+            <!-- Step 6 -->
+            <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:8px;">
+              <tr>
+                <td width="44" valign="top" style="padding-top:2px;">
+                  <div style="width:32px;height:32px;border-radius:50%;background:#2563eb;text-align:center;line-height:32px;font-size:14px;font-weight:800;color:#fff;">6</div>
+                </td>
+                <td style="padding-left:12px;">
+                  <p style="margin:0 0 4px;font-size:15px;font-weight:700;color:#111827;">Share Your Score with Your Coach 📊</p>
+                  <p style="margin:0;font-size:14px;line-height:1.6;color:#6b7280;">
+                    Go to the <strong>Score tab</strong> and tap "Share with Coach" to send your weekly breakdown. Your coach reviews it and can send you personalized feedback directly in the app.
+                  </p>
+                </td>
+              </tr>
+            </table>
+
+          </td>
+        </tr>
+
+        <!-- Score breakdown callout -->
+        <tr>
+          <td style="padding:24px 40px 8px;">
+            <table width="100%" cellpadding="0" cellspacing="0" style="background:#f0f7ff;border-radius:12px;border-left:4px solid #2563eb;padding:20px 24px;">
+              <tr>
+                <td>
+                  <p style="margin:0 0 12px;font-size:14px;font-weight:800;color:#1e3a5f;text-transform:uppercase;letter-spacing:1px;">Your SEA Score — 100 Points</p>
+                  <table width="100%" cellpadding="0" cellspacing="0">
+                    <tr style="border-bottom:1px solid #dbeafe;">
+                      <td style="padding:6px 0;font-size:13px;color:#374151;font-weight:600;">🏃 Habit Completion</td>
+                      <td style="padding:6px 0;font-size:13px;color:#2563eb;font-weight:700;text-align:right;">30 pts</td>
+                    </tr>
+                    <tr style="border-bottom:1px solid #dbeafe;">
+                      <td style="padding:6px 0;font-size:13px;color:#374151;font-weight:600;">🔨 Anvil Streak</td>
+                      <td style="padding:6px 0;font-size:13px;color:#2563eb;font-weight:700;text-align:right;">25 pts</td>
+                    </tr>
+                    <tr style="border-bottom:1px solid #dbeafe;">
+                      <td style="padding:6px 0;font-size:13px;color:#374151;font-weight:600;">⚖️ Wheel of John</td>
+                      <td style="padding:6px 0;font-size:13px;color:#2563eb;font-weight:700;text-align:right;">20 pts</td>
+                    </tr>
+                    <tr style="border-bottom:1px solid #dbeafe;">
+                      <td style="padding:6px 0;font-size:13px;color:#374151;font-weight:600;">📋 Weekly Ritual</td>
+                      <td style="padding:6px 0;font-size:13px;color:#2563eb;font-weight:700;text-align:right;">15 pts</td>
+                    </tr>
+                    <tr>
+                      <td style="padding:6px 0;font-size:13px;color:#374151;font-weight:600;">🎯 Goal Progress</td>
+                      <td style="padding:6px 0;font-size:13px;color:#2563eb;font-weight:700;text-align:right;">10 pts</td>
+                    </tr>
+                  </table>
+                  <p style="margin:12px 0 0;font-size:13px;color:#4b5563;line-height:1.5;">
+                    <strong>Pro tip:</strong> Habits + Weekly Ritual = 45 pts. Nail those two consistently and you'll rarely dip below 70.
+                  </p>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+
+        <!-- CTA -->
+        <tr>
+          <td style="padding:28px 40px 8px;text-align:center;">
+            <a href="${APP_URL}" style="display:inline-block;background:linear-gradient(135deg,#2563eb,#7c3aed);color:#ffffff;font-size:15px;font-weight:700;text-decoration:none;padding:14px 36px;border-radius:10px;letter-spacing:0.2px;">Open S.E.A. Dashboard →</a>
+          </td>
+        </tr>
+
+        <!-- PDF note -->
+        <tr>
+          <td style="padding:16px 40px 8px;text-align:center;">
+            <p style="margin:0;font-size:13px;color:#9ca3af;line-height:1.6;">
+              📎 Check the attachment — it's a full PDF guide with everything you need to get the most out of the app.
+            </p>
+          </td>
+        </tr>
+
+        <!-- Sign-off -->
+        <tr>
+          <td style="padding:24px 40px 32px;">
+            <p style="margin:0 0 4px;font-size:15px;line-height:1.65;color:#374151;">Let me know if you have any questions — I'm here to help.</p>
+            <p style="margin:16px 0 0;font-size:15px;font-weight:700;color:#111827;">— Gino</p>
+            <p style="margin:2px 0 0;font-size:13px;color:#9ca3af;">Getting Results Inc. | S.E.A. Dashboard</p>
+          </td>
+        </tr>
 
         <!-- Footer -->
-        <tr><td style="background:#f4f4f7;border-radius:0 0 12px 12px;padding:24px;text-align:center;">
-          <p style="color:#9ca3af;font-size:13px;margin:0;">Getting Results Inc. · S.E.A. Dashboard</p>
-          <p style="color:#9ca3af;font-size:12px;margin:8px 0 0;">Please do not reply to this email &mdash; this mailbox is not monitored. To reach us, contact your coach directly.</p>
-          <p style="color:#9ca3af;font-size:12px;margin:6px 0 0;">You received this because you signed up at sea-dashboard.netlify.app</p>
-        </td></tr>
+        <tr>
+          <td style="background:#f9fafb;border-top:1px solid #e5e7eb;padding:16px 40px;text-align:center;">
+            <p style="margin:0;font-size:12px;color:#9ca3af;">
+              © 2026 Getting Results Inc. · <a href="${APP_URL}" style="color:#6b7280;text-decoration:none;">sea-dashboard.netlify.app</a>
+            </p>
+          </td>
+        </tr>
 
       </table>
     </td></tr>
   </table>
 </body>
-</html>
-`;
+</html>`;
+};
 
-exports.handler = async (event) => {
-  if (event.httpMethod === 'OPTIONS') return { statusCode: 204, headers: CORS_HEADERS, body: '' };
-  if (event.httpMethod !== 'POST') return err('Method not allowed', 405);
-
-  let payload;
-  try { payload = JSON.parse(event.body); } catch { return err('Invalid JSON', 400); }
-
-  const { email, name } = payload;
-  if (!email) return err('email is required', 400);
-
-  const apiKey = process.env.RESEND_API_KEY;
-  const fromEmail = process.env.FROM_EMAIL || 'onboarding@gettingresultsinc.com';
-  const appUrl = process.env.APP_URL || 'https://sea-dashboardindex18.netlify.app';
-
-  if (!apiKey) return err('RESEND_API_KEY not configured', 500);
+export const handler = async (event) => {
+  if (event.httpMethod !== 'POST') {
+    return { statusCode: 405, body: 'Method not allowed' };
+  }
 
   try {
+    const { email, name } = JSON.parse(event.body || '{}');
+
+    if (!email) {
+      return { statusCode: 400, body: JSON.stringify({ error: 'email required' }) };
+    }
+
+    const html = buildWelcomeEmail(name);
+    const firstName = name ? name.split(' ')[0] : 'there';
+    const pdfBase64 = getPdfBase64();
+
+    const payload = {
+      from: 'Gino from S.E.A. Dashboard <gino.coppola@gettingresultsinc.com>',
+      to: [email],
+      reply_to: 'gino.coppola@gettingresultsinc.com',
+      subject: `Welcome to S.E.A. Dashboard, ${firstName} — here's how to get started`,
+      html,
+    };
+
+    if (pdfBase64) {
+      payload.attachments = [{
+        filename: 'SEA-Dashboard-Getting-Started-Guide.pdf',
+        content: pdfBase64,
+      }];
+    }
+
     const res = await fetch('https://api.resend.com/emails', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${apiKey}`,
+        'Authorization': `Bearer ${RESEND_API_KEY}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        from: `SEA Dashboard <${fromEmail}>`,
-        to: [email],
-        subject: 'Welcome to S.E.A. Dashboard — Live By Design',
-        html: welcomeHTML(name, appUrl),
-      }),
+      body: JSON.stringify(payload),
     });
 
-    const data = await res.json();
     if (!res.ok) {
-      console.error('[welcome-email] Resend error:', data);
-      return err(data.message || 'Failed to send email', res.status);
+      const err = await res.text();
+      console.error('Resend error:', err);
+      return { statusCode: 500, body: JSON.stringify({ error: 'Failed to send email', detail: err }) };
     }
-    return ok({ success: true, id: data.id });
+
+    const data = await res.json();
+    console.log('Welcome email sent to', email, '— id:', data.id);
+    return { statusCode: 200, body: JSON.stringify({ success: true, id: data.id }) };
+
   } catch (e) {
-    console.error('[welcome-email] fetch error:', e);
-    return err(e.message);
+    console.error('welcome-email error:', e);
+    return { statusCode: 500, body: JSON.stringify({ error: e.message }) };
   }
 };
