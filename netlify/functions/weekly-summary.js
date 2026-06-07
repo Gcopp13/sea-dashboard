@@ -201,6 +201,8 @@ exports.handler = async (event) => {
       return { statusCode: 200, headers: CORS_HEADERS, body: JSON.stringify({ sent: 0, message: 'No users found' }) };
     }
 
+    const sleep = ms => new Promise(r => setTimeout(r, ms));
+
     let sent = 0;
     let errors = 0;
     const results = [];
@@ -239,6 +241,8 @@ exports.handler = async (event) => {
           results.push({ email: profile.email, status: 'error', error: emailErr.message });
           console.error(`[weekly-summary] Failed to send to ${profile.email}:`, emailErr);
         }
+        // Pause between sends to stay under Resend's 5 req/sec rate limit
+        await sleep(250);
       } catch (userErr) {
         errors++;
         results.push({ email: profile.email, status: 'error', error: userErr.message });
