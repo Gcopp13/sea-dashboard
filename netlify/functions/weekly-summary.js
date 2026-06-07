@@ -16,16 +16,25 @@ function escapeHtml(str) {
   return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
 }
 
-// ── Score calculation (mirrors calcSEAScore in index.html) ───────────────────
+// ── Score calculation — scores the LAST COMPLETED week (not current in-progress week) ──
 function calcSEAScore(data) {
   const weeks = Array.isArray(data.weeks) ? data.weeks : [];
-  const recentWeek = [...weeks].reverse().find(w => w && (w.wins?.some(x => x?.trim()) || w.focus?.trim())) || null;
-  if (!recentWeek) return null;
-  // Use most recent week with actual habit data (may differ from recentWeek)
-  const latestHabitWeek = [...weeks].reverse().find(w => w && (w.aActivities || []).some(a => a?.name?.trim())) || recentWeek;
 
-  // 1. Habit completion (30pts)
-  const acts = (latestHabitWeek.aActivities || []).filter(a => a?.name?.trim());
+  // Weekly summary fires Sunday — score the week that just ENDED (Mon-Sat).
+  // The user may have already filled in the Sunday ritual for the NEW week this morning,
+  // so we use the second-most-recent week with wins/focus data (= last completed week).
+  const weeksWithData = weeks.map((w, i) => ({ w, i })).filter(({ w }) =>
+    w && (w.wins?.some(x => x?.trim()) || w.focus?.trim())
+  );
+  if (weeksWithData.length === 0) return null;
+  // Second-to-last = last completed week; if only one exists, use it
+  const completedEntry = weeksWithData.length >= 2
+    ? weeksWithData[weeksWithData.length - 2]
+    : weeksWithData[weeksWithData.length - 1];
+  const recentWeek = completedEntry.w;
+
+  // 1. Habit completion (30pts) — use the same completed week's habit data
+  const acts = (recentWeek.aActivities || []).filter(a => a?.name?.trim());
   const habitPct = acts.length > 0
     ? acts.reduce((s, a) => {
         const target = Math.min(Math.max(parseInt(a.targetDays) || 7, 1), 7);
@@ -35,40 +44,23 @@ function calcSEAScore(data) {
     : 0;
   const habitScore = habitPct * 30;
 
-  // 2. Anvil (25pts) — period-based
+  // 2. Anvil (25pts) — score LAST completed week's logs (Mon-Sun of last week)
   const anvilLog = Array.isArray(data.anvilProject?.log) ? data.anvilProject.log : [];
   const freqCount = Math.max(1, parseInt(data.anvilProject?.freqCount) || 1);
-  const freqPeriod = data.anvilProject?.freqPeriod || 'week';
   const now = new Date(); now.setHours(0, 0, 0, 0);
-  const getPeriodStart = (stepsBack) => {
-    const d = new Date(now);
-    if (freqPeriod === 'week') {
-      d.setDate(d.getDate() - ((d.getDay() + 6) % 7) - stepsBack * 7);
-    } else if (freqPeriod === 'biweekly') {
-      d.setDate(d.getDate() - ((d.getDay() + 6) % 7) - stepsBack * 14);
-    } else {
-      return new Date(d.getFullYear(), d.getMonth() - stepsBack, 1);
-    }
-    return d;
-  };
-  const curStart = getPeriodStart(0);
-  const curEnd = new Date(); curEnd.setHours(23, 59, 59, 999);
-  const logsThisPeriod = anvilLog.filter(e => { const d = new Date(e.date); return d >= curStart && d <= curEnd; }).length;
-  const hitCurrent = logsThisPeriod >= freqCount;
-  let anvilStreak = hitCurrent ? 1 : 0;
-  if (hitCurrent) {
-    for (let i = 1; i <= 52; i++) {
-      const s = getPeriodStart(i);
-      const ePrev = new Date(getPeriodStart(i - 1)); ePrev.setDate(ePrev.getDate() - 1); ePrev.setHours(23, 59, 59, 999);
-      const cnt = anvilLog.filter(e => { const d = new Date(e.date); return d >= s && d <= ePrev; }).length;
-      if (cnt >= freqCount) anvilStreak++; else break;
-    }
-  }
-  const anvilScore = hitCurrent ? 25 : Math.min(anvilStreak / 4, 1) * 25;
+  const dow = (now.getDay() + 6) % 7; // 0=Mon
+  const thisWeekStart = new Date(now); thisWeekStart.setDate(now.getDate() - dow);
+  const lastWeekStart = new Date(thisWeekStart); lastWeekStart.setDate(thisWeekStart.getDate() - 7);
+  const lastWeekEnd = new Date(thisWeekStart); lastWeekEnd.setDate(thisWeekStart.getDate() - 1); lastWeekEnd.setHours(23, 59, 59, 999);
+  const logsLastWeek = anvilLog.filter(e => {
+    const d = new Date(e.date); d.setHours(0, 0, 0, 0);
+    return d >= lastWeekStart && d <= lastWeekEnd;
+  }).length;
+  const anvilScore = Math.min(logsLastWeek / freqCount, 1) * 25;
 
   // 3. Wheel (20pts)
   const w = recentWeek.wheelOfJohn || { family: 5, fun: 5, fitness: 5, finance: 5, faith: 5 };
-  const wheelAvg = Object.values(w).reduce((a, b) => a + (b || 5), 0) / 5;
+  const wheelAvg = Object.values(w).reduce((a, b) => a + (b || 5), 0) / Object.values(w).length;
   const wheelScore = (wheelAvg / 10) * 20;
 
   // 4. Weekly ritual (15pts)
@@ -90,7 +82,14 @@ function buildEmailHtml(name, data) {
   const firstName = name ? name.split(' ')[0] : 'there';
   const seaScore = calcSEAScore(data);
   const weeks = Array.isArray(data.weeks) ? data.weeks : [];
-  const recentWeek = [...weeks].reverse().find(w => w && (w.wins?.some(x => x?.trim()) || w.focus?.trim())) || null;
+  // Same logic as calcSEAScore — use second-most-recent week (last completed week)
+  const weeksWithDataE = weeks.map((w, i) => ({ w, i })).filter(({ w }) =>
+    w && (w.wins?.some(x => x?.trim()) || w.focus?.trim())
+  );
+  const completedEntryE = weeksWithDataE.length >= 2
+    ? weeksWithDataE[weeksWithDataE.length - 2]
+    : weeksWithDataE[weeksWithDataE.length - 1];
+  const recentWeek = completedEntryE?.w || null;
 
   const wins = recentWeek?.wins?.filter(w => w?.trim()) || [];
   const goals = (data.goals || []).filter(g => g?.title?.trim());
