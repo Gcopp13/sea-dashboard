@@ -19,11 +19,13 @@ function escapeHtml(str) {
 // ── Score calculation (mirrors calcSEAScore in index.html) ───────────────────
 function calcSEAScore(data) {
   const weeks = Array.isArray(data.weeks) ? data.weeks : [];
-  const recentWeek = weeks.find(w => w && (w.wins?.some(x => x?.trim()) || w.focus?.trim())) || null;
+  const recentWeek = [...weeks].reverse().find(w => w && (w.wins?.some(x => x?.trim()) || w.focus?.trim())) || null;
   if (!recentWeek) return null;
+  // Use most recent week with actual habit data (may differ from recentWeek)
+  const latestHabitWeek = [...weeks].reverse().find(w => w && (w.aActivities || []).some(a => a?.name?.trim())) || recentWeek;
 
   // 1. Habit completion (30pts)
-  const acts = (recentWeek.aActivities || []).filter(a => a?.name?.trim());
+  const acts = (latestHabitWeek.aActivities || []).filter(a => a?.name?.trim());
   const habitPct = acts.length > 0
     ? acts.reduce((s, a) => {
         const target = Math.min(Math.max(parseInt(a.targetDays) || 7, 1), 7);
@@ -88,7 +90,7 @@ function buildEmailHtml(name, data) {
   const firstName = name ? name.split(' ')[0] : 'there';
   const seaScore = calcSEAScore(data);
   const weeks = Array.isArray(data.weeks) ? data.weeks : [];
-  const recentWeek = weeks.find(w => w && (w.wins?.some(x => x?.trim()) || w.focus?.trim())) || null;
+  const recentWeek = [...weeks].reverse().find(w => w && (w.wins?.some(x => x?.trim()) || w.focus?.trim())) || null;
 
   const wins = recentWeek?.wins?.filter(w => w?.trim()) || [];
   const goals = (data.goals || []).filter(g => g?.title?.trim());
