@@ -305,7 +305,36 @@ async function handleGetCoachInbox(params) {
     console.error('[get-coach-inbox] error:', data);
     return err(data?.message || 'Failed to load inbox', status);
   }
-  return ok(data || []);
+
+  const messages = data || [];
+
+  // Enrich advisor_name — look up any messages that have a missing/generic name
+  const genericIds = [...new Set(
+    messages
+      .filter(m => !m.advisor_name || m.advisor_name === 'Advisor')
+      .map(m => m.advisor_id)
+  )];
+
+  const nameMap = {};
+  for (const id of genericIds) {
+    try {
+      const res = await supabase('GET', 'profiles', {
+        query: `?id=eq.${encodeURIComponent(id)}&select=full_name,email`,
+      });
+      if (res.ok && res.data?.[0]) {
+        const p = res.data[0];
+        nameMap[id] = p.full_name || p.email || 'Advisor';
+      }
+    } catch(e) { /* skip */ }
+  }
+
+  const enriched = messages.map(m =>
+    (!m.advisor_name || m.advisor_name === 'Advisor') && nameMap[m.advisor_id]
+      ? { ...m, advisor_name: nameMap[m.advisor_id] }
+      : m
+  );
+
+  return ok(enriched);
 }
 
 // POST ?action=mark-read  (advisor marks coach messages as read)
