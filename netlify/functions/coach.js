@@ -208,7 +208,7 @@ async function handleSendNudge(body) {
         title: 'Coach message for you',
         body: message.length > 120 ? message.substring(0, 117) + '...' : message,
         tag: 'coach-nudge',
-        url: '/',
+        url: '/?tab=more&section=messages',
       });
       pushSent = result.ok;
       if (!result.ok) console.warn('[send-nudge] push not delivered:', result.error);
@@ -365,7 +365,7 @@ async function handleNotifyCoachConnected(body) {
         title: 'New coach connection',
         body: `${displayName} just connected to you as their coach.`,
         tag: 'coach-connection',
-        url: '/',
+        url: '/?tab=coach',
       });
       pushSent = result.ok;
     } catch (e) {

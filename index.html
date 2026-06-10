@@ -3403,7 +3403,7 @@ Label should clearly describe what is being coached (e.g. "Anvil Streak", "Medit
     return <WeekView data={data} updateField={updateField} weekNum={localWeekNum} setWeekNum={setLocalWeekNum} openCoach={openCoach} onPrint={onPrint} onMilestone={onMilestone} onBack={onBack}/>;
   };
 
-  const MoreView = ({ data, updateField, saveData, openCoach, personality, setPersonality, onReopenOnboarding, onMilestone, weekNum, setWeekNum, onSignOut, onMetaChange, setActiveTab, authUser, onRitualBack, isCoachOrAdmin }) => {
+  const MoreView = ({ data, updateField, saveData, openCoach, personality, setPersonality, onReopenOnboarding, onMilestone, weekNum, setWeekNum, onSignOut, onMetaChange, setActiveTab, authUser, onRitualBack, isCoachOrAdmin, autoOpenMessages }) => {
     const [section, setSection] = useState(null);
     const [newNote, setNewNote] = useState('');
     const [noteTitle, setNoteTitle] = useState('');
@@ -3562,7 +3562,7 @@ Label should clearly describe what is being coached (e.g. "Anvil Streak", "Medit
             </div>
             <ChevRight/>
           </button>
-          <CoachMessages advisorId={authUser?.id || getOrCreateAdvisorId()} coachId={localStorage.getItem('sea_coach_id')||''} advisorName={data?.name||data?.fullName||''}/>
+          <CoachMessages advisorId={authUser?.id || getOrCreateAdvisorId()} coachId={localStorage.getItem('sea_coach_id')||''} advisorName={data?.name||data?.fullName||''} autoOpen={autoOpenMessages}/>
         </div>
 
         {/* TOOLS */}
@@ -4254,6 +4254,7 @@ Label should clearly describe what is being coached (e.g. "Anvil Streak", "Medit
     // authUser and setAuthUser are passed from AppRoot
 
     const [activeTab, setActiveTab] = useState('today');
+    const [autoOpenMessages, setAutoOpenMessages] = useState(false);
     const [weekNum, setWeekNum]     = useState(1);
     const [dayIdx, setDayIdx]       = useState(()=>{ const d=new Date().getDay(); return d===0?6:d-1; });
     const [loading, setLoading]     = useState(true);
@@ -4304,6 +4305,23 @@ Label should clearly describe what is being coached (e.g. "Anvil Streak", "Medit
       catch(e){console.log('Fresh start');}
       finally{setLoading(false);}
     },[]);
+
+    // ── Deep-link handler: read ?tab= and ?section= URL params on mount ─────
+    useEffect(()=>{
+      const params = new URLSearchParams(window.location.search);
+      const tabParam = params.get('tab');
+      const sectionParam = params.get('section');
+      if (tabParam) {
+        setActiveTab(tabParam);
+        if (tabParam === 'more' && sectionParam === 'messages') {
+          setAutoOpenMessages(true);
+        }
+      }
+      // Clean up URL so reload doesn't re-trigger
+      if (tabParam || sectionParam) {
+        window.history.replaceState({}, '', window.location.pathname);
+      }
+    }, []);
 
     // Sync with Supabase when authUser becomes available
     useEffect(()=>{
@@ -4805,7 +4823,7 @@ Label should clearly describe what is being coached (e.g. "Anvil Streak", "Medit
             {activeTab==='score'&&<ScoreView data={data} updateField={updateField} weekNum={weekNum} setWeekNum={setWeekNum} setActiveTab={setActiveTab} openCoach={openCoach} onPrint={printTab} onMilestone={setMilestone} setShowResetModal={setShowResetModal}/>}
             {activeTab==='aicoach'&&<AICoachTab plannerData={data} authUserId={authUser?.id} personality={coachPersonality} conversations={conversations} onConversationsChange={setConversations}/>}
             {activeTab==='journal'&&<JournalView data={data} updateField={updateField}/>}
-            {activeTab==='more'&&<MoreView data={data} updateField={updateField} saveData={saveData} openCoach={openCoach} personality={coachPersonality} setPersonality={setCoachPersonality} onReopenOnboarding={onReopenOnboarding} onMilestone={setMilestone} weekNum={plannerWeekNum} setWeekNum={setWeekNum} onSignOut={async()=>{await _supabase.auth.signOut();setAuthUser(null);}} onMetaChange={()=>{ if(authUser) savePlannerDataToCloud(authUser.id, data); }} setActiveTab={setActiveTab} authUser={authUser} onRitualBack={()=>setPlanningNextWeek(false)} isCoachOrAdmin={isCoachOrAdmin}/>}
+            {activeTab==='more'&&<MoreView data={data} updateField={updateField} saveData={saveData} openCoach={openCoach} personality={coachPersonality} setPersonality={setCoachPersonality} onReopenOnboarding={onReopenOnboarding} onMilestone={setMilestone} weekNum={plannerWeekNum} setWeekNum={setWeekNum} onSignOut={async()=>{await _supabase.auth.signOut();setAuthUser(null);}} onMetaChange={()=>{ if(authUser) savePlannerDataToCloud(authUser.id, data); }} setActiveTab={setActiveTab} authUser={authUser} onRitualBack={()=>setPlanningNextWeek(false)} isCoachOrAdmin={isCoachOrAdmin} autoOpenMessages={autoOpenMessages}/>}
             <div style={{display:activeTab==='coach'&&isCoachOrAdmin?'block':'none'}}>
               {isCoachOrAdmin&&<CoachDashboard coachId={authUser?.id||myCoachId} embedded={true} authUser={authUser}/>}
             </div>
@@ -5791,10 +5809,10 @@ Label should clearly describe what is being coached (e.g. "Anvil Streak", "Medit
 
 
   // Two-way coach messaging — client sees conversation thread + can reply
-  const CoachMessages = ({ advisorId, coachId, advisorName }) => {
+  const CoachMessages = ({ advisorId, coachId, advisorName, autoOpen }) => {
     const [messages, setMessages] = useState([]);
     const [loading, setLoading] = useState(false);
-    const [open, setOpen] = useState(false);
+    const [open, setOpen] = useState(!!autoOpen);
     const [unread, setUnread] = useState(0);
     const [replyText, setReplyText] = useState('');
     const [sending, setSending] = useState(false);
