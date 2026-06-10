@@ -6,11 +6,13 @@
  *   POST  ?action=share              — Upsert advisor scores
  *   GET   ?action=get-advisors       — List all advisors for a coach
  *   POST  ?action=send-message       — Send coach message to advisor
+ *   POST  ?action=send-nudge         — Coach sends push notification + saves message
  *   GET   ?action=get-messages       — Get messages for an advisor (both directions)
  *   POST  ?action=mark-read          — Mark messages as read (advisor side)
  *   POST  ?action=send-reply         — Advisor sends message to coach
  *   GET   ?action=get-coach-inbox    — Coach reads all messages from advisors
  *   POST  ?action=mark-coach-read    — Coach marks advisor messages as read
+ *   GET   ?action=resolve-code       — Look up coach by their coach_code
  */
 
 const CORS_HEADERS = {
@@ -91,7 +93,7 @@ async function handleGetAdvisors(params) {
   }
   const clients = profilesRes.data || [];
 
-  // Pull any existing advisor_scores rows for richer data (score, habits, streak, goals)
+  // Pull any existing advisor_scores rows for richer data
   const scoresRes = await supabase('GET', 'advisor_scores', {
     query: `?coach_id=eq.${encodeURIComponent(coachId)}&select=advisor_id,advisor_data,last_updated`,
   });
@@ -109,11 +111,10 @@ async function handleGetAdvisors(params) {
     inboxRes.data.forEach(m => { unreadMap[m.advisor_id] = (unreadMap[m.advisor_id] || 0) + 1; });
   }
 
-  // Merge: every profile client appears, enriched with score data if available
+  // Merge
   const advisors = clients.map(client => {
     const scoreRow = scoresMap[client.id];
     const advisorData = scoreRow?.advisor_data || scoreRow?.advisorData || {};
-    // If no shared score yet, show name from profile
     if (!advisorData.n && !advisorData.name) {
       advisorData.n = client.full_name || client.email || 'Unnamed Advisor';
     }
@@ -126,7 +127,6 @@ async function handleGetAdvisors(params) {
     };
   });
 
-  // Sort: clients with recent score updates first, then by name
   advisors.sort((a, b) => {
     if (a.lastUpdated && b.lastUpdated) return new Date(b.lastUpdated) - new Date(a.lastUpdated);
     if (a.lastUpdated) return -1;
@@ -137,7 +137,7 @@ async function handleGetAdvisors(params) {
   return ok(advisors);
 }
 
-// POST ?action=send-message  (coach → advisor)
+// POST ?action=send-message  (coach -> advisor, no push)
 async function handleSendMessage(body) {
   const { coachId, coachName, advisorId, advisorName, message } = body;
   if (!coachId || !advisorId || !message) return err('coachId, advisorId, and message are required', 400);
@@ -162,7 +162,64 @@ async function handleSendMessage(body) {
   return ok({ success: true });
 }
 
-// POST ?action=send-reply  (advisor → coach)
+// POST ?action=send-nudge  (coach -> advisor with push notification)
+async function handleSendNudge(body) {
+  const { coachId, advisorId, message } = body;
+  if (!coachId || !advisorId || !message) return err('coachId, advisorId, and message are required', 400);
+
+  // Verify sender is a coach or admin
+  const coachRes = await supabase('GET', 'profiles', {
+    query: `?id=eq.${encodeURIComponent(coachId)}&select=full_name,email,role`,
+  });
+  if (!coachRes.ok || !coachRes.data?.[0]) return err('Coach not found', 404);
+  const coach = coachRes.data[0];
+  if (!['coach', 'admin'].includes(coach.role)) return err('Unauthorized', 403);
+  const coachName = coach.full_name || coach.email || 'Your Coach';
+
+  // Save message to coach_messages
+  const msgRes = await supabase('POST', 'coach_messages', {
+    body: {
+      coach_id: coachId,
+      coach_name: coachName,
+      advisor_id: advisorId,
+      message,
+      sender: 'coach',
+      read: false,
+      timestamp: new Date().toISOString(),
+    },
+  });
+  if (!msgRes.ok) {
+    console.error('[send-nudge] message save error:', msgRes.data);
+    return err('Failed to save message', 500);
+  }
+
+  // Look up push subscription (flat columns: endpoint, p256dh, auth)
+  const subRes = await supabase('GET', 'push_subscriptions', {
+    query: `?user_id=eq.${encodeURIComponent(advisorId)}&select=endpoint,p256dh,auth&limit=1`,
+  });
+
+  let pushSent = false;
+  if (subRes.ok && subRes.data?.[0]?.endpoint) {
+    const sub = subRes.data[0];
+    try {
+      const { sendPush } = require('./send-push');
+      const result = await sendPush(sub, {
+        title: 'Coach message for you',
+        body: message.length > 120 ? message.substring(0, 117) + '...' : message,
+        tag: 'coach-nudge',
+        url: '/',
+      });
+      pushSent = result.ok;
+      if (!result.ok) console.warn('[send-nudge] push not delivered:', result.error);
+    } catch (e) {
+      console.warn('[send-nudge] push error:', e.message);
+    }
+  }
+
+  return ok({ success: true, messageSaved: true, pushSent });
+}
+
+// POST ?action=send-reply  (advisor -> coach)
 async function handleSendReply(body) {
   const { coachId, advisorId, advisorName, message } = body;
   if (!coachId || !advisorId || !message) return err('coachId, advisorId, and message are required', 400);
@@ -253,6 +310,30 @@ async function handleMarkCoachRead(body) {
   return ok({ success: true });
 }
 
+// GET ?action=resolve-code&code=XXXX  — look up coach by coach_code
+async function handleResolveCode(params) {
+  const code = (params.code || '').trim().toUpperCase();
+  if (!code) return err('code is required', 400);
+
+  const { data, ok: success } = await supabase('GET', 'profiles', {
+    query: `?coach_code=eq.${encodeURIComponent(code)}&select=id,full_name,email,role`,
+  });
+
+  if (!success || !data || data.length === 0) {
+    return err('Invalid coach code. Please check with your coach and try again.', 404);
+  }
+
+  const coach = data[0];
+  if (!['coach', 'admin'].includes(coach.role)) {
+    return err('That code does not belong to a coach account.', 403);
+  }
+
+  return ok({
+    coachId: coach.id,
+    coachName: coach.full_name || coach.email || 'Your Coach',
+  });
+}
+
 exports.handler = async (event) => {
   if (event.httpMethod === 'OPTIONS') {
     return { statusCode: 204, headers: CORS_HEADERS, body: '' };
@@ -271,11 +352,13 @@ exports.handler = async (event) => {
       case 'share':            return method === 'POST' ? await handleShare(body) : err('Method not allowed', 405);
       case 'get-advisors':     return method === 'GET'  ? await handleGetAdvisors(event.queryStringParameters || {}) : err('Method not allowed', 405);
       case 'send-message':     return method === 'POST' ? await handleSendMessage(body) : err('Method not allowed', 405);
+      case 'send-nudge':       return method === 'POST' ? await handleSendNudge(body) : err('Method not allowed', 405);
       case 'send-reply':       return method === 'POST' ? await handleSendReply(body) : err('Method not allowed', 405);
       case 'get-messages':     return method === 'GET'  ? await handleGetMessages(event.queryStringParameters || {}) : err('Method not allowed', 405);
       case 'get-coach-inbox':  return method === 'GET'  ? await handleGetCoachInbox(event.queryStringParameters || {}) : err('Method not allowed', 405);
       case 'mark-read':        return method === 'POST' ? await handleMarkRead(body) : err('Method not allowed', 405);
       case 'mark-coach-read':  return method === 'POST' ? await handleMarkCoachRead(body) : err('Method not allowed', 405);
+      case 'resolve-code':     return method === 'GET'  ? await handleResolveCode(event.queryStringParameters || {}) : err('Method not allowed', 405);
       default:                 return err(`Unknown action: ${action || '(none)'}`, 400);
     }
   } catch (e) {

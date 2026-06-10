@@ -1416,12 +1416,14 @@ Label should clearly describe what is being coached (e.g. "Anvil Streak", "Medit
       {id:'personality',title:'Your Coach',subtitle:'Set up your coaching style',type:'personality'},
       {id:'startDate',title:'Your 120-Day Start Date',subtitle:'When does your journey begin?',type:'startDate',hasInfo:true},
       {id:'coachProfile',title:'Help Your Coach Know You',subtitle:'Quick answers — makes coaching personal from day one',type:'coachProfile'},
+      {id:'coachConnect',title:'Connect to Your Coach',subtitle:'Enter your coach code to get started',type:'coachConnect'},
       {id:'complete',isComplete:true}
     ];
     const cur = STEPS[step];
     const progress = (step/(STEPS.length-1))*100;
     const canNext = () => {
       if (cur.isWelcome||cur.isComplete) return true;
+      if (cur.type==='coachConnect') return true; // optional step
       if (cur.field) return form[cur.field].trim().length>0;
       if (cur.type==='goals') return form.goals.some(g=>g.title.trim());
       if (cur.type==='anvil') return form.anvil.project.trim().length>0;
@@ -1654,6 +1656,59 @@ Label should clearly describe what is being coached (e.g. "Anvil Streak", "Medit
                       </div>
                     );
                   })()}
+                  {cur.type==='coachConnect' && (()=>{
+                    const [ccInput, setCcInput] = React.useState('');
+                    const [ccStatus, setCcStatus] = React.useState('idle');
+                    const [ccError, setCcError] = React.useState('');
+                    const [ccName, setCcName] = React.useState(()=>localStorage.getItem('sea_connected_coach_name')||'');
+                    const connectCoach = async () => {
+                      const code = ccInput.trim().toUpperCase();
+                      if (!code) return;
+                      setCcStatus('loading'); setCcError('');
+                      try {
+                        const res = await fetch(`${COACH_API}?action=resolve-code&code=${encodeURIComponent(code)}`);
+                        const d = await res.json();
+                        if (!res.ok || d.error) { setCcStatus('error'); setCcError(d.error||'Invalid code'); return; }
+                        localStorage.setItem('sea_coach_id', d.coachId);
+                        localStorage.setItem('sea_connected_coach_name', d.coachName||code);
+                        setCcName(d.coachName||code);
+                        setCcStatus('success');
+                      } catch(e) { setCcStatus('error'); setCcError('Connection error. Try again.'); }
+                    };
+                    return (
+                      <div className="space-y-4">
+                        {ccName ? (
+                          <div className="flex items-center gap-3 bg-green-500/10 border border-green-500/30 rounded-xl px-4 py-4">
+                            <span className="text-green-400 text-2xl">✅</span>
+                            <div>
+                              <p className="font-bold text-white">Connected to {ccName}</p>
+                              <p className="text-xs text-slate-400 mt-0.5">Your coach can see your progress and message you.</p>
+                            </div>
+                          </div>
+                        ) : (
+                          <>
+                            <p className="text-slate-300 text-sm">Ask your coach for their code and enter it below. You can skip this and add it later in Settings.</p>
+                            <div className="flex gap-2">
+                              <input
+                                value={ccInput}
+                                onChange={e=>setCcInput(e.target.value.toUpperCase())}
+                                onKeyDown={e=>e.key==='Enter'&&connectCoach()}
+                                placeholder="e.g. GINO-98FB"
+                                maxLength={12}
+                                className="flex-1 bg-slate-700 border border-slate-600 rounded-xl p-4 text-white placeholder-slate-500 font-mono text-lg tracking-widest focus:border-purple-500 focus:outline-none"
+                              />
+                              <button onClick={connectCoach} disabled={ccStatus==='loading'||!ccInput.trim()}
+                                className="px-5 rounded-xl font-bold text-white transition-all disabled:opacity-50"
+                                style={{background:ccStatus==='success'?'#10b981':'linear-gradient(135deg,#6366f1,#8b5cf6)'}}>
+                                {ccStatus==='loading'?'...':ccStatus==='success'?'✓':'Go'}
+                              </button>
+                            </div>
+                            {ccStatus==='error' && <p className="text-xs text-red-400">{ccError}</p>}
+                          </>
+                        )}
+                      </div>
+                    );
+                  })()}
                   {cur.type==='wheel' && (
                     <div className="space-y-4">
                       {CATS.map(cat=>{
@@ -1704,7 +1759,7 @@ Label should clearly describe what is being coached (e.g. "Anvil Streak", "Medit
                 <div className="flex gap-3 mt-4">
                   {step>1&&<button onClick={()=>setStep(s=>s-1)} className="px-5 py-3 bg-slate-800 hover:bg-slate-700 text-white rounded-xl transition-colors"><ChevLeft/></button>}
                   <button onClick={()=>step===STEPS.length-2?setStep(s=>s+1):setStep(s=>s+1)} disabled={!canNext()} className="flex-1 py-3 rounded-xl font-bold text-white disabled:opacity-40 transition-all" style={{background:'linear-gradient(135deg,#3b82f6,#8b5cf6)'}}>
-                    {step===STEPS.length-2?'Complete Setup →':'Next →'}
+                    {step===STEPS.length-2?'Complete Setup →':cur.type==='coachConnect'&&!localStorage.getItem('sea_connected_coach_name')?'Skip for now →':'Next →'}
                   </button>
                 </div>
               </div>
@@ -1970,7 +2025,57 @@ Label should clearly describe what is being coached (e.g. "Anvil Streak", "Medit
   };
 
   // ── TODAY VIEW ─────────────────────────────────────────────────────────────
-  const TodayView = ({ data, updateField, weekNum, dayIdx, setDayIdx, openCoach, score, onPrint, setActiveTab }) => {
+  // ── COACH MESSAGE BANNER (Today tab) — shows latest unread coach message ──
+  const CoachMessageBanner = ({ authUser }) => {
+    const [msg, setMsg] = useState(null);
+    const [dismissed, setDismissed] = useState(false);
+
+    useEffect(()=>{
+      if (!authUser?.id || dismissed) return;
+      const load = async () => {
+        try {
+          const res = await fetch(`${COACH_API}?action=get-messages&advisorId=${encodeURIComponent(authUser.id)}`);
+          const data = await res.json();
+          if (!Array.isArray(data)) return;
+          // Find latest unread coach message
+          const unread = data.filter(m=>m.sender==='coach'&&!m.read);
+          if (unread.length > 0) {
+            const latest = unread[unread.length-1];
+            setMsg(latest);
+          }
+        } catch(e) {}
+      };
+      load();
+    },[authUser, dismissed]);
+
+    const dismiss = async () => {
+      setDismissed(true);
+      setMsg(null);
+      // Mark all read
+      try {
+        await fetch(`${COACH_API}?action=mark-read`, {
+          method: 'POST', headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({ advisorId: authUser.id }),
+        });
+      } catch(e) {}
+    };
+
+    if (!msg || dismissed) return null;
+    return (
+      <div className="rounded-2xl p-4 border border-purple-500/50 relative" style={{background:'linear-gradient(135deg,rgba(99,102,241,0.15),rgba(139,92,246,0.1))'}}>
+        <div className="flex items-start gap-3">
+          <span className="text-2xl flex-shrink-0">💬</span>
+          <div className="flex-1 min-w-0">
+            <p className="text-xs font-bold text-purple-400 uppercase tracking-wide mb-1">Message from {msg.coach_name||'Your Coach'}</p>
+            <p className="text-sm text-white leading-relaxed">{msg.message}</p>
+          </div>
+          <button onClick={dismiss} className="flex-shrink-0 text-slate-500 hover:text-white text-lg leading-none ml-1">×</button>
+        </div>
+      </div>
+    );
+  };
+
+  const TodayView = ({ data, updateField, weekNum, dayIdx, setDayIdx, openCoach, score, onPrint, setActiveTab, authUser }) => {
     const dayNames = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
     const dayFull  = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
     const day = data.dailyPlans[weekNum-1][dayIdx];
@@ -2154,6 +2259,9 @@ Label should clearly describe what is being coached (e.g. "Anvil Streak", "Medit
             </>
           );
         })()}
+
+        {/* Coach message banner */}
+        <CoachMessageBanner authUser={authUser}/>
 
         {/* Score + Anvil streak */}
         <div className="grid grid-cols-2 gap-3">
@@ -3140,41 +3248,132 @@ Label should clearly describe what is being coached (e.g. "Anvil Streak", "Medit
     );
   };
   // ── COACH SETUP (inside Setup section of MoreView) ────────────────────────
-  const CoachSetup = () => {
-    const advisorId = getOrCreateAdvisorId();
-    const [coachIdInput, setCoachIdInput] = useState(()=>localStorage.getItem('sea_coach_id')||'');
-    const [coachSaved, setCoachSaved] = useState(false);
-    const saveCoachId = () => {
-      localStorage.setItem('sea_coach_id', coachIdInput.trim());
-      setCoachSaved(true);
-      window.dispatchEvent(new Event('sea-coach-id-changed'));
-      setTimeout(()=>setCoachSaved(false), 2000);
+  // ── COACH CODE ENTRY (for advisors to connect to their coach) ────────────────
+  const CoachSetup = ({ authUser }) => {
+    const [codeInput, setCodeInput] = useState('');
+    const [status, setStatus] = useState('idle'); // idle | loading | success | error
+    const [errorMsg, setErrorMsg] = useState('');
+    const [connectedCoach, setConnectedCoach] = useState(()=>localStorage.getItem('sea_connected_coach_name')||'');
+
+    const connect = async () => {
+      const code = codeInput.trim().toUpperCase();
+      if (!code) return;
+      setStatus('loading'); setErrorMsg('');
+      try {
+        const res = await fetch(`${COACH_API}?action=resolve-code&code=${encodeURIComponent(code)}`);
+        const d = await res.json();
+        if (!res.ok || d.error) { setStatus('error'); setErrorMsg(d.error||'Invalid code'); return; }
+        // Save coach UUID + name
+        localStorage.setItem('sea_coach_id', d.coachId);
+        localStorage.setItem('sea_connected_coach_name', d.coachName||code);
+        setConnectedCoach(d.coachName||code);
+        window.dispatchEvent(new Event('sea-coach-id-changed'));
+        // Also persist to Supabase profile
+        if (authUser?.id) {
+          try {
+            const session = await _supabase.auth.getSession();
+            const token = session?.data?.session?.access_token;
+            if (token) {
+              await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${authUser.id}`, {
+                method: 'PATCH',
+                headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+                body: JSON.stringify({ coach_id: d.coachId }),
+              });
+            }
+          } catch(e) { /* silent — localStorage save is enough */ }
+        }
+        setStatus('success');
+        setCodeInput('');
+        setTimeout(()=>setStatus('idle'), 3000);
+      } catch(e) { setStatus('error'); setErrorMsg('Connection error. Try again.'); }
     };
-    const copyAdvisorId = () => navigator.clipboard.writeText(advisorId).catch(()=>{});
+
+    const disconnect = () => {
+      localStorage.removeItem('sea_coach_id');
+      localStorage.removeItem('sea_connected_coach_name');
+      setConnectedCoach('');
+      window.dispatchEvent(new Event('sea-coach-id-changed'));
+      setStatus('idle');
+    };
+
     return (
       <div className="bg-slate-800/60 rounded-2xl p-5 border border-slate-700">
         <h3 className="text-sm font-bold text-purple-400 mb-1">⚓ Coach Connection</h3>
-        <p className="text-xs text-slate-400 mb-4">Connect to your GRI coach so they can see your progress and send you messages.</p>
-        <div className="space-y-4">
-          <div>
-            <label className="text-xs font-bold text-slate-400 uppercase tracking-wide block mb-2">Your Advisor ID</label>
-            <div className="flex gap-2">
-              <div className="flex-1 bg-slate-700/50 border border-slate-600/50 rounded-xl p-3 text-slate-400 text-xs font-mono overflow-hidden" style={{textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{advisorId}</div>
-              <button onClick={copyAdvisorId} className="bg-slate-700 text-slate-300 px-3 rounded-xl text-sm hover:bg-slate-600 transition-colors">📋</button>
+        <p className="text-xs text-slate-400 mb-4">Enter your coach's code to connect — they can then see your progress and send you messages.</p>
+        {connectedCoach ? (
+          <div className="space-y-3">
+            <div className="flex items-center gap-3 bg-green-500/10 border border-green-500/30 rounded-xl px-4 py-3">
+              <span className="text-green-400 text-xl">✅</span>
+              <div className="flex-1">
+                <p className="text-sm font-bold text-white">Connected to {connectedCoach}</p>
+                <p className="text-xs text-slate-400">Your coach can see your progress and message you.</p>
+              </div>
             </div>
-            <p className="text-xs text-slate-500 mt-1.5">Share this with your coach if they need it.</p>
+            <button onClick={disconnect} className="w-full py-2 rounded-xl text-xs text-slate-400 border border-slate-600/50 hover:border-red-500/50 hover:text-red-400 transition-all">
+              Disconnect from coach
+            </button>
           </div>
-          <div>
-            <label className="text-xs font-bold text-slate-400 uppercase tracking-wide block mb-2">Coach ID</label>
-            <div className="flex gap-2">
-              <input value={coachIdInput} onChange={e=>setCoachIdInput(e.target.value)} placeholder="Paste your coach's ID here..."
-                className="flex-1 bg-slate-700/50 border border-slate-600/50 rounded-xl p-3 text-white placeholder-slate-500 text-sm focus:border-purple-500 focus:outline-none"/>
-              <button onClick={saveCoachId} className="px-4 rounded-xl font-bold text-sm text-white transition-all" style={{background:coachSaved?'#10b981':'linear-gradient(135deg,#6366f1,#8b5cf6)',minWidth:'64px'}}>
-                {coachSaved?'✓':'Save'}
-              </button>
+        ) : (
+          <div className="space-y-3">
+            <div>
+              <label className="text-xs font-bold text-slate-400 uppercase tracking-wide block mb-2">Coach Code</label>
+              <div className="flex gap-2">
+                <input
+                  value={codeInput}
+                  onChange={e=>setCodeInput(e.target.value.toUpperCase())}
+                  onKeyDown={e=>e.key==='Enter'&&connect()}
+                  placeholder="e.g. GINO-98FB"
+                  maxLength={12}
+                  className="flex-1 bg-slate-700/50 border border-slate-600/50 rounded-xl p-3 text-white placeholder-slate-500 text-sm font-mono focus:border-purple-500 focus:outline-none tracking-widest"
+                />
+                <button onClick={connect} disabled={status==='loading'||!codeInput.trim()}
+                  className="px-4 rounded-xl font-bold text-sm text-white transition-all disabled:opacity-50"
+                  style={{background:status==='success'?'#10b981':'linear-gradient(135deg,#6366f1,#8b5cf6)',minWidth:'80px'}}>
+                  {status==='loading'?'...':status==='success'?'✓ Done!':'Connect'}
+                </button>
+              </div>
+              {status==='error' && <p className="text-xs text-red-400 mt-1.5">{errorMsg}</p>}
+              <p className="text-xs text-slate-500 mt-1.5">Ask your coach for their code — they can share it from their app.</p>
             </div>
-            <p className="text-xs text-slate-500 mt-1.5">Your coach gets this from their Coach Dashboard link. When you tap "Share Score", your data goes straight to their dashboard.</p>
           </div>
+        )}
+      </div>
+    );
+  };
+
+  // ── COACH CODE DISPLAY (for coaches to share their code) ─────────────────
+  const CoachCodeDisplay = ({ authUser }) => {
+    const [coachCode, setCoachCode] = useState('');
+    const [copied, setCopied] = useState(false);
+    useEffect(()=>{
+      if (!authUser?.id) return;
+      const load = async () => {
+        try {
+          const session = await _supabase.auth.getSession();
+          const token = session?.data?.session?.access_token;
+          if (!token) return;
+          const res = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${authUser.id}&select=coach_code`, {
+            headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': `Bearer ${token}` }
+          });
+          const rows = await res.json();
+          if (rows[0]?.coach_code) setCoachCode(rows[0].coach_code);
+        } catch(e) {}
+      };
+      load();
+    },[authUser]);
+    const copy = () => {
+      navigator.clipboard.writeText(coachCode).then(()=>{ setCopied(true); setTimeout(()=>setCopied(false),2000); }).catch(()=>{});
+    };
+    if (!coachCode) return null;
+    return (
+      <div className="bg-purple-500/10 border border-purple-500/30 rounded-2xl p-5 mb-4">
+        <h3 className="text-sm font-bold text-purple-400 mb-1">🔑 Your Coach Code</h3>
+        <p className="text-xs text-slate-400 mb-3">Share this code with your advisors so they can connect to you.</p>
+        <div className="flex gap-2 items-center">
+          <div className="flex-1 bg-slate-900/60 border border-purple-500/40 rounded-xl p-3 font-mono text-xl font-bold text-white tracking-widest text-center">{coachCode}</div>
+          <button onClick={copy} className="bg-purple-600 hover:bg-purple-500 text-white px-4 py-3 rounded-xl text-sm font-bold transition-all">
+            {copied?'✓ Copied!':'📋 Copy'}
+          </button>
         </div>
       </div>
     );
@@ -3186,7 +3385,7 @@ Label should clearly describe what is being coached (e.g. "Anvil Streak", "Medit
     return <WeekView data={data} updateField={updateField} weekNum={localWeekNum} setWeekNum={setLocalWeekNum} openCoach={openCoach} onPrint={onPrint} onMilestone={onMilestone} onBack={onBack}/>;
   };
 
-  const MoreView = ({ data, updateField, saveData, openCoach, personality, setPersonality, onReopenOnboarding, onMilestone, weekNum, setWeekNum, onSignOut, onMetaChange, setActiveTab, authUser, onRitualBack }) => {
+  const MoreView = ({ data, updateField, saveData, openCoach, personality, setPersonality, onReopenOnboarding, onMilestone, weekNum, setWeekNum, onSignOut, onMetaChange, setActiveTab, authUser, onRitualBack, isCoachOrAdmin }) => {
     const [section, setSection] = useState(null);
     const [newNote, setNewNote] = useState('');
     const [noteTitle, setNoteTitle] = useState('');
@@ -4011,7 +4210,8 @@ Label should clearly describe what is being coached (e.g. "Anvil Streak", "Medit
             </div>
 
             {/* Coach Connection */}
-            <CoachSetup/>
+            {isCoachOrAdmin && <CoachCodeDisplay authUser={authUser}/>}
+            <CoachSetup authUser={authUser}/>
           </div>
         )}
       </div>
@@ -4582,12 +4782,12 @@ Label should clearly describe what is being coached (e.g. "Anvil Streak", "Medit
         {/* Content — scrolls independently between header and tab bar */}
         <div className="content-scroll no-print-scroll">
           <div className="max-w-2xl mx-auto">
-            {activeTab==='today'&&<TodayView data={data} updateField={updateField} weekNum={weekNum} dayIdx={dayIdx} setDayIdx={setDayIdx} openCoach={openCoach} score={score} onPrint={printTab} setActiveTab={setActiveTab}/>}
+            {activeTab==='today'&&<TodayView data={data} updateField={updateField} weekNum={weekNum} dayIdx={dayIdx} setDayIdx={setDayIdx} openCoach={openCoach} score={score} onPrint={printTab} setActiveTab={setActiveTab} authUser={authUser}/>}
             {activeTab==='anvil'&&<AnvilView data={data} updateField={updateField} openCoach={openCoach}/>}
             {activeTab==='score'&&<ScoreView data={data} updateField={updateField} weekNum={weekNum} setWeekNum={setWeekNum} setActiveTab={setActiveTab} openCoach={openCoach} onPrint={printTab} onMilestone={setMilestone} setShowResetModal={setShowResetModal}/>}
             {activeTab==='aicoach'&&<AICoachTab plannerData={data} authUserId={authUser?.id} personality={coachPersonality} conversations={conversations} onConversationsChange={setConversations}/>}
             {activeTab==='journal'&&<JournalView data={data} updateField={updateField}/>}
-            {activeTab==='more'&&<MoreView data={data} updateField={updateField} saveData={saveData} openCoach={openCoach} personality={coachPersonality} setPersonality={setCoachPersonality} onReopenOnboarding={onReopenOnboarding} onMilestone={setMilestone} weekNum={plannerWeekNum} setWeekNum={setWeekNum} onSignOut={async()=>{await _supabase.auth.signOut();setAuthUser(null);}} onMetaChange={()=>{ if(authUser) savePlannerDataToCloud(authUser.id, data); }} setActiveTab={setActiveTab} authUser={authUser} onRitualBack={()=>setPlanningNextWeek(false)}/>}
+            {activeTab==='more'&&<MoreView data={data} updateField={updateField} saveData={saveData} openCoach={openCoach} personality={coachPersonality} setPersonality={setCoachPersonality} onReopenOnboarding={onReopenOnboarding} onMilestone={setMilestone} weekNum={plannerWeekNum} setWeekNum={setWeekNum} onSignOut={async()=>{await _supabase.auth.signOut();setAuthUser(null);}} onMetaChange={()=>{ if(authUser) savePlannerDataToCloud(authUser.id, data); }} setActiveTab={setActiveTab} authUser={authUser} onRitualBack={()=>setPlanningNextWeek(false)} isCoachOrAdmin={isCoachOrAdmin}/>}
             <div style={{display:activeTab==='coach'&&isCoachOrAdmin?'block':'none'}}>
               {isCoachOrAdmin&&<CoachDashboard coachId={authUser?.id||myCoachId} embedded={true} authUser={authUser}/>}
             </div>
@@ -5252,7 +5452,7 @@ Label should clearly describe what is being coached (e.g. "Anvil Streak", "Medit
       if (!text) return;
       setSending(true);
       try {
-        const res = await fetch(`${COACH_API}?action=send-message`, {
+        const res = await fetch(`${COACH_API}?action=send-nudge`, {
           method: 'POST', headers: {'Content-Type':'application/json'},
           body: JSON.stringify({ advisorId, coachId, coachName: coachName||'Your Coach', message: text })
         });
