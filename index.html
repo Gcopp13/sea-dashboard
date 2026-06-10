@@ -1672,6 +1672,12 @@ Label should clearly describe what is being coached (e.g. "Anvil Streak", "Medit
                         localStorage.setItem('sea_coach_id', d.coachId);
                         localStorage.setItem('sea_connected_coach_name', d.coachName||code);
                         setCcName(d.coachName||code);
+                        // Notify coach (fire and forget)
+                        fetch(`${COACH_API}?action=notify-coach-connected`, {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ coachId: d.coachId, advisorId: '', advisorName: '', advisorEmail: form.email||'' }),
+                        }).catch(()=>{});
                         setCcStatus('success');
                       } catch(e) { setCcStatus('error'); setCcError('Connection error. Try again.'); }
                     };
@@ -3268,7 +3274,7 @@ Label should clearly describe what is being coached (e.g. "Anvil Streak", "Medit
         localStorage.setItem('sea_connected_coach_name', d.coachName||code);
         setConnectedCoach(d.coachName||code);
         window.dispatchEvent(new Event('sea-coach-id-changed'));
-        // Also persist to Supabase profile
+        // Persist to Supabase profile + notify coach
         if (authUser?.id) {
           try {
             const session = await _supabase.auth.getSession();
@@ -3280,7 +3286,19 @@ Label should clearly describe what is being coached (e.g. "Anvil Streak", "Medit
                 body: JSON.stringify({ coach_id: d.coachId }),
               });
             }
-          } catch(e) { /* silent — localStorage save is enough */ }
+          } catch(e) { /* silent */ }
+          // Notify coach via push + email (fire and forget)
+          const profileRes = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${authUser.id}&select=full_name,email`, {
+            headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': `Bearer ${(await _supabase.auth.getSession()).data.session?.access_token||''}` }
+          }).catch(()=>null);
+          const profileData = profileRes?.ok ? await profileRes.json() : [];
+          const myName = profileData[0]?.full_name || authUser.email || '';
+          const myEmail = profileData[0]?.email || authUser.email || '';
+          fetch(`${COACH_API}?action=notify-coach-connected`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ coachId: d.coachId, advisorId: authUser.id, advisorName: myName, advisorEmail: myEmail }),
+          }).catch(()=>{});
         }
         setStatus('success');
         setCodeInput('');

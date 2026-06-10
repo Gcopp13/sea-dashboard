@@ -13,6 +13,7 @@
  *   GET   ?action=get-coach-inbox    — Coach reads all messages from advisors
  *   POST  ?action=mark-coach-read    — Coach marks advisor messages as read
  *   GET   ?action=resolve-code       — Look up coach by their coach_code
+ *   POST  ?action=notify-coach-connected — Notify coach via push + email when user connects
  */
 
 const CORS_HEADERS = {
@@ -334,6 +335,123 @@ async function handleResolveCode(params) {
   });
 }
 
+
+// POST ?action=notify-coach-connected — fires when a user connects to a coach
+// Sends the coach a push notification + email
+async function handleNotifyCoachConnected(body) {
+  const { coachId, advisorId, advisorName, advisorEmail } = body;
+  if (!coachId || !advisorId) return err('coachId and advisorId are required', 400);
+
+  // Get coach details
+  const coachRes = await supabase('GET', 'profiles', {
+    query: `?id=eq.${encodeURIComponent(coachId)}&select=full_name,email,role`,
+  });
+  if (!coachRes.ok || !coachRes.data?.[0]) return err('Coach not found', 404);
+  const coach = coachRes.data[0];
+  if (!['coach', 'admin'].includes(coach.role)) return err('Unauthorized', 403);
+
+  const displayName = advisorName || advisorEmail || 'A new user';
+  let pushSent = false;
+  let emailSent = false;
+
+  // 1. Push notification to coach
+  const subRes = await supabase('GET', 'push_subscriptions', {
+    query: `?user_id=eq.${encodeURIComponent(coachId)}&select=endpoint,p256dh,auth&limit=1`,
+  });
+  if (subRes.ok && subRes.data?.[0]?.endpoint) {
+    try {
+      const { sendPush } = require('./send-push');
+      const result = await sendPush(subRes.data[0], {
+        title: 'New coach connection',
+        body: `${displayName} just connected to you as their coach.`,
+        tag: 'coach-connection',
+        url: '/',
+      });
+      pushSent = result.ok;
+    } catch (e) {
+      console.warn('[notify-coach-connected] push error:', e.message);
+    }
+  }
+
+  // 2. Email to coach via Resend
+  if (coach.email) {
+    try {
+      const emailRes = await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${process.env.RESEND_API_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          from: 'S.E.A. Dashboard <onboarding@gettingresultsinc.com>',
+          to: [coach.email],
+          subject: `${displayName} connected to you on S.E.A. Dashboard`,
+          html: `<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>
+<body style="margin:0;padding:0;background:#0f172a;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#0f172a;">
+    <tr><td align="center" style="padding:48px 16px;">
+      <table width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:520px;">
+        <!-- Header -->
+        <tr><td align="center" style="padding-bottom:28px;">
+          <div style="display:inline-block;background:linear-gradient(135deg,#3b82f6,#8b5cf6);border-radius:14px;padding:10px 18px;">
+            <span style="font-size:20px;font-weight:900;color:#fff;letter-spacing:-0.5px;">S.E.A.</span>
+            <span style="font-size:11px;font-weight:600;color:rgba(255,255,255,0.75);display:block;letter-spacing:0.5px;">SLIGHT EDGE ACCELERATOR</span>
+          </div>
+          <p style="margin:10px 0 0;font-size:11px;color:#475569;letter-spacing:1px;text-transform:uppercase;font-weight:600;">Getting Results Inc.</p>
+        </td></tr>
+        <!-- Card -->
+        <tr><td style="background:#1e293b;border-radius:20px;border:1px solid #334155;overflow:hidden;">
+          <table width="100%" cellpadding="0" cellspacing="0" border="0">
+            <tr><td style="height:4px;background:linear-gradient(90deg,#3b82f6,#8b5cf6,#10b981);"></td></tr>
+            <tr><td style="padding:36px 36px 32px;">
+              <table width="100%" cellpadding="0" cellspacing="0" border="0">
+                <tr><td align="center" style="padding-bottom:20px;">
+                  <div style="width:52px;height:52px;background:rgba(16,185,129,0.15);border:1px solid rgba(16,185,129,0.3);border-radius:14px;display:inline-flex;align-items:center;justify-content:center;font-size:24px;">🤝</div>
+                </td></tr>
+              </table>
+              <h1 style="margin:0 0 8px;font-size:22px;font-weight:800;color:#f8fafc;text-align:center;">New Connection!</h1>
+              <p style="margin:0 0 24px;font-size:15px;color:#94a3b8;text-align:center;line-height:1.6;">
+                <strong style="color:#f8fafc;">${displayName}</strong> just connected to you as their coach on the S.E.A. Dashboard.
+              </p>
+              <div style="background:rgba(16,185,129,0.1);border:1px solid rgba(16,185,129,0.25);border-radius:12px;padding:16px 20px;margin-bottom:24px;">
+                <p style="margin:0;font-size:13px;color:#6ee7b7;text-align:center;">They can now receive your messages and nudges, and you can see their progress in the Coach tab.</p>
+              </div>
+              <table width="100%" cellpadding="0" cellspacing="0" border="0">
+                <tr><td align="center">
+                  <a href="${process.env.APP_URL || 'https://sea-dashboard.netlify.app'}" style="display:inline-block;background:linear-gradient(135deg,#3b82f6,#8b5cf6);color:#fff;font-size:15px;font-weight:700;text-decoration:none;padding:14px 40px;border-radius:12px;">
+                    Open Coach Dashboard →
+                  </a>
+                </td></tr>
+              </table>
+            </td></tr>
+          </table>
+        </td></tr>
+        <!-- Footer -->
+        <tr><td style="padding:24px 0 0;text-align:center;">
+          <p style="margin:0;font-size:12px;color:#334155;">© Getting Results Inc. · S.E.A. Dashboard</p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`,
+        }),
+      });
+      emailSent = emailRes.ok;
+      if (!emailRes.ok) {
+        const errText = await emailRes.text();
+        console.warn('[notify-coach-connected] email error:', errText);
+      }
+    } catch (e) {
+      console.warn('[notify-coach-connected] email error:', e.message);
+    }
+  }
+
+  return ok({ success: true, pushSent, emailSent });
+}
+
 exports.handler = async (event) => {
   if (event.httpMethod === 'OPTIONS') {
     return { statusCode: 204, headers: CORS_HEADERS, body: '' };
@@ -359,6 +477,7 @@ exports.handler = async (event) => {
       case 'mark-read':        return method === 'POST' ? await handleMarkRead(body) : err('Method not allowed', 405);
       case 'mark-coach-read':  return method === 'POST' ? await handleMarkCoachRead(body) : err('Method not allowed', 405);
       case 'resolve-code':     return method === 'GET'  ? await handleResolveCode(event.queryStringParameters || {}) : err('Method not allowed', 405);
+      case 'notify-coach-connected': return method === 'POST' ? await handleNotifyCoachConnected(body) : err('Method not allowed', 405);
       default:                 return err(`Unknown action: ${action || '(none)'}`, 400);
     }
   } catch (e) {
