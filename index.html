@@ -2048,10 +2048,15 @@ Label should clearly describe what is being coached (e.g. "Anvil Streak", "Medit
           if (unread.length > 0) {
             const latest = unread[unread.length-1];
             setMsg(latest);
+          } else {
+            setMsg(null);
           }
         } catch(e) {}
       };
       load();
+      // Poll every 60 seconds for new messages
+      const t = setInterval(load, 60*1000);
+      return () => clearInterval(t);
     },[authUser, dismissed]);
 
     const dismiss = async () => {
@@ -5585,7 +5590,12 @@ Label should clearly describe what is being coached (e.g. "Anvil Streak", "Medit
     }, [coachId]);
 
     useEffect(() => { fetchAdvisors(); }, [fetchAdvisors]);
-    useEffect(() => { if (activeView==='inbox') fetchInbox(); }, [activeView, fetchInbox]);
+    useEffect(() => {
+      if (activeView==='inbox') { fetchInbox(); }
+      // Poll every 60s regardless of which view is active so inbox badge stays fresh
+      const t = setInterval(() => { fetchInbox(); fetchAdvisors(); }, 60*1000);
+      return () => clearInterval(t);
+    }, [activeView, fetchInbox, fetchAdvisors]);
 
     const markCoachRead = async (advisorId) => {
       setInbox(prev=>prev.map(m=>m.advisor_id===advisorId?{...m,read:true}:m));

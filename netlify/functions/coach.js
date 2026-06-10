@@ -225,12 +225,24 @@ async function handleSendReply(body) {
   const { coachId, advisorId, advisorName, message } = body;
   if (!coachId || !advisorId || !message) return err('coachId, advisorId, and message are required', 400);
 
+  // Look up the advisor's real name from profiles
+  let displayName = advisorName || 'Advisor';
+  try {
+    const profileRes = await supabase('GET', 'profiles', {
+      query: `?id=eq.${encodeURIComponent(advisorId)}&select=full_name,email`,
+    });
+    if (profileRes.ok && profileRes.data?.[0]) {
+      const p = profileRes.data[0];
+      displayName = p.full_name || p.email || advisorName || 'Advisor';
+    }
+  } catch(e) { /* use fallback */ }
+
   const { data, ok: success, status } = await supabase('POST', 'coach_messages', {
     body: {
       coach_id: coachId,
       coach_name: '',
       advisor_id: advisorId,
-      advisor_name: advisorName || 'Advisor',
+      advisor_name: displayName,
       message,
       sender: 'advisor',
       read: false,
@@ -242,6 +254,25 @@ async function handleSendReply(body) {
     console.error('[send-reply] error:', data);
     return err(data?.message || 'Failed to send reply', status);
   }
+
+  // Push notify the coach
+  try {
+    const subRes = await supabase('GET', 'push_subscriptions', {
+      query: `?user_id=eq.${encodeURIComponent(coachId)}&select=endpoint,p256dh,auth&limit=1`,
+    });
+    if (subRes.ok && subRes.data?.[0]?.endpoint) {
+      const { sendPush } = require('./send-push');
+      await sendPush(subRes.data[0], {
+        title: `Message from ${displayName}`,
+        body: message.length > 120 ? message.substring(0, 117) + '...' : message,
+        tag: 'advisor-reply',
+        url: '/?tab=coach',
+      });
+    }
+  } catch(e) {
+    console.warn('[send-reply] push error:', e.message);
+  }
+
   return ok({ success: true });
 }
 
