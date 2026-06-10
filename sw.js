@@ -27,15 +27,16 @@ self.addEventListener('notificationclick', e => {
   const url = e.notification.data?.url || '/';
   e.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then(windowClients => {
-      // Focus existing tab if open
+      // Focus existing window and send a postMessage to handle routing
+      // (client.navigate() is not supported on iOS Safari/PWA)
       for (const client of windowClients) {
         if (client.url.includes('sea-dashboard.netlify.app') && 'focus' in client) {
           client.focus();
-          if (url !== '/') client.navigate(url);
+          if (url !== '/') client.postMessage({ type: 'DEEP_LINK', url });
           return;
         }
       }
-      // Otherwise open new tab
+      // No existing window — open a new one (URL params handled on load)
       if (clients.openWindow) return clients.openWindow(url);
     })
   );

@@ -4311,8 +4311,9 @@ Label should clearly describe what is being coached (e.g. "Anvil Streak", "Medit
       finally{setLoading(false);}
     },[]);
 
-    // ── Deep-link handler: read ?tab= and ?section= URL params on mount ─────
+    // ── Deep-link handler: URL params on load + postMessage from service worker ──
     useEffect(()=>{
+      // Handle URL params (app opened from scratch via notification)
       const params = new URLSearchParams(window.location.search);
       const tabParam = params.get('tab');
       const sectionParam = params.get('section');
@@ -4322,19 +4323,33 @@ Label should clearly describe what is being coached (e.g. "Anvil Streak", "Medit
           setAutoOpenMessages(true);
         }
       }
-      // Clean up URL so reload doesn't re-trigger
       if (tabParam || sectionParam) {
         window.history.replaceState({}, '', window.location.pathname);
       }
+
+      // Handle postMessage from service worker (app already open — iOS compatible)
+      const handleSWMessage = (e) => {
+        if (e.data?.type !== 'DEEP_LINK') return;
+        const u = new URL(e.data.url, window.location.origin);
+        const tab = u.searchParams.get('tab');
+        const section = u.searchParams.get('section');
+        if (tab) {
+          setActiveTab(tab);
+          if (tab === 'more' && section === 'messages') setAutoOpenMessages(true);
+        }
+      };
+      navigator.serviceWorker?.addEventListener('message', handleSWMessage);
+      return () => navigator.serviceWorker?.removeEventListener('message', handleSWMessage);
     }, []);
 
     // Sync with Supabase when authUser becomes available
+    // No !loading guard — auth can resolve before or after localStorage read, both cases need sync
     useEffect(()=>{
-      if (authUser && !loading) {
+      if (authUser) {
         syncPlannerData(authUser.id);
         syncCoachIdToProfile(authUser.id);
       }
-    },[authUser, loading]);
+    },[authUser]);
 
     // Auto-calculate correct week number once data is loaded
     useEffect(()=>{
