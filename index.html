@@ -681,8 +681,33 @@
         if (logsInPeriod(s, e) >= freqCount) streak++; else break;
       }
     }
-    // Score: partial credit = logs / target × 25 pts
-    const anvilScore = currentPct * 25;
+    // Score: specific days mode OR partial credit
+    let anvilScore;
+    if (data.anvilProject?.useSpecificDays && (data.anvilProject?.specificDays||[]).length > 0) {
+      // Specific days mode: each scheduled day worth 25/numDays pts; miss = 0
+      const specificDays = data.anvilProject.specificDays; // 0=Mon…6=Sun
+      const numDays = specificDays.length;
+      const ptsPerDay = 25 / numDays;
+      // Get Monday of current week
+      const weekStart = getPeriodStart(0); // already returns this week's Monday
+      let earned = 0;
+      specificDays.forEach(di => {
+        const dayDate = new Date(weekStart);
+        dayDate.setDate(weekStart.getDate() + di);
+        dayDate.setHours(0,0,0,0);
+        const dayEnd = new Date(dayDate); dayEnd.setHours(23,59,59,999);
+        const today2check = new Date(); today2check.setHours(0,0,0,0);
+        // Only score days that have already occurred (not future days)
+        if (dayDate <= today2check) {
+          const hasLog = log.some(e => { const d = new Date(e.date); d.setHours(0,0,0,0); return d.getTime() === dayDate.getTime(); });
+          if (hasLog) earned += ptsPerDay;
+        }
+      });
+      anvilScore = earned;
+    } else {
+      // Default: partial credit = logs / target x 25 pts
+      anvilScore = currentPct * 25;
+    }
     // 3. Wheel avg (20pts)
     const w = week.wheelOfJohn||{family:5,fun:5,fitness:5,finance:5,faith:5};
     const wheelAvg = Object.values(w).reduce((a,b)=>a+(b||5),0)/5;
@@ -695,7 +720,8 @@
     const goalAvg = goals.length > 0 ? goals.reduce((s,g)=>s+(g.completion||0),0)/goals.length : 0;
     const goalScore = (goalAvg/100)*10;
     const total = Math.round(habitScore+anvilScore+wheelScore+ritualScore+goalScore);
-    return { total, stars: total>=80?5:total>=60?4:total>=40?3:total>=20?2:1, habitPct:Math.round(habitPct*100), anvilStreak:streak, anvilScore:Math.round(anvilScore), anvilLogs:currentLogs, anvilTarget:freqCount, wheelAvg:wheelAvg.toFixed(1), ritualDone, goalAvg:Math.round(goalAvg) };
+    const anvilTarget = (data.anvilProject?.useSpecificDays && (data.anvilProject?.specificDays||[]).length > 0) ? data.anvilProject.specificDays.length : freqCount;
+    return { total, stars: total>=80?5:total>=60?4:total>=40?3:total>=20?2:1, habitPct:Math.round(habitPct*100), anvilStreak:streak, anvilScore:Math.round(anvilScore), anvilLogs:currentLogs, anvilTarget, wheelAvg:wheelAvg.toFixed(1), ritualDone, goalAvg:Math.round(goalAvg) };
   };
 
   // ── AI COACH ──────────────────────────────────────────────────────────────
@@ -1878,25 +1904,48 @@ Label should clearly describe what is being coached (e.g. "Anvil Streak", "Medit
           <div><label className="text-xs text-slate-400 block mb-1">My Anvil is...</label><input value={anvil.project||''} onChange={e=>updateField('anvilProject',{...anvil,project:e.target.value})} placeholder="e.g. 8 appointments per week" className="w-full bg-slate-700/50 border border-slate-600/50 rounded-xl p-3 text-white placeholder-slate-500 text-sm focus:outline-none"/></div>
           <div>
             <label className="text-xs text-slate-400 block mb-1">Frequency</label>
-            <div className="flex items-center gap-2">
-              <input
-                type="number" min="1" max="7"
-                value={anvil.freqCount||1}
-                onChange={e=>{ const v=Math.min(Math.max(parseInt(e.target.value)||1,1),7); updateField('anvilProject',{...anvil,freqCount:v}); }}
-                className="w-14 bg-slate-700/50 border border-slate-600/50 rounded-xl p-3 text-orange-400 font-bold text-center text-sm focus:border-orange-500 focus:outline-none"
-              />
-              <span className="text-slate-400 text-sm">time(s)</span>
-              <select
-                value={anvil.freqPeriod||'week'}
-                onChange={e=>updateField('anvilProject',{...anvil,freqPeriod:e.target.value})}
-                className="flex-1 bg-slate-700/50 border border-slate-600/50 rounded-xl p-3 text-white text-sm focus:border-orange-500 focus:outline-none"
-              >
-                <option value="week">per week</option>
-                <option value="biweekly">every 2 weeks</option>
-                <option value="month">per month</option>
-              </select>
+            {/* Toggle: specific days vs count */}
+            <div className="flex gap-2 mb-3">
+              <button onClick={()=>updateField('anvilProject',{...anvil,useSpecificDays:false})} className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all ${!anvil.useSpecificDays?'bg-orange-500 text-white':'bg-slate-700/50 text-slate-400 border border-slate-600/50'}`}>X times / week</button>
+              <button onClick={()=>updateField('anvilProject',{...anvil,useSpecificDays:true})} className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all ${anvil.useSpecificDays?'bg-orange-500 text-white':'bg-slate-700/50 text-slate-400 border border-slate-600/50'}`}>Specific days</button>
             </div>
-            <p className="text-xs text-slate-500 mt-1">Scoring: hit your target this period = full 25 pts</p>
+            {anvil.useSpecificDays ? (
+              <div>
+                <div className="flex gap-1.5 justify-between">
+                  {['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map((day,i)=>{
+                    const selected=(anvil.specificDays||[]).includes(i);
+                    return <button key={day} onClick={()=>{
+                      const cur=anvil.specificDays||[];
+                      const next=selected?cur.filter(d=>d!==i):[...cur,i].sort((a,b)=>a-b);
+                      updateField('anvilProject',{...anvil,specificDays:next});
+                    }} className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all ${selected?'bg-orange-500 text-white':'bg-slate-700/50 text-slate-500 border border-slate-600/50'}`}>{day}</button>;
+                  })}
+                </div>
+                <p className="text-xs text-slate-500 mt-2">Each scheduled day = {(anvil.specificDays||[]).length>0?(25/(anvil.specificDays||[1]).length).toFixed(1):25} pts. Miss a day = 0 for that day.</p>
+              </div>
+            ) : (
+              <div>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number" min="1" max="7"
+                    value={anvil.freqCount||1}
+                    onChange={e=>{ const v=Math.min(Math.max(parseInt(e.target.value)||1,1),7); updateField('anvilProject',{...anvil,freqCount:v}); }}
+                    className="w-14 bg-slate-700/50 border border-slate-600/50 rounded-xl p-3 text-orange-400 font-bold text-center text-sm focus:border-orange-500 focus:outline-none"
+                  />
+                  <span className="text-slate-400 text-sm">time(s)</span>
+                  <select
+                    value={anvil.freqPeriod||'week'}
+                    onChange={e=>updateField('anvilProject',{...anvil,freqPeriod:e.target.value})}
+                    className="flex-1 bg-slate-700/50 border border-slate-600/50 rounded-xl p-3 text-white text-sm focus:border-orange-500 focus:outline-none"
+                  >
+                    <option value="week">per week</option>
+                    <option value="biweekly">every 2 weeks</option>
+                    <option value="month">per month</option>
+                  </select>
+                </div>
+                <p className="text-xs text-slate-500 mt-1">Scoring: hit your target this period = full 25 pts</p>
+              </div>
+            )}
           </div>
           <div><label className="text-xs text-slate-400 block mb-1">Why this one?</label><textarea value={anvil.why||''} onChange={e=>updateField('anvilProject',{...anvil,why:e.target.value})} rows={2} placeholder="What makes this your highest-leverage activity..." className="w-full bg-slate-700/50 border border-slate-600/50 rounded-xl p-3 text-white placeholder-slate-500 text-sm resize-none focus:outline-none"/></div>
         </div>
@@ -2007,6 +2056,11 @@ Label should clearly describe what is being coached (e.g. "Anvil Streak", "Medit
     const anvilLog = data.anvilProject?.log||[];
     let anvilStreak=0;
     if(anvilLog.length>0){const now=new Date();now.setHours(0,0,0,0);const sorted=anvilLog.map(e=>{const d=new Date(e.date);d.setHours(0,0,0,0);return d;}).sort((a,b)=>b-a);const unique=[...new Set(sorted.map(d=>d.toDateString()))].map(s=>new Date(s));for(let i=0;i<unique.length;i++){const exp=new Date(now);exp.setDate(now.getDate()-i);if(unique[i].toDateString()===exp.toDateString())anvilStreak++;else break;}}
+    // Detect if today is a scheduled Anvil day (specific days mode)
+    const todayDayIdx2 = (new Date().getDay()+6)%7; // 0=Mon…6=Sun
+    const anvilSpecificDays = data.anvilProject?.specificDays||[];
+    const todayIsAnvilDay = data.anvilProject?.useSpecificDays && anvilSpecificDays.includes(todayDayIdx2);
+    const anvilLoggedToday = anvilLog.some(e => new Date(e.date).toDateString() === new Date().toDateString());
 
     return (
       <div className="page-content px-4 py-5 space-y-5">
@@ -2109,12 +2163,20 @@ Label should clearly describe what is being coached (e.g. "Anvil Streak", "Medit
             <p className="text-2xl font-bold text-white mt-1">{score.total}</p>
             <p className="text-xs text-blue-400 mt-1 opacity-60">tap to view →</p>
           </button>
-          <button onClick={()=>setActiveTab&&setActiveTab('anvil')} className="bg-slate-800/60 rounded-2xl p-4 border border-slate-700 flex flex-col items-center hover:border-orange-500/50 transition-all active:scale-95" style={{cursor:'pointer'}}>
+          <button onClick={()=>setActiveTab&&setActiveTab('anvil')} className={`bg-slate-800/60 rounded-2xl p-4 border flex flex-col items-center hover:border-orange-500/50 transition-all active:scale-95 ${todayIsAnvilDay && !anvilLoggedToday ? 'border-orange-500/60 ring-1 ring-orange-500/30' : 'border-slate-700'}`} style={{cursor:'pointer'}}>
             <p className="text-xs text-slate-400 mb-1">Anvil Streak</p>
             <div className="flex items-center gap-1"><span className="text-3xl">🔥</span></div>
             <p className="text-3xl font-bold text-white">{anvilStreak}</p>
             <p className="text-xs text-slate-500">days</p>
-            <p className="text-xs text-orange-400 mt-1 opacity-60">tap to view →</p>
+            {todayIsAnvilDay && !anvilLoggedToday && (
+              <p className="text-xs text-orange-400 font-bold mt-1">📅 Anvil day!</p>
+            )}
+            {todayIsAnvilDay && anvilLoggedToday && (
+              <p className="text-xs text-green-400 font-bold mt-1">✅ Logged today</p>
+            )}
+            {!todayIsAnvilDay && (
+              <p className="text-xs text-orange-400 mt-1 opacity-60">tap to view →</p>
+            )}
           </button>
         </div>
 
