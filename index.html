@@ -2032,6 +2032,193 @@ Label should clearly describe what is being coached (e.g. "Anvil Streak", "Medit
 
   // ── TODAY VIEW ─────────────────────────────────────────────────────────────
   // ── COACH MESSAGE BANNER (Today tab) — shows latest unread coach message ──
+  // ── Daily Brief Modal ─────────────────────────────────────────────────────
+  const DailyBriefModal = ({ data, weekNum, authUser, onClose }) => {
+    const [sending, setSending] = React.useState(false);
+    const [sent, setSent] = React.useState(false);
+    const [sendingPdf, setSendingPdf] = React.useState(false);
+    const [sentPdf, setSentPdf] = React.useState(false);
+
+    // ── Compile brief data ──────────────────────────────────────────────────
+    const week = data.weeks[weekNum - 1];
+    const prevWeek = weekNum > 1 ? data.weeks[weekNum - 2] : null;
+
+    // Current week score
+    const score = calcSEAScore(data, weekNum - 1);
+    const prevScore = prevWeek ? calcSEAScore(data, weekNum - 2) : null;
+
+    // Habits WTD: across all habits, how many day-slots completed vs. targeted so far this week
+    const todayDayIdx = (() => { const d = new Date().getDay(); return d === 0 ? 6 : d - 1; })(); // 0=Mon
+    const acts = (week.aActivities || []).filter(a => a.name && a.name.trim());
+    let habitsDone = 0, habitsTarget = 0;
+    acts.forEach(a => {
+      const perWeekTarget = Math.min(Math.max(parseInt(a.targetDays) || 7, 1), 7);
+      // Days we can score = min(todayDayIdx+1, perWeekTarget)
+      const daysElapsed = todayDayIdx + 1;
+      const targetThisPoint = Math.min(daysElapsed, perWeekTarget);
+      const done = (a.days || []).slice(0, daysElapsed).filter(Boolean).length;
+      habitsDone += done;
+      habitsTarget += targetThisPoint;
+    });
+
+    // Anvil WTD
+    const anvilLog = data.anvilProject?.log || [];
+    const useSpecificDays = data.anvilProject?.useSpecificDays && (data.anvilProject?.specificDays || []).length > 0;
+    let anvilDone = 0, anvilTarget = 0;
+    if (useSpecificDays) {
+      const specificDays = data.anvilProject.specificDays; // 0=Mon
+      const d = new Date(); d.setHours(0, 0, 0, 0);
+      const day = d.getDay(); const monday = new Date(d); monday.setDate(d.getDate() - ((day + 6) % 7));
+      specificDays.forEach(di => {
+        const dayDate = new Date(monday); dayDate.setDate(monday.getDate() + di); dayDate.setHours(0, 0, 0, 0);
+        if (dayDate <= d) {
+          anvilTarget++;
+          const logged = anvilLog.some(e => { const ed = new Date(e.date); ed.setHours(0,0,0,0); return ed.getTime() === dayDate.getTime(); });
+          if (logged) anvilDone++;
+        }
+      });
+    } else {
+      const freqCount = Math.max(1, parseInt(data.anvilProject?.freqCount) || 1);
+      const d = new Date(); d.setHours(0, 0, 0, 0);
+      const day = d.getDay(); const monday = new Date(d); monday.setDate(d.getDate() - ((day + 6) % 7));
+      const today2 = new Date(); today2.setHours(23, 59, 59, 999);
+      anvilDone = anvilLog.filter(e => { const ed = new Date(e.date); return ed >= monday && ed <= today2; }).length;
+      anvilTarget = freqCount;
+    }
+
+    // Goals in progress (not 100%)
+    const inProgressGoals = (data.goals || []).filter(g => g.title && g.title.trim() && (g.completion || 0) < 100);
+
+    // Skip if no meaningful data
+    const hasData = acts.length > 0 || anvilDone > 0 || inProgressGoals.length > 0 || score.total > 0;
+
+    const sendBrief = async (withPdf) => {
+      if (withPdf) { setSendingPdf(true); } else { setSending(true); }
+      try {
+        const payload = {
+          userId: authUser?.id,
+          email: authUser?.email,
+          weekNum,
+          score: score.total,
+          prevScore: prevScore?.total ?? null,
+          habitsDone,
+          habitsTarget,
+          habitsCount: acts.length,
+          anvilDone,
+          anvilTarget,
+          anvilProject: data.anvilProject?.name || 'Anvil Project',
+          goals: inProgressGoals.map(g => ({ title: g.title, pct: g.completion || 0 })),
+          withPdf,
+        };
+        await fetch('/.netlify/functions/send-daily-brief', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        if (withPdf) { setSentPdf(true); } else { setSent(true); }
+      } catch(e) {
+        if (withPdf) { setSendingPdf(false); } else { setSending(false); }
+      }
+    };
+
+    const dayName = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'][todayDayIdx];
+
+    return (
+      <div className="fixed inset-0 z-[60] flex items-center justify-center px-5 no-print"
+        style={{backgroundColor:'rgba(0,0,0,0.88)',backdropFilter:'blur(8px)'}}
+        onClick={onClose}>
+        <div className="bg-slate-900 rounded-3xl p-7 max-w-sm w-full border border-indigo-500/40 pop-in"
+          onClick={e => e.stopPropagation()}
+          style={{boxShadow:'0 0 40px rgba(99,102,241,0.25)'}}>
+
+          {/* Header */}
+          <div className="flex items-center justify-between mb-5">
+            <div>
+              <p className="text-xs font-bold text-indigo-400 uppercase tracking-widest">Daily Brief</p>
+              <h2 className="text-xl font-black text-white">{dayName} · Week {weekNum}</h2>
+            </div>
+            <button onClick={onClose} className="text-slate-500 hover:text-white text-xl leading-none">✕</button>
+          </div>
+
+          {/* Score */}
+          <div className="rounded-2xl p-4 mb-4 flex items-center justify-between" style={{background:'linear-gradient(135deg,rgba(99,102,241,0.18),rgba(139,92,246,0.12))',border:'1px solid rgba(99,102,241,0.3)'}}>
+            <div>
+              <p className="text-xs text-slate-400 mb-0.5">Score Week-to-Date</p>
+              <p className="text-3xl font-black text-white">{score.total}<span className="text-sm text-slate-400 font-normal"> pts</span></p>
+            </div>
+            {prevScore && (
+              <div className="text-right">
+                <p className="text-xs text-slate-500 mb-0.5">Last Week</p>
+                <p className="text-lg font-bold" style={{color: score.total >= prevScore.total ? '#34d399' : '#f87171'}}>
+                  {score.total >= prevScore.total ? '▲' : '▼'} {prevScore.total} pts
+                </p>
+              </div>
+            )}
+          </div>
+
+          {/* Bullets */}
+          <div className="space-y-3 mb-5">
+            {/* Habits */}
+            {acts.length > 0 && (
+              <div className="flex items-start gap-3 rounded-xl p-3" style={{background:'rgba(30,41,59,0.8)'}}>
+                <span className="text-lg">💪</span>
+                <div>
+                  <p className="text-sm font-bold text-white">Habits</p>
+                  <p className="text-xs text-slate-400">{habitsDone} of {habitsTarget} days completed so far this week</p>
+                </div>
+              </div>
+            )}
+            {/* Anvil */}
+            {anvilTarget > 0 && (
+              <div className="flex items-start gap-3 rounded-xl p-3" style={{background:'rgba(30,41,59,0.8)'}}>
+                <span className="text-lg">⚒️</span>
+                <div>
+                  <p className="text-sm font-bold text-white">{data.anvilProject?.name || 'Anvil'}</p>
+                  <p className="text-xs text-slate-400">{anvilDone} of {anvilTarget} scheduled session{anvilTarget !== 1 ? 's' : ''} logged this week</p>
+                </div>
+              </div>
+            )}
+            {/* Goals */}
+            {inProgressGoals.length > 0 && (
+              <div className="flex items-start gap-3 rounded-xl p-3" style={{background:'rgba(30,41,59,0.8)'}}>
+                <span className="text-lg">🎯</span>
+                <div>
+                  <p className="text-sm font-bold text-white mb-1">Goals In Progress</p>
+                  {inProgressGoals.map((g, i) => (
+                    <p key={i} className="text-xs text-slate-400 leading-relaxed">
+                      {g.title} <span className="text-indigo-400 font-semibold">{g.completion || 0}%</span>
+                    </p>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Share buttons */}
+          <div className="space-y-2">
+            <button
+              onClick={() => sendBrief(false)}
+              disabled={sending || sent}
+              className="w-full py-3 rounded-2xl font-bold text-sm transition-all"
+              style={{background: sent ? 'rgba(52,211,153,0.15)' : 'rgba(99,102,241,0.2)', color: sent ? '#34d399' : '#a5b4fc', border: sent ? '1px solid rgba(52,211,153,0.3)' : '1px solid rgba(99,102,241,0.3)'}}>
+              {sent ? '✓ Sent to your email' : sending ? 'Sending...' : '📧 Email to me (text)'}
+            </button>
+            <button
+              onClick={() => sendBrief(true)}
+              disabled={sendingPdf || sentPdf}
+              className="w-full py-3 rounded-2xl font-bold text-sm transition-all"
+              style={{background: sentPdf ? 'rgba(52,211,153,0.15)' : 'rgba(139,92,246,0.2)', color: sentPdf ? '#34d399' : '#c4b5fd', border: sentPdf ? '1px solid rgba(52,211,153,0.3)' : '1px solid rgba(139,92,246,0.3)'}}>
+              {sentPdf ? '✓ PDF sent to your email' : sendingPdf ? 'Generating PDF...' : '📄 Email to me (PDF)'}
+            </button>
+            <button onClick={onClose} className="w-full py-2.5 rounded-2xl text-sm text-slate-500 hover:text-slate-300 transition-colors">
+              Got it
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   const CoachMessageBanner = ({ authUser }) => {
     const [msg, setMsg] = useState(null);
     const [dismissed, setDismissed] = useState(false);
@@ -4278,6 +4465,7 @@ Label should clearly describe what is being coached (e.g. "Anvil Streak", "Medit
     const [anvilDate, setAnvilDate] = useState('');
     const [milestone, setMilestone] = useState(null);
     const [showResetModal, setShowResetModal] = useState(false);
+    const [showDailyBrief, setShowDailyBrief] = useState(false);
     const [resetStep, setResetStep] = useState(1); // 1=reflection, 2=confirm
     const [resetReflection, setResetReflection] = useState({wins:'',lessons:'',proud:'',nextTheme:'',nextVision:'',nextAnvil:''}); // {title, pct}
     const [showSundayModal, setShowSundayModal] = useState(()=>{
@@ -4350,6 +4538,24 @@ Label should clearly describe what is being coached (e.g. "Anvil Streak", "Medit
         syncCoachIdToProfile(authUser.id);
       }
     },[authUser]);
+
+    // ── Daily Brief trigger: once per day, after auth + data load, skip new users ──
+    useEffect(()=>{
+      if (loading || !authUser) return;
+      const today = new Date().toDateString();
+      const key = `sea-daily-brief-shown-${authUser.id}`;
+      const lastShown = localStorage.getItem(key);
+      if (lastShown === today) return; // already shown today
+      // Skip if no meaningful data (week 1, nothing logged yet)
+      const weekIdx = plannerWeekNum - 1;
+      if (weekIdx < 0 || !data.weeks[weekIdx]) return;
+      const acts = (data.weeks[weekIdx].aActivities || []).filter(a => a.name && a.name.trim());
+      const hasGoals = (data.goals || []).some(g => g.title && g.title.trim());
+      const hasAnvil = (data.anvilProject?.log || []).length > 0 || data.anvilProject?.name;
+      if (!acts.length && !hasGoals && !hasAnvil) return; // new user, skip
+      localStorage.setItem(key, today);
+      setShowDailyBrief(true);
+    }, [loading, authUser, plannerWeekNum]);
 
     // Auto-calculate correct week number once data is loaded
     useEffect(()=>{
@@ -4736,6 +4942,16 @@ Label should clearly describe what is being coached (e.g. "Anvil Streak", "Medit
               </button>
             </div>
           </div>
+        )}
+
+        {/* Daily Brief Modal */}
+        {showDailyBrief && (
+          <DailyBriefModal
+            data={data}
+            weekNum={plannerWeekNum}
+            authUser={authUser}
+            onClose={() => setShowDailyBrief(false)}
+          />
         )}
 
         {/* Sunday Weekly Ritual Popup */}
