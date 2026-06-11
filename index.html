@@ -1915,7 +1915,7 @@ Label should clearly describe what is being coached (e.g. "Anvil Streak", "Medit
             <p className="text-slate-400 text-sm mt-0.5">{anvil.project||'Set your Anvil project'}</p>
           </div>
           <button onClick={()=>openCoach({section:'anvil',anvil})} className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium" style={{background:'linear-gradient(135deg,#3b82f6,#8b5cf6)'}}>
-            <BotIcon/><span>Coach</span>
+            <BotIcon/><span>Edge</span>
           </button>
         </div>
 
@@ -2384,7 +2384,7 @@ Label should clearly describe what is being coached (e.g. "Anvil Streak", "Medit
           <div className="flex items-center gap-2">
             <button onClick={onPrint} className="no-print p-2.5 rounded-xl bg-slate-800/60 border border-slate-700 hover:border-slate-500 text-slate-400 hover:text-white transition-all" title="Print Today"><PrintIcon/></button>
             <button onClick={()=>openCoach({section:'daily',day:dayFull[dayIdx]})} className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium" style={{background:'linear-gradient(135deg,#3b82f6,#8b5cf6)'}}>
-              <BotIcon/><span>Coach</span>
+              <BotIcon/><span>Edge</span>
             </button>
           </div>
         </div>
@@ -2663,7 +2663,7 @@ Label should clearly describe what is being coached (e.g. "Anvil Streak", "Medit
           <div className="flex items-center gap-2">
             {onPrint && <button onClick={onPrint} className="no-print p-2.5 rounded-xl bg-slate-800/60 border border-slate-700 hover:border-slate-500 text-slate-400 hover:text-white transition-all" title="Print Week"><PrintIcon/></button>}
             <button onClick={()=>openCoach({section:'weekly',week:weekNum})} className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium" style={{background:'linear-gradient(135deg,#3b82f6,#8b5cf6)'}}>
-              <BotIcon/><span>Coach</span>
+              <BotIcon/><span>Edge</span>
             </button>
           </div>
         </div>
@@ -3841,7 +3841,7 @@ Label should clearly describe what is being coached (e.g. "Anvil Streak", "Medit
               <div key={k} className="bg-slate-800/60 rounded-2xl p-5 border border-slate-700">
                 <div className="flex items-center justify-between mb-3">
                   <h3 className={`text-sm font-bold text-${color}-400 uppercase tracking-wide`}>{label}</h3>
-                  <button onClick={()=>openCoach({section:k})} className="text-xs text-purple-400 px-2 py-1 bg-purple-500/10 rounded-lg">Coach</button>
+                  <button onClick={()=>openCoach({section:k})} className="text-xs text-purple-400 px-2 py-1 bg-purple-500/10 rounded-lg">Edge</button>
                 </div>
                 <textarea value={data[k]||''} onChange={e=>updateField(k,e.target.value)} placeholder={ph} rows={3} className="w-full bg-slate-700/50 border border-slate-600/50 rounded-xl p-3 text-white placeholder-slate-500 text-sm resize-none focus:outline-none"/>
               </div>
@@ -4912,7 +4912,7 @@ Label should clearly describe what is being coached (e.g. "Anvil Streak", "Medit
       {id:'today',  label:'Today',  Icon:SunIcon},
       {id:'anvil',  label:'Anvil',  Icon:()=><span style={{fontSize:'18px'}}>🔨</span>},
       {id:'score',  label:'Score',  Icon:StarIcon},
-      {id:'aicoach',label:'Edge Coach',  Icon:BotIcon},
+      {id:'aicoach',label:'Edge',  Icon:BotIcon},
       {id:'more',   label:'More',   Icon:MenuIcon},
       ...(isCoachOrAdmin?[{id:'coach',label:'My Coach',Icon:CoachTabIcon}]:[]),
       ...(userRole==='admin'?[{id:'admin',label:'Admin',Icon:()=><span style={{fontSize:'18px'}}>⚙️</span>}]:[]),
