@@ -897,7 +897,7 @@
         finishing: `COACHING PHASE — Finishing Strong (Week ${weeksIn} of 17):\nDrive urgency. Help them finish what they started and lock in habits for the next cycle.`
       }[cyclePhase];
 
-      return `You are the AI coaching assistant inside the S.E.A. Dashboard for a financial advisor. Results-focused.\n\nPHILOSOPHY: "Structure sets you free" | "Live by design, not default" | "Strategy without execution is hallucination"\nS.E.A.: Strategic (12X thinking) | Executable (next action NOW) | Accountable (weekly scorecards)\nFIVE CATEGORIES: Family | Fun | Fitness | Finance | Faith\nPRIORITY TREE: You → Spouse → Kids → Staff → Clients → Community\n${profileContext}\n${cycleContext}\n\n${personalitySummary}\n${sessionMemory}\n\nGETTING RESULTS INC — CORE PHILOSOPHY:\n\nThe Cascade Effect: Every consistent action is a grain of sand. The cascade — the breakthrough — is inevitable but unpredictable. Keep piling. The cascade is going to happen.\n\nStructure Sets You Free: Motivation is unreliable. What matters is structure. Remove barriers — put the pull-up bar in the living room, not the garage. Set your structure then surrender to it.\n\nThe 4 Stages:\n- Stage I Survival ($0–$300K): Zombie clients, no niche, just surviving.\n- Stage II Thrival ($300K–$750K): THE CURSE OF SUCCESS. Overwhelmed but underwhelmed. This is the LEVERAGE phase.\n- Stage III Mastery ($750K–$1.2M): Business is a game like golf — never won, only played.\n- Stage IV Purpose ($1M+): Financial services may be the funding mechanism, not the path itself.\n\nOVERWHELM: "Overwhelm is a failure to prioritize." The law of unequal distribution — there is always ONE priority. 1% of a day = 15 minutes = 50% of the value.\n\nABCD People: A people lift you. B people are solid. C people are draining. D people are toxic.\n\nGINO'S VOICE:\n- Open warm and get straight to what's on their mind\n- Use "Quick check" to clarify before diving in\n- Treat emotions as data, not problems\n- Name the dangerous place directly\n- Force specificity — never let them stay vague: "Solid options. Now pick just ONE."\n- Always end with ONE specific question — never lecture\n- Keep responses tight and punchy — 2-4 sentences max\n- Summarize at end of session: "Quick recap:" then 2-3 sharp bullets\n- Use these naturally: "Love that", "Got it", "Totally fair", "Let's get practical", "That's gold"\n\nACCOUNTABILITY: Call out avoidance. Name slipping habits. Follow up on commitments. Never let them off the hook.\n\nRESPONSE RULES: 2-4 sentences max. One powerful question per response. Match personality settings precisely.\nDONT: Give financial advice. Make decisions for them. Be a cheerleader without substance. Ask questions you already know the answer to from SESSION MEMORY. Give long monologues.`;
+      return `You are Edge, the AI coaching assistant inside the S.E.A. Dashboard for a financial advisor. Results-focused. Your name is Edge — use it occasionally when introducing yourself or signing off, but don't overuse it.\n\nPHILOSOPHY: "Structure sets you free" | "Live by design, not default" | "Strategy without execution is hallucination"\nS.E.A.: Strategic (12X thinking) | Executable (next action NOW) | Accountable (weekly scorecards)\nFIVE CATEGORIES: Family | Fun | Fitness | Finance | Faith\nPRIORITY TREE: You → Spouse → Kids → Staff → Clients → Community\n${profileContext}\n${cycleContext}\n\n${personalitySummary}\n${sessionMemory}\n\nGETTING RESULTS INC — CORE PHILOSOPHY:\n\nThe Cascade Effect: Every consistent action is a grain of sand. The cascade — the breakthrough — is inevitable but unpredictable. Keep piling. The cascade is going to happen.\n\nStructure Sets You Free: Motivation is unreliable. What matters is structure. Remove barriers — put the pull-up bar in the living room, not the garage. Set your structure then surrender to it.\n\nThe 4 Stages:\n- Stage I Survival ($0–$300K): Zombie clients, no niche, just surviving.\n- Stage II Thrival ($300K–$750K): THE CURSE OF SUCCESS. Overwhelmed but underwhelmed. This is the LEVERAGE phase.\n- Stage III Mastery ($750K–$1.2M): Business is a game like golf — never won, only played.\n- Stage IV Purpose ($1M+): Financial services may be the funding mechanism, not the path itself.\n\nOVERWHELM: "Overwhelm is a failure to prioritize." The law of unequal distribution — there is always ONE priority. 1% of a day = 15 minutes = 50% of the value.\n\nABCD People: A people lift you. B people are solid. C people are draining. D people are toxic.\n\nGINO'S VOICE:\n- Open warm and get straight to what's on their mind\n- Use "Quick check" to clarify before diving in\n- Treat emotions as data, not problems\n- Name the dangerous place directly\n- Force specificity — never let them stay vague: "Solid options. Now pick just ONE."\n- Always end with ONE specific question — never lecture\n- Keep responses tight and punchy — 2-4 sentences max\n- Summarize at end of session: "Quick recap:" then 2-3 sharp bullets\n- Use these naturally: "Love that", "Got it", "Totally fair", "Let's get practical", "That's gold"\n\nACCOUNTABILITY: Call out avoidance. Name slipping habits. Follow up on commitments. Never let them off the hook.\n\nRESPONSE RULES: 2-4 sentences max. One powerful question per response. Match personality settings precisely.\nDONT: Give financial advice. Make decisions for them. Be a cheerleader without substance. Ask questions you already know the answer to from SESSION MEMORY. Give long monologues.`;
   };
 
   // Smart app-open trigger — reads full state, calls AI to decide if there's something worth saying
@@ -961,7 +961,7 @@
       setupComplete: !!(plannerData.slightEdge?.trim() && plannerData.vision120Day?.trim() && goals.length > 0),
     };
 
-    const decisionPrompt = `You are an AI coach reviewing a user's dashboard data when they open the app. Your job: decide if there is something GENUINELY worth noting right now — something specific, data-backed, and actionable. Not generic encouragement.
+    const decisionPrompt = `You are Edge, an AI coach reviewing a user's dashboard data when they open the app. Your job: decide if there is something GENUINELY worth noting right now — something specific, data-backed, and actionable. Not generic encouragement.
 
 DASHBOARD SNAPSHOT:
 ${JSON.stringify(snapshot, null, 2)}
@@ -1001,7 +1001,7 @@ Label should clearly describe what is being coached (e.g. "Anvil Streak", "Medit
       const parsed = JSON.parse(jsonMatch[0]);
       if (!parsed.shouldTrigger) return null;
       localStorage.setItem(triggerKey, 'true');
-      return { content: parsed.message, _label: parsed.label || 'AI Coach', _emoji: parsed.emoji || '🤖' };
+      return { content: parsed.message, _label: parsed.label || 'Edge', _emoji: parsed.emoji || '⚡' };
     } catch(e) { console.error('Smart trigger error', e); return null; }
   };
 
@@ -1138,7 +1138,7 @@ Label should clearly describe what is being coached (e.g. "Anvil Streak", "Medit
             <div className="flex items-center gap-2">
               <BotIcon/>
               <div>
-                <span className="font-bold text-white text-sm">AI Coach</span>
+                <span className="font-bold text-white text-sm">Edge</span>
                 {saving && <span className="text-xs text-white/60 ml-2">Saving...</span>}
               </div>
             </div>
@@ -1164,7 +1164,7 @@ Label should clearly describe what is being coached (e.g. "Anvil Streak", "Medit
           </div>
           <div className="p-4 border-t border-slate-800 coach-input-bar">
             <div className="flex gap-2">
-              <input value={input} onChange={e=>setInput(e.target.value)} onKeyPress={e=>e.key==='Enter'&&send()} onFocus={()=>setTimeout(()=>endRef.current?.scrollIntoView({behavior:'smooth'}),400)} placeholder="Talk to your coach..." disabled={loading} inputMode="text" className="flex-1 bg-slate-800 border border-slate-700 rounded-xl p-3 text-white placeholder-slate-500 text-sm focus:border-blue-500 focus:outline-none"/>
+              <input value={input} onChange={e=>setInput(e.target.value)} onKeyPress={e=>e.key==='Enter'&&send()} onFocus={()=>setTimeout(()=>endRef.current?.scrollIntoView({behavior:'smooth'}),400)} placeholder="Talk to Edge..." disabled={loading} inputMode="text" className="flex-1 bg-slate-800 border border-slate-700 rounded-xl p-3 text-white placeholder-slate-500 text-sm focus:border-blue-500 focus:outline-none"/>
               <button onClick={send} disabled={loading||!input.trim()} className="bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white p-3 rounded-xl"><SendIcon/></button>
             </div>
           </div>
@@ -1326,7 +1326,7 @@ Label should clearly describe what is being coached (e.g. "Anvil Streak", "Medit
               value={input}
               onChange={e=>setInput(e.target.value)}
               onKeyPress={e=>e.key==='Enter'&&send()}
-              placeholder="Talk to your coach..."
+              placeholder="Talk to Edge..."
               disabled={loading}
               className="flex-1 bg-slate-800 border border-slate-700 rounded-xl p-3 text-white placeholder-slate-500 text-sm focus:border-blue-500 focus:outline-none"
             />
@@ -1342,7 +1342,7 @@ Label should clearly describe what is being coached (e.g. "Anvil Streak", "Medit
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-xl font-bold text-white">AI Coach</h2>
+            <h2 className="text-xl font-bold text-white">Edge</h2>
             <p className="text-xs text-slate-400">{(conversations||[]).length} conversation{(conversations||[]).length !== 1 ? 's' : ''}</p>
           </div>
           <button onClick={openNew} className="flex items-center gap-2 px-4 py-2 rounded-2xl text-sm font-bold text-white" style={{background:'linear-gradient(135deg,#3b82f6,#8b5cf6)'}}>
@@ -1455,7 +1455,7 @@ Label should clearly describe what is being coached (e.g. "Anvil Streak", "Medit
                 <h2 className="text-3xl font-bold text-white mb-3">Foundation Set.</h2>
                 <p className="text-slate-400 mb-6">Here is what to do next:</p>
                 <div className="bg-slate-800/60 rounded-2xl p-5 border border-slate-700 mb-6 text-left space-y-3">
-                  {[['📅','Plan your week every Sunday in the Week tab'],['☀️','Open Today every morning to set your top 3'],['🔥','Log your Anvil daily — protect the streak'],['🤖','The AI Coach knows your goals — ask it anything'],['⭐','Check your S.E.A. Score in the Score tab']].map(([icon,text],i)=>(
+                  {[['📅','Plan your week every Sunday in the Week tab'],['☀️','Open Today every morning to set your top 3'],['🔥','Log your Anvil daily — protect the streak'],['⚡','Edge knows your goals — ask it anything'],['⭐','Check your S.E.A. Score in the Score tab']].map(([icon,text],i)=>(
                     <div key={i} className="flex items-start gap-3"><span className="text-xl">{icon}</span><p className="text-sm text-slate-300">{text}</p></div>
                   ))}
                 </div>
@@ -4912,7 +4912,7 @@ Label should clearly describe what is being coached (e.g. "Anvil Streak", "Medit
       {id:'today',  label:'Today',  Icon:SunIcon},
       {id:'anvil',  label:'Anvil',  Icon:()=><span style={{fontSize:'18px'}}>🔨</span>},
       {id:'score',  label:'Score',  Icon:StarIcon},
-      {id:'aicoach',label:'Coach',  Icon:BotIcon},
+      {id:'aicoach',label:'Edge Coach',  Icon:BotIcon},
       {id:'more',   label:'More',   Icon:MenuIcon},
       ...(isCoachOrAdmin?[{id:'coach',label:'My Coach',Icon:CoachTabIcon}]:[]),
       ...(userRole==='admin'?[{id:'admin',label:'Admin',Icon:()=><span style={{fontSize:'18px'}}>⚙️</span>}]:[]),
@@ -5074,7 +5074,7 @@ Label should clearly describe what is being coached (e.g. "Anvil Streak", "Medit
               <div className="bg-gradient-to-r from-blue-600 to-purple-600 px-3 py-2 flex items-center justify-between">
                 <div className="flex items-center gap-1.5">
                   <span className="text-sm">{chatBubbleMsg._emoji||'🤖'}</span>
-                  <span className="text-xs font-bold text-white">{chatBubbleMsg._label||'AI Coach'}</span>
+                  <span className="text-xs font-bold text-white">{chatBubbleMsg._label||'Edge'}</span>
                 </div>
                 <button onClick={()=>setChatBubbleMsg(null)} className="text-white/60 hover:text-white text-xs p-0.5">✕</button>
               </div>
@@ -6211,7 +6211,7 @@ Label should clearly describe what is being coached (e.g. "Anvil Streak", "Medit
             <div style={{color:'#64748b',fontSize:'0.85rem',marginBottom:'28px'}}>Cancel anytime</div>
 
             <div style={{textAlign:'left',marginBottom:'28px'}}>
-              {['AI-powered accountability coach','Daily, weekly & 120-day planner','Goal tracking & Wheel of John','Interactive Coach Dashboard','Weekly performance summaries'].map(f=>(
+              {['Edge — AI-powered accountability coach','Daily, weekly & 120-day planner','Goal tracking & Wheel of John','Interactive Coach Dashboard','Weekly performance summaries'].map(f=>(
                 <div key={f} style={{display:'flex',alignItems:'center',gap:'10px',marginBottom:'10px'}}>
                   <span style={{color:'#10b981',fontSize:'1rem'}}>✓</span>
                   <span style={{color:'#cbd5e1',fontSize:'0.9rem'}}>{f}</span>
