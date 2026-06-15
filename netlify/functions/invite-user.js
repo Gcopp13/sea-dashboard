@@ -153,7 +153,8 @@ exports.handler = async (event) => {
       }
     }
 
-    // Generate magic link for login
+    // Generate an invite link (not a magic link) so the user gets a proper
+    // email identity provider attached — prevents password-reset loops later.
     const magicRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/generate_link`, {
       method: 'POST',
       headers: {
@@ -162,7 +163,7 @@ exports.handler = async (event) => {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        type: 'magiclink',
+        type: 'invite',
         email,
         options: { redirect_to: redirectTo },
       }),
@@ -170,7 +171,7 @@ exports.handler = async (event) => {
 
     if (!magicRes.ok) {
       const magicErr = await magicRes.json();
-      console.error('[invite-user] Magic link generation failed:', magicErr);
+      console.error('[invite-user] Invite link generation failed:', magicErr);
       return err('Failed to generate invite link. Please try again.', 500);
     }
 

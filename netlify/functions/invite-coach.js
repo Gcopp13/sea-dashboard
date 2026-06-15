@@ -178,7 +178,7 @@ exports.handler = async (event) => {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        type: 'magiclink',
+        type: 'invite', // use invite (not magiclink) so a proper email identity is created
         email,
         options: { redirect_to: redirectTo },
       }),
