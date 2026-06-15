@@ -6411,22 +6411,31 @@ Label should clearly describe what is being coached (e.g. "Anvil Streak", "Medit
           setAuthLoading(false);
           return;
         }
-        // USER_UPDATED: password was just changed — clear reset flag and let them in
+        // USER_UPDATED: password was just changed — clear ALL reset/set-password flags and let them in
         if (_event === 'USER_UPDATED') {
           setNeedsPasswordReset(false);
           setNeedsSetPassword(false);
+          localStorage.removeItem('sea_invite_flow'); // always clear invite flag after password is set
+          setAuthUser(session?.user ?? null);
+          setAuthLoading(false);
+          return; // skip SIGNED_IN handling below so we don't re-enter any password flow
         }
         // SIGNED_IN via magic link (invite) — new users must set a password before entering
+        // IMPORTANT: only trigger invite flow if we haven't just completed a password reset (USER_UPDATED)
         if (_event === 'SIGNED_IN') {
           const isInviteFlow = new URLSearchParams(window.location.search).get('invite') === '1'
             || localStorage.getItem('sea_invite_flow') === '1';
-          if (isInviteFlow) {
+          // Never enter invite/set-password flow if we're in a recovery session
+          const isRecovery = window.location.hash.includes('type=recovery');
+          if (isInviteFlow && !isRecovery) {
             localStorage.removeItem('sea_invite_flow');
             setNeedsSetPassword(true);
             setAuthUser(session?.user ?? null);
             setAuthLoading(false);
             return;
           }
+          // Clear any stale invite flag that could cause loops
+          localStorage.removeItem('sea_invite_flow');
         }
         setAuthUser(session?.user ?? null);
         setAuthLoading(false);
