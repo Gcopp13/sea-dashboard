@@ -6399,10 +6399,29 @@ Label should clearly describe what is being coached (e.g. "Anvil Streak", "Medit
     const [needsSetPassword, setNeedsSetPassword] = useState(false);
 
     useEffect(() => {
-      _supabase.auth.getSession().then(({ data: { session } }) => {
-        setAuthUser(session?.user ?? null);
+      // Timeout safety: if getSession() hangs (expired/corrupt token), unblock after 5s
+      const authTimeout = setTimeout(() => {
+        console.warn('[auth] getSession timed out — clearing session and showing login');
+        try { localStorage.removeItem(`sb-${SUPABASE_URL.split('//')[1].split('.')[0]}-auth-token`); } catch(e) {}
+        setAuthUser(null);
         setAuthLoading(false);
-      });
+      }, 5000);
+
+      _supabase.auth.getSession()
+        .then(({ data: { session } }) => {
+          clearTimeout(authTimeout);
+          setAuthUser(session?.user ?? null);
+          setAuthLoading(false);
+        })
+        .catch((e) => {
+          console.warn('[auth] getSession error:', e?.message);
+          clearTimeout(authTimeout);
+          // Clear potentially corrupt token so the next load works cleanly
+          try { localStorage.removeItem(`sb-${SUPABASE_URL.split('//')[1].split('.')[0]}-auth-token`); } catch(_) {}
+          setAuthUser(null);
+          setAuthLoading(false);
+        });
+
       const { data: { subscription } } = _supabase.auth.onAuthStateChange((_event, session) => {
         // PASSWORD_RECOVERY: user clicked reset link — keep them on AuthRouter reset screen
         if (_event === 'PASSWORD_RECOVERY') {
