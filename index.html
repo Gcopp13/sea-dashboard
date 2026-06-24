@@ -3092,21 +3092,21 @@ Label should clearly describe what is being coached (e.g. "Anvil Streak", "Medit
         const log=data.anvilProject?.log||[];if(log.length<7)return false;
         const useSD=data.anvilProject?.useSpecificDays&&(data.anvilProject?.specificDays||[]).length>0;const sdA=data.anvilProject?.specificDays||[];
         const logSet=new Set(log.map(e=>{const d=new Date(e.date);d.setHours(0,0,0,0);return d.toDateString()}));
-        if(useSD){let best=0,cur=0;const oldest=new Date(Math.min(...log.map(e=>new Date(e.date))));oldest.setHours(0,0,0,0);const now=new Date();now.setHours(0,0,0,0);for(let d=new Date(oldest);d<=now;d.setDate(d.getDate()+1)){const di=(d.getDay()+6)%7;if(!sdA.includes(di))continue;if(logSet.has(d.toDateString())){cur++;if(cur>best)best=cur;}else cur=0;}return best>=7;}
+        if(useSD){if(log.length===0)return false;let best=0,cur=0;const oldestMs=Math.min(...log.map(e=>new Date(e.date).getTime()));const oldest=new Date(oldestMs);oldest.setHours(0,0,0,0);const now=new Date();now.setHours(0,0,0,0);for(let d=new Date(oldest);d<=now;d.setDate(d.getDate()+1)){const di=(d.getDay()+6)%7;if(!sdA.includes(di))continue;if(logSet.has(d.toDateString())){cur++;if(cur>best)best=cur;}else cur=0;}return best>=7;}
         const u=[...logSet].map(s=>new Date(s)).sort((a,b)=>a-b);let best=0,cur=1;for(let i=1;i<u.length;i++){const diff=(u[i]-u[i-1])/86400000;if(diff===1)cur++;else cur=1;if(cur>best)best=cur;}return Math.max(best,1)>=7;
       }},
       {id:'anvil-21',icon:'🔥🔥',title:'21-Day Streak',desc:'Hit a 21-day Anvil streak',check:()=>{
         const log=data.anvilProject?.log||[];if(log.length<21)return false;
         const useSD=data.anvilProject?.useSpecificDays&&(data.anvilProject?.specificDays||[]).length>0;const sdA=data.anvilProject?.specificDays||[];
         const logSet=new Set(log.map(e=>{const d=new Date(e.date);d.setHours(0,0,0,0);return d.toDateString()}));
-        if(useSD){let best=0,cur=0;const oldest=new Date(Math.min(...log.map(e=>new Date(e.date))));oldest.setHours(0,0,0,0);const now=new Date();now.setHours(0,0,0,0);for(let d=new Date(oldest);d<=now;d.setDate(d.getDate()+1)){const di=(d.getDay()+6)%7;if(!sdA.includes(di))continue;if(logSet.has(d.toDateString())){cur++;if(cur>best)best=cur;}else cur=0;}return best>=21;}
+        if(useSD){if(log.length===0)return false;let best=0,cur=0;const oldestMs=Math.min(...log.map(e=>new Date(e.date).getTime()));const oldest=new Date(oldestMs);oldest.setHours(0,0,0,0);const now=new Date();now.setHours(0,0,0,0);for(let d=new Date(oldest);d<=now;d.setDate(d.getDate()+1)){const di=(d.getDay()+6)%7;if(!sdA.includes(di))continue;if(logSet.has(d.toDateString())){cur++;if(cur>best)best=cur;}else cur=0;}return best>=21;}
         const u=[...logSet].map(s=>new Date(s)).sort((a,b)=>a-b);let best=0,cur=1;for(let i=1;i<u.length;i++){const diff=(u[i]-u[i-1])/86400000;if(diff===1)cur++;else cur=1;if(cur>best)best=cur;}return Math.max(best,1)>=21;
       }},
       {id:'anvil-30',icon:'💎',title:'30-Day Legend',desc:'Hit a 30-day Anvil streak',check:()=>{
         const log=data.anvilProject?.log||[];if(log.length<30)return false;
         const useSD=data.anvilProject?.useSpecificDays&&(data.anvilProject?.specificDays||[]).length>0;const sdA=data.anvilProject?.specificDays||[];
         const logSet=new Set(log.map(e=>{const d=new Date(e.date);d.setHours(0,0,0,0);return d.toDateString()}));
-        if(useSD){let best=0,cur=0;const oldest=new Date(Math.min(...log.map(e=>new Date(e.date))));oldest.setHours(0,0,0,0);const now=new Date();now.setHours(0,0,0,0);for(let d=new Date(oldest);d<=now;d.setDate(d.getDate()+1)){const di=(d.getDay()+6)%7;if(!sdA.includes(di))continue;if(logSet.has(d.toDateString())){cur++;if(cur>best)best=cur;}else cur=0;}return best>=30;}
+        if(useSD){if(log.length===0)return false;let best=0,cur=0;const oldestMs=Math.min(...log.map(e=>new Date(e.date).getTime()));const oldest=new Date(oldestMs);oldest.setHours(0,0,0,0);const now=new Date();now.setHours(0,0,0,0);for(let d=new Date(oldest);d<=now;d.setDate(d.getDate()+1)){const di=(d.getDay()+6)%7;if(!sdA.includes(di))continue;if(logSet.has(d.toDateString())){cur++;if(cur>best)best=cur;}else cur=0;}return best>=30;}
         const u=[...logSet].map(s=>new Date(s)).sort((a,b)=>a-b);let best=0,cur=1;for(let i=1;i<u.length;i++){const diff=(u[i]-u[i-1])/86400000;if(diff===1)cur++;else cur=1;if(cur>best)best=cur;}return Math.max(best,1)>=30;
       }},
       {id:'anvil-50',icon:'🏔️',title:'50 Sessions',desc:'Logged 50 Anvil sessions total',check:()=>(data.anvilProject?.log||[]).length>=50},
