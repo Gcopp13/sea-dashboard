@@ -2907,8 +2907,8 @@ Label should clearly describe what is being coached (e.g. "Anvil Streak", "Medit
     const today = new Date(); today.setHours(0,0,0,0);
     let streak = 0;
     const loggedSetS = new Set(log.map(e => { const d = new Date(e.date); d.setHours(0,0,0,0); return d.toDateString(); }));
-    const useSDScore = data.anvilProject?.useSpecificDays && (data.anvilProject?.specificDays||[]).length > 0;
-    const sdScore = data.anvilProject?.specificDays || [];
+    const useSDScore = anvilData?.useSpecificDays && (anvilData?.specificDays||[]).length > 0;
+    const sdScore = anvilData?.specificDays || [];
     if (useSDScore) {
       for (let i = 0; i < 365; i++) { const d = new Date(today); d.setDate(today.getDate()-i); const di=(d.getDay()+6)%7; if(!sdScore.includes(di))continue; if(loggedSetS.has(d.toDateString()))streak++; else break; }
     } else {
