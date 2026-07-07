@@ -6637,16 +6637,50 @@ Label should clearly describe what is being coached (e.g. "Anvil Streak", "Medit
     document.getElementById('root')
   );
 
-  // Register service worker for push notifications
+  // Register service worker for push notifications + update detection.
+  // When a new SW is installed and there's already a controller, the deployed
+  // HTML has changed — auto-reload once so returning users pick it up without
+  // needing to manually clear cache. Guarded by sessionStorage so we don't loop.
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', function() {
       navigator.serviceWorker.register('/sw.js')
         .then(function(reg) {
           console.log('SEA Service Worker registered:', reg.scope);
+
+          // If an update is already waiting from a previous visit, activate it.
+          if (reg.waiting && navigator.serviceWorker.controller) {
+            reg.waiting.postMessage({ type: 'SKIP_WAITING' });
+          }
+
+          // Watch for new SW installs going forward.
+          reg.addEventListener('updatefound', function() {
+            var newSW = reg.installing;
+            if (!newSW) return;
+            newSW.addEventListener('statechange', function() {
+              if (newSW.state === 'installed' && navigator.serviceWorker.controller) {
+                // New version is ready — tell it to take over immediately.
+                newSW.postMessage({ type: 'SKIP_WAITING' });
+              }
+            });
+          });
+
+          // Poll for updates every 30 minutes on long-lived tabs (PWA use case).
+          setInterval(function() { reg.update().catch(function(){}); }, 30 * 60 * 1000);
         })
         .catch(function(err) {
           console.error('SEA Service Worker registration failed:', err);
         });
+
+      // When the active SW is replaced, reload the page once so the new HTML
+      // is what the user sees. sessionStorage guard prevents reload loops.
+      var reloadedForUpdate = false;
+      navigator.serviceWorker.addEventListener('controllerchange', function() {
+        if (reloadedForUpdate) return;
+        if (sessionStorage.getItem('sea-sw-reloaded-this-session') === '1') return;
+        reloadedForUpdate = true;
+        sessionStorage.setItem('sea-sw-reloaded-this-session', '1');
+        window.location.reload();
+      });
     });
   }
 </script>
