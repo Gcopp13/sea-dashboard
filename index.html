@@ -900,6 +900,65 @@
       return `You are Edge, the AI coaching assistant inside the S.E.A. Dashboard for a financial advisor. Results-focused. Your name is Edge — use it occasionally when introducing yourself or signing off, but don't overuse it.\n\nPHILOSOPHY: "Structure sets you free" | "Live by design, not default" | "Strategy without execution is hallucination"\nS.E.A.: Strategic (12X thinking) | Executable (next action NOW) | Accountable (weekly scorecards)\nFIVE CATEGORIES: Family | Fun | Fitness | Finance | Faith\nPRIORITY TREE: You → Spouse → Kids → Staff → Clients → Community\n${profileContext}\n${cycleContext}\n\n${personalitySummary}\n${sessionMemory}\n\nGETTING RESULTS INC — CORE PHILOSOPHY:\n\nThe Cascade Effect: Every consistent action is a grain of sand. The cascade — the breakthrough — is inevitable but unpredictable. Keep piling. The cascade is going to happen.\n\nStructure Sets You Free: Motivation is unreliable. What matters is structure. Remove barriers — put the pull-up bar in the living room, not the garage. Set your structure then surrender to it.\n\nThe 4 Stages:\n- Stage I Survival ($0–$300K): Zombie clients, no niche, just surviving.\n- Stage II Thrival ($300K–$750K): THE CURSE OF SUCCESS. Overwhelmed but underwhelmed. This is the LEVERAGE phase.\n- Stage III Mastery ($750K–$1.2M): Business is a game like golf — never won, only played.\n- Stage IV Purpose ($1M+): Financial services may be the funding mechanism, not the path itself.\n\nOVERWHELM: "Overwhelm is a failure to prioritize." The law of unequal distribution — there is always ONE priority. 1% of a day = 15 minutes = 50% of the value.\n\nABCD People: A people lift you. B people are solid. C people are draining. D people are toxic.\n\nGINO'S VOICE:\n- Open warm and get straight to what's on their mind\n- Use "Quick check" to clarify before diving in\n- Treat emotions as data, not problems\n- Name the dangerous place directly\n- Force specificity — never let them stay vague: "Solid options. Now pick just ONE."\n- Always end with ONE specific question — never lecture\n- Keep responses tight and punchy — 2-4 sentences max\n- Summarize at end of session: "Quick recap:" then 2-3 sharp bullets\n- Use these naturally: "Love that", "Got it", "Totally fair", "Let's get practical", "That's gold"\n\nACCOUNTABILITY: Call out avoidance. Name slipping habits. Follow up on commitments. Never let them off the hook.\n\nRESPONSE RULES: 2-4 sentences max. One powerful question per response. Match personality settings precisely.\nDONT: Give financial advice. Make decisions for them. Be a cheerleader without substance. Ask questions you already know the answer to from SESSION MEMORY. Give long monologues.`;
   };
 
+  // Habit pacing helper — deterministic Mon–Fri pacing guidance for the Habit Gap coach card.
+  // Treats Monday–Friday as the implicit workweek. Weekends are bonus/recovery — never "behind".
+  // Returns null when there is no meaningful gap worth coaching.
+  // Copy is intentionally soft on Mon/Tue (kickoff) and only escalates Wed–Fri when actually off pace.
+  const getHabitGapMessage = (habits, dayOfWeek) => {
+    if (!Array.isArray(habits) || habits.length === 0) return null;
+
+    // Consider a habit "relevant" only if it has a real weekly target (1–5 sessions).
+    // Habits with target >= 6 are effectively daily and handled by streak logic elsewhere.
+    const trackable = habits.filter(h => h && typeof h.target === 'number' && h.target >= 1 && h.target <= 5);
+    if (trackable.length === 0) return null;
+
+    // Format a natural list: "A", "A and B", "A, B, and C"
+    const joinNames = (arr) => {
+      if (arr.length === 1) return arr[0];
+      if (arr.length === 2) return `${arr[0]} and ${arr[1]}`;
+      return `${arr.slice(0, -1).join(', ')}, and ${arr[arr.length - 1]}`;
+    };
+
+    // Monday (dow=1): pure kickoff. Zero-count relevant habits only. No "behind" language ever.
+    if (dayOfWeek === 1) {
+      const zeros = trackable.filter(h => (h.days || 0) === 0);
+      if (zeros.length === 0) return null;
+      const names = joinNames(zeros.map(h => h.name));
+      const targets = joinNames(zeros.map(h => String(h.target)));
+      return `${names} ${zeros.length > 1 ? 'are' : 'is'} at 0 sessions so far this week — with ${zeros.length > 1 ? 'targets' : 'a target'} of ${targets}, the week's just getting underway. Today's a good day to get your first session in.`;
+    }
+
+    // Tuesday (dow=2): still soft. "Getting going" tone. No "behind".
+    if (dayOfWeek === 2) {
+      const zeros = trackable.filter(h => (h.days || 0) === 0);
+      if (zeros.length === 0) return null;
+      const names = joinNames(zeros.map(h => h.name));
+      const details = zeros.map(h => `0 of ${h.target}`).join(' and ');
+      return `Week's getting going and ${names} ${zeros.length > 1 ? 'are' : 'is'} still at ${details}. Getting one in early makes the rest of the week easier.`;
+    }
+
+    // Wed–Fri (dow=3–5): real pacing check against Mon–Fri workweek.
+    // Expected progress = target * (workdaysElapsedIncludingToday / 5).
+    if (dayOfWeek >= 3 && dayOfWeek <= 5) {
+      const workdaysElapsed = dayOfWeek; // Mon=1, Tue=2, ..., Fri=5
+      const offPace = trackable.filter(h => {
+        const expected = h.target * (workdaysElapsed / 5);
+        // Only flag if user is meaningfully behind expected pace (>= 1 full session short).
+        return (h.days || 0) + 1 <= Math.floor(expected);
+      });
+      if (offPace.length === 0) return null;
+      const names = joinNames(offPace.map(h => h.name));
+      return `${names} ${offPace.length > 1 ? 'are' : 'is'} off pace this week. Today's a good day to stack one of those in.`;
+    }
+
+    // Sat–Sun (dow=6 or 0): bonus/recovery tone. Never "behind".
+    // Only surface if there is a habit still at 0 for the week, and frame it as optional.
+    const zeros = trackable.filter(h => (h.days || 0) === 0);
+    if (zeros.length === 0) return null;
+    const names = joinNames(zeros.map(h => h.name));
+    return `${names} ${zeros.length > 1 ? 'are' : 'is'} still open this week — a weekend session is a solid bonus if you have the window for it.`;
+  };
+
   // Smart app-open trigger — reads full state, calls AI to decide if there's something worth saying
   const runSmartTrigger = async (plannerData, personality, authUserId) => {
     const triggerKey = 'smart-trigger-' + new Date().toDateString() + '-' + new Date().getHours();
@@ -935,6 +994,12 @@
     }));
     const stuckHabits = Object.entries(habitIssues).filter(([,c])=>c>=2).map(([n])=>n);
 
+    // Day-of-week context for pacing (JS: Sun=0..Sat=6). We treat Mon–Fri as the implicit workweek.
+    const dayOfWeek = new Date().getDay();
+    const dayNames = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+    const todayName = dayNames[dayOfWeek];
+    const habitGapGuidance = getHabitGapMessage(habits, dayOfWeek);
+
     const lastCommitment = localStorage.getItem('coach-commitment');
     const lastCommitmentDate = localStorage.getItem('coach-commitment-date');
     const todayStr = new Date().toISOString().split('T')[0];
@@ -959,6 +1024,9 @@
       commitmentFollowUpDue: lastCommitment && (lastCommitmentDate===yesterdayStr || lastCommitmentDate===todayStr),
       weeksInCycle: weeksWithData.length,
       setupComplete: !!(plannerData.slightEdge?.trim() && plannerData.vision120Day?.trim() && goals.length > 0),
+      today: todayName,
+      dayOfWeek, // 0=Sun..6=Sat
+      habitGapGuidance, // deterministic pacing copy; null when no meaningful gap
     };
 
     const decisionPrompt = `You are Edge, an AI coach reviewing a user's dashboard data when they open the app. Your job: decide if there is something GENUINELY worth noting right now — something specific, data-backed, and actionable. Not generic encouragement.
@@ -977,6 +1045,15 @@ RULES:
 - Do NOT speak up if everything looks consistent and there's nothing specific to say
 - DO speak up for: broken Anvil streaks, outstanding commitments to follow up, stuck habits (2+ weeks under target), goal stagnation, missing weekly ritual, strong streaks worth acknowledging, Wheel of Life drops
 - If a habit is on track (days >= target or close), do NOT flag it as a problem
+
+WEEKLY PACING (CRITICAL — read before generating any "Habit Gap" style message):
+- Treat Monday–Friday as the implicit workweek. NEVER say "workweek" out loud in the message.
+- On Monday (today=Monday), NEVER use "behind", "lagging", "already behind", "off pace", or "week underway" language for habit counts. Monday is kickoff — zero completions are expected and normal.
+- On Tuesday, still avoid "behind" language. Use soft "getting going" copy.
+- Only Wednesday–Friday may use "off pace" or "behind" language, and only if the user is truly behind expected Mon–Fri pace (actual completions < target * (workdaysElapsed / 5) by at least 1 full session).
+- On Saturday/Sunday, treat weekend as bonus/recovery. Do NOT apply Mon–Fri pacing pressure. Framing should be optional/bonus, not corrective.
+- If snapshot.habitGapGuidance is a non-empty string, use it as the exact tone/wording for any Habit Gap coach message — you may lightly adapt phrasing but do NOT contradict its framing (e.g. do not add "behind" when guidance says "getting underway").
+- If snapshot.habitGapGuidance is null and the only signal is low current-week habit counts, do NOT trigger a Habit Gap message.
 
 Respond with JSON only: { "shouldTrigger": true/false, "message": "...", "label": "...", "emoji": "..." }
 If shouldTrigger is false, message/label/emoji can be empty strings.
