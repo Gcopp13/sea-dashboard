@@ -14,7 +14,25 @@
 [functions]
   node_bundler = "esbuild"
 
-# Serve sw.js directly — must not be caught by the SPA redirect
+# Scheduled functions -- migrated off the external (Perplexity-chat) scheduler so
+# these run on Netlify's own infrastructure. Times are UTC. Netlify triggers each
+# function directly (no HTTP request), so handlers must not depend on the body.
+[functions."evening-reminder"]
+  schedule = "0 23 * * *"    # daily 23:00 UTC (7 PM EDT) - evening review push
+
+[functions."re-engagement"]
+  schedule = "0 13 * * *"    # daily 13:00 UTC (9 AM EDT) - re-engagement email
+
+[functions."coach-nudge-push"]
+  schedule = "17 * * * *"    # hourly at :17 - coach nudge push
+
+[functions."weekly-ritual-reminder"]
+  schedule = "0 12 * * 0"    # Sundays 12:00 UTC (8 AM EDT) - weekly ritual push
+
+[functions."weekly-summary"]
+  schedule = "0 12 * * 0"    # Sundays 12:00 UTC (8 AM EDT) - weekly summary email
+
+# Serve sw.js directly -- must not be caught by the SPA redirect
 [[redirects]]
   from = "/sw.js"
   to = "/sw.js"
