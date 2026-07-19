@@ -789,6 +789,19 @@
   };
 
   // buildSystemPrompt — extracted so both AICoach and the smart trigger can use it
+  // Habit-week selection helpers.
+  // The Sunday ritual pre-creates NEXT week with habit NAMES carried over but zero
+  // days ticked. Selecting a habit week by name alone therefore picks a week that
+  // hasn't happened yet and reports 0/target. Prefer weeks with real logged days.
+  const weekHasHabitLogs  = w => (w?.aActivities||[]).some(a=>a.name?.trim() && (a.days||[]).some(Boolean));
+  const weekHasHabitNames = w => (w?.aActivities||[]).some(a=>a.name?.trim());
+  const pickHabitWeek = (weeks, fallback) => {
+    const list = [...(weeks||[])].reverse();
+    return list.find(weekHasHabitLogs) || list.find(weekHasHabitNames) || fallback;
+  };
+  // Habits have a per-habit weekly target (e.g. 3), not always 7.
+  const habitTarget = a => Math.min(Math.max(parseInt(a?.targetDays,10)||7,1),7);
+
   const buildCoachSystemPrompt = (plannerData, personality, currentContext) => {
       const p = personality || {style:2,tone:2,approach:2,energy:2};
       const styleLabel = p.style<=1?'a hands-on coach who pushes for action':p.style>=3?'a strategic advisor who informs and guides':'a coaching advisor who balances pushing with guidance';
@@ -799,8 +812,8 @@
 
       const weeksWithData = (plannerData.weeks||[]).filter(w=>w.wins?.some(x=>x.trim())||w.focus?.trim());
       const latestWeek = weeksWithData.length > 0 ? weeksWithData[weeksWithData.length-1] : null;
-      // For habits, use the most recent week that actually has habit data (may differ from latestWeek)
-      const latestHabitWeek = [...(plannerData.weeks||[])].reverse().find(w=>(w.aActivities||[]).some(a=>a.name?.trim())) || latestWeek;
+      // Most recent week with actual logged habit days (not a pre-planned empty week)
+      const latestHabitWeek = pickHabitWeek(plannerData.weeks, latestWeek);
       const recentWins = latestWeek?.wins?.filter(x=>x.trim()).join(', ') || 'None logged';
       const recentFocus = latestWeek?.focus || 'Not set';
       const anvilStreak = (()=>{
@@ -815,7 +828,10 @@
       const habitSummary = (()=>{
         const acts=(latestHabitWeek?.aActivities||[]).filter(a=>a.name?.trim());
         if(!acts.length) return 'No habits tracked';
-        return acts.map(a=>`${a.name} (${(a.days||[]).filter(Boolean).length}/7 days)`).join(', ');
+        return acts.map(a=>{
+          const done=(a.days||[]).filter(Boolean).length, tgt=habitTarget(a);
+          return `${a.name.trim()} (${done}/${tgt} target${done>=tgt?' — HIT':''})`;
+        }).join(', ');
       })();
       const goalSummary = (plannerData.goals||[]).filter(g=>g.title?.trim()).map((g,i)=>`${i+1}. ${g.title} (${g.completion||0}%)`).join(', ') || 'No goals set';
       const latestWheel = (()=>{
@@ -863,12 +879,12 @@
         return weeksWithData.slice(-3).map(w=>(w.wins||[]).filter(x=>x.trim()).join(', ')).filter(Boolean).join(' | ') || 'None logged';
       })();
       const stuckHabits = (()=>{
-        const recent = (plannerData.weeks||[]).slice(-4);
+        const recent = (plannerData.weeks||[]).filter(weekHasHabitLogs).slice(-4);
         const issues = {};
         recent.forEach(w=>(w.aActivities||[]).forEach(a=>{
           if(!a.name?.trim()) return;
           const done = (a.days||[]).filter(Boolean).length;
-          if(done < 3) issues[a.name] = (issues[a.name]||0)+1;
+          if(done < habitTarget(a)) issues[a.name.trim()] = (issues[a.name.trim()]||0)+1;
         }));
         const struggling = Object.entries(issues).filter(([,c])=>c>=2).map(([n])=>n);
         return struggling.length ? struggling.join(', ') : 'None identified';
@@ -884,7 +900,7 @@
         return (plannerData.notes||[]).slice(0,3).map(n=>`[${n.tag||'Note'}] ${n.title||''}: ${n.content?.slice(0,80)||''}`).join(' | ') || 'No journal entries';
       })();
 
-      const sessionMemory = `\nSESSION MEMORY — use this to coach specifically, never generically. Reference their actual words back to them:\n\nFOUNDATION:\n- Slight Edge habits: ${plannerData.slightEdge||'Not defined'}\n- Year Theme: ${plannerData.yearTheme||'Not set'}\n- 120-Day Vision: ${plannerData.vision120Day||'Not defined'}\n- Weeks into cycle: ${weeksWithData.length} of 17\n\nGOALS & PROGRESS:\n${goalTrends}\n\nPERFORMANCE DATA:\n- Anvil project: ${plannerData.anvilProject?.project||'Not set'} | Streak: ${anvilStreak} days\n- Recent Anvil session notes: ${recentAnvilNotes}\n- Habits tracked: ${habitSummary}\n- Habits struggling (under 3/7 for 2+ weeks): ${stuckHabits}\n- Wheel of Life scores: ${latestWheel}\n\nTHEIR ACTUAL WORDS — quote these back, reference them directly:\n- Recent reflections: ${recentReflections}\n- Recent gratitude entries: ${recentGratitude}\n- Recent wins they logged: ${weeklyWinsAll}\n- Today's wins: ${recentTodaysWins}\n- Hard things they're working on: ${hardThingsLog}\n- What they want to improve: ${weeklyImprovements}\n- Latest weekly focus: ${recentFocus}\n- Journal notes: ${journalNotes}\n\nACCOUNTABILITY:\n${commitmentContext}\n- Current context: ${currentContext?JSON.stringify(currentContext):'General'}`;
+      const sessionMemory = `\nSESSION MEMORY — use this to coach specifically, never generically. Reference their actual words back to them:\n\nFOUNDATION:\n- Slight Edge habits: ${plannerData.slightEdge||'Not defined'}\n- Year Theme: ${plannerData.yearTheme||'Not set'}\n- 120-Day Vision: ${plannerData.vision120Day||'Not defined'}\n- Weeks into cycle: ${weeksWithData.length} of 17\n\nGOALS & PROGRESS:\n${goalTrends}\n\nPERFORMANCE DATA:\n- Anvil project: ${plannerData.anvilProject?.project||'Not set'} | Streak: ${anvilStreak} days\n- Recent Anvil session notes: ${recentAnvilNotes}\n- Habits tracked: ${habitSummary}\n- Habits struggling (below their weekly target for 2+ logged weeks): ${stuckHabits}\n- Wheel of Life scores: ${latestWheel}\n\nTHEIR ACTUAL WORDS — quote these back, reference them directly:\n- Recent reflections: ${recentReflections}\n- Recent gratitude entries: ${recentGratitude}\n- Recent wins they logged: ${weeklyWinsAll}\n- Today's wins: ${recentTodaysWins}\n- Hard things they're working on: ${hardThingsLog}\n- What they want to improve: ${weeklyImprovements}\n- Latest weekly focus: ${recentFocus}\n- Journal notes: ${journalNotes}\n\nACCOUNTABILITY:\n${commitmentContext}\n- Current context: ${currentContext?JSON.stringify(currentContext):'General'}`;
 
       const weeksIn = weeksWithData.length;
       const cyclePhase = weeksIn <= 2 ? 'foundation' : weeksIn <= 6 ? 'execution' : weeksIn <= 12 ? 'deepening' : 'finishing';
@@ -976,13 +992,13 @@
 
     const weeksWithData = (plannerData.weeks||[]).filter(w=>w.wins?.some(x=>x.trim())||w.focus?.trim());
     const latestWeek = weeksWithData[weeksWithData.length-1];
-    // For habits snapshot, use the most recent week with actual habit data (not just wins/focus)
-    const latestHabitWeek = [...(plannerData.weeks||[])].reverse().find(w=>(w.aActivities||[]).some(a=>a.name?.trim())) || latestWeek;
+    // Most recent week with actual logged habit days (not a pre-planned empty week)
+    const latestHabitWeek = pickHabitWeek(plannerData.weeks, latestWeek);
     const habits = (latestHabitWeek?.aActivities||[]).filter(a=>a.name?.trim()).map(a=>({name:a.name,days:(a.days||[]).filter(Boolean).length,target:a.targetDays||7}));
     const goals = (plannerData.goals||[]).filter(g=>g.title?.trim()).map(g=>({title:g.title,pct:g.completion||0}));
 
     // Stuck habits (under half target for 2+ weeks)
-    const recentWeeks = (plannerData.weeks||[]).slice(-4);
+    const recentWeeks = (plannerData.weeks||[]).filter(weekHasHabitLogs).slice(-4);
     const habitIssues = {};
     recentWeeks.forEach(w=>(w.aActivities||[]).forEach(a=>{
       if(!a.name?.trim()) return;
