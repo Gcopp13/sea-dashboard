@@ -1061,9 +1061,10 @@ Message should be 1-2 sentences, direct, specific to their data. No generic fluf
 Label should clearly describe what is being coached (e.g. "Anvil Streak", "Meditation Habit", "Goal Check-in") — never just reuse the Anvil project name for habit coaching.`;
 
     try {
+      const coachToken = await getSessionToken();
       const res = await fetch('/.netlify/functions/ai-coach', {
         method: 'POST',
-        headers: {'Content-Type':'application/json'},
+        headers: {'Content-Type':'application/json', 'Authorization': `Bearer ${coachToken || ''}`},
         body: JSON.stringify({
           systemPrompt: 'You are a decision-making AI that reviews dashboard data and decides whether to send a coaching message. Respond only with valid JSON.',
           maxTokens: 200,
@@ -1171,9 +1172,10 @@ Label should clearly describe what is being coached (e.g. "Anvil Streak", "Medit
       setMessages(newMessages);
       setInput(''); setLoading(true);
       try {
+        const coachToken = await getSessionToken();
         const res = await fetch('/.netlify/functions/ai-coach', {
           method:'POST',
-          headers:{'Content-Type':'application/json'},
+          headers:{'Content-Type':'application/json', 'Authorization': `Bearer ${coachToken || ''}`},
           body: JSON.stringify({
             systemPrompt: buildCoachSystemPrompt(plannerData, personality, null),
             maxTokens: 1024,
@@ -1311,9 +1313,10 @@ Label should clearly describe what is being coached (e.g. "Anvil Streak", "Medit
       setMessages(newMessages);
       setInput(''); setLoading(true);
       try {
+        const coachToken = await getSessionToken();
         const res = await fetch('/.netlify/functions/ai-coach', {
           method: 'POST',
-          headers: {'Content-Type':'application/json'},
+          headers: {'Content-Type':'application/json', 'Authorization': `Bearer ${coachToken || ''}`},
           body: JSON.stringify({
             systemPrompt: buildCoachSystemPrompt(plannerData, personality, null),
             maxTokens: 1024,
