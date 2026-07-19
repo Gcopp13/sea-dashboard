@@ -112,7 +112,6 @@
   const { useState, useEffect, useRef, useCallback } = React;
 
   // ── Coach API ──────────────────────────────────────────────────────────────
-  const COACH_API = '/.netlify/functions/coach';
 
   // ── Auth: Login Screen ─────────────────────────────────────────────────────
   // ── Shared auth styles ──────────────────────────────────────────────────
@@ -440,7 +439,6 @@
       {Array.isArray(d) ? d.map((p, i) => <path key={i} d={p}/>) : <path d={d}/>}
     </svg>
   );
-  const CoachTabIcon = () => <span style={{fontSize:'18px'}}>⚓</span>;
   const SunIcon    = () => <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>;
   const CalIcon    = () => <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>;
   const StarIcon   = () => <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>;
@@ -1496,14 +1494,12 @@ Label should clearly describe what is being coached (e.g. "Anvil Streak", "Medit
       {id:'personality',title:'Your Coach',subtitle:'Set up your coaching style',type:'personality'},
       {id:'startDate',title:'Your 120-Day Start Date',subtitle:'When does your journey begin?',type:'startDate',hasInfo:true},
       {id:'coachProfile',title:'Help Your Coach Know You',subtitle:'Quick answers — makes coaching personal from day one',type:'coachProfile'},
-      {id:'coachConnect',title:'Connect to Your Coach',subtitle:'Enter your coach code to get started',type:'coachConnect'},
       {id:'complete',isComplete:true}
     ];
     const cur = STEPS[step];
     const progress = (step/(STEPS.length-1))*100;
     const canNext = () => {
       if (cur.isWelcome||cur.isComplete) return true;
-      if (cur.type==='coachConnect') return true; // optional step
       if (cur.field) return form[cur.field].trim().length>0;
       if (cur.type==='goals') return form.goals.some(g=>g.title.trim());
       if (cur.type==='anvil') return form.anvil.project.trim().length>0;
@@ -1736,65 +1732,6 @@ Label should clearly describe what is being coached (e.g. "Anvil Streak", "Medit
                       </div>
                     );
                   })()}
-                  {cur.type==='coachConnect' && (()=>{
-                    const [ccInput, setCcInput] = React.useState('');
-                    const [ccStatus, setCcStatus] = React.useState('idle');
-                    const [ccError, setCcError] = React.useState('');
-                    const [ccName, setCcName] = React.useState(()=>localStorage.getItem('sea_connected_coach_name')||'');
-                    const connectCoach = async () => {
-                      const code = ccInput.trim().toUpperCase();
-                      if (!code) return;
-                      setCcStatus('loading'); setCcError('');
-                      try {
-                        const res = await fetch(`${COACH_API}?action=resolve-code&code=${encodeURIComponent(code)}`);
-                        const d = await res.json();
-                        if (!res.ok || d.error) { setCcStatus('error'); setCcError(d.error||'Invalid code'); return; }
-                        localStorage.setItem('sea_coach_id', d.coachId);
-                        localStorage.setItem('sea_connected_coach_name', d.coachName||code);
-                        setCcName(d.coachName||code);
-                        // Notify coach (fire and forget)
-                        fetch(`${COACH_API}?action=notify-coach-connected`, {
-                          method: 'POST',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({ coachId: d.coachId, advisorId: '', advisorName: '', advisorEmail: form.email||'' }),
-                        }).catch(()=>{});
-                        setCcStatus('success');
-                      } catch(e) { setCcStatus('error'); setCcError('Connection error. Try again.'); }
-                    };
-                    return (
-                      <div className="space-y-4">
-                        {ccName ? (
-                          <div className="flex items-center gap-3 bg-green-500/10 border border-green-500/30 rounded-xl px-4 py-4">
-                            <span className="text-green-400 text-2xl">✅</span>
-                            <div>
-                              <p className="font-bold text-white">Connected to {ccName}</p>
-                              <p className="text-xs text-slate-400 mt-0.5">Your coach can see your progress and message you.</p>
-                            </div>
-                          </div>
-                        ) : (
-                          <>
-                            <p className="text-slate-300 text-sm">Ask your coach for their code and enter it below. You can skip this and add it later in Settings.</p>
-                            <div className="flex gap-2">
-                              <input
-                                value={ccInput}
-                                onChange={e=>setCcInput(e.target.value.toUpperCase())}
-                                onKeyDown={e=>e.key==='Enter'&&connectCoach()}
-                                placeholder="e.g. GINO-98FB"
-                                maxLength={12}
-                                className="flex-1 bg-slate-700 border border-slate-600 rounded-xl p-4 text-white placeholder-slate-500 font-mono text-lg tracking-widest focus:border-purple-500 focus:outline-none"
-                              />
-                              <button onClick={connectCoach} disabled={ccStatus==='loading'||!ccInput.trim()}
-                                className="px-5 rounded-xl font-bold text-white transition-all disabled:opacity-50"
-                                style={{background:ccStatus==='success'?'#10b981':'linear-gradient(135deg,#6366f1,#8b5cf6)'}}>
-                                {ccStatus==='loading'?'...':ccStatus==='success'?'✓':'Go'}
-                              </button>
-                            </div>
-                            {ccStatus==='error' && <p className="text-xs text-red-400">{ccError}</p>}
-                          </>
-                        )}
-                      </div>
-                    );
-                  })()}
                   {cur.type==='wheel' && (
                     <div className="space-y-4">
                       {CATS.map(cat=>{
@@ -1845,7 +1782,7 @@ Label should clearly describe what is being coached (e.g. "Anvil Streak", "Medit
                 <div className="flex gap-3 mt-4">
                   {step>1&&<button onClick={()=>setStep(s=>s-1)} className="px-5 py-3 bg-slate-800 hover:bg-slate-700 text-white rounded-xl transition-colors"><ChevLeft/></button>}
                   <button onClick={()=>step===STEPS.length-2?setStep(s=>s+1):setStep(s=>s+1)} disabled={!canNext()} className="flex-1 py-3 rounded-xl font-bold text-white disabled:opacity-40 transition-all" style={{background:'linear-gradient(135deg,#3b82f6,#8b5cf6)'}}>
-                    {step===STEPS.length-2?'Complete Setup →':cur.type==='coachConnect'&&!localStorage.getItem('sea_connected_coach_name')?'Skip for now →':'Next →'}
+                    {step===STEPS.length-2?'Complete Setup →':'Next →'}
                   </button>
                 </div>
               </div>
@@ -2307,59 +2244,6 @@ Label should clearly describe what is being coached (e.g. "Anvil Streak", "Medit
     );
   };
 
-  const CoachMessageBanner = ({ authUser }) => {
-    const [msg, setMsg] = useState(null);
-    const [dismissed, setDismissed] = useState(false);
-
-    useEffect(()=>{
-      if (!authUser?.id || dismissed) return;
-      const load = async () => {
-        try {
-          const res = await fetch(`${COACH_API}?action=get-messages&advisorId=${encodeURIComponent(authUser.id)}`);
-          const data = await res.json();
-          if (!Array.isArray(data)) return;
-          // Find latest unread coach message
-          const unread = data.filter(m=>m.sender==='coach'&&!m.read);
-          if (unread.length > 0) {
-            const latest = unread[unread.length-1];
-            setMsg(latest);
-          } else {
-            setMsg(null);
-          }
-        } catch(e) {}
-      };
-      load();
-      // Poll every 60 seconds for new messages
-      const t = setInterval(load, 60*1000);
-      return () => clearInterval(t);
-    },[authUser, dismissed]);
-
-    const dismiss = async () => {
-      setDismissed(true);
-      setMsg(null);
-      // Mark all read
-      try {
-        await fetch(`${COACH_API}?action=mark-read`, {
-          method: 'POST', headers: {'Content-Type':'application/json'},
-          body: JSON.stringify({ advisorId: authUser.id }),
-        });
-      } catch(e) {}
-    };
-
-    if (!msg || dismissed) return null;
-    return (
-      <div className="rounded-2xl p-4 border border-purple-500/50 relative" style={{background:'linear-gradient(135deg,rgba(99,102,241,0.15),rgba(139,92,246,0.1))'}}>
-        <div className="flex items-start gap-3">
-          <span className="text-2xl flex-shrink-0">💬</span>
-          <div className="flex-1 min-w-0">
-            <p className="text-xs font-bold text-purple-400 uppercase tracking-wide mb-1">Message from {msg.coach_name||'Your Coach'}</p>
-            <p className="text-sm text-white leading-relaxed">{msg.message}</p>
-          </div>
-          <button onClick={dismiss} className="flex-shrink-0 text-slate-500 hover:text-white text-lg leading-none ml-1">×</button>
-        </div>
-      </div>
-    );
-  };
 
   const TodayView = ({ data, updateField, weekNum, dayIdx, setDayIdx, openCoach, score, onPrint, setActiveTab, authUser }) => {
     const dayNames = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
@@ -2547,7 +2431,6 @@ Label should clearly describe what is being coached (e.g. "Anvil Streak", "Medit
         })()}
 
         {/* Coach message banner */}
-        <CoachMessageBanner authUser={authUser}/>
 
         {/* Score + Anvil streak */}
         <div className="grid grid-cols-2 gap-3">
@@ -3245,25 +3128,6 @@ Label should clearly describe what is being coached (e.g. "Anvil Streak", "Medit
       const firstName = shareData.n?.split(' ')[0] || '';
       const shareText = `${firstName ? firstName + "'s " : ''}S.E.A. Score this week: ${score.total}/100${score.anvilStreak > 0 ? ' 🔥 ' + score.anvilStreak + ' day streak' : ''}`;
 
-      // Also push snapshot to Netlify Blobs if a coach ID is configured
-      const coachId = localStorage.getItem('sea_coach_id');
-      // Use real Supabase auth user ID for advisor identity (falls back to local anon ID)
-      const _session = await _supabase.auth.getSession().catch(()=>({data:{session:null}}));
-      const advisorId = _session.data.session?.user?.id || getOrCreateAdvisorId();
-      if (coachId?.trim()) {
-        fetch(`${COACH_API}?action=share`, {
-          method: 'POST', headers: {'Content-Type':'application/json'},
-          body: JSON.stringify({
-            advisorId,
-            coachId: coachId.trim(),
-            advisorData: {
-              n: shareData.n, s: score.total, as: score.anvilStreak,
-              hp: score.habitPct, g: shareData.g
-            }
-          })
-        }).catch(()=>{}); // fire-and-forget
-      }
-
       if (navigator.share) {
         navigator.share({ title: 'My S.E.A. Dashboard Score', text: shareText, url }).catch(()=>{});
         localStorage.setItem('share-used','true');
@@ -3294,19 +3158,6 @@ Label should clearly describe what is being coached (e.g. "Anvil Streak", "Medit
               <button onClick={generateShareLink} className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-green-400 border border-green-500/30 hover:bg-green-500/10 transition-all">
                 {shareCopied ? '✓ Link Copied!' : '📤 Share Score'}
               </button>
-              {localStorage.getItem('sea_coach_id') && (
-                <button onClick={async ()=>{
-                  const coachId = localStorage.getItem('sea_coach_id');
-                  const advisorId = (await _supabase.auth.getSession()).data.session?.user?.id || getOrCreateAdvisorId();
-                  const firstName = (data?.name||'').split(' ')[0]||'';
-                  fetch(`${COACH_API}?action=share`,{
-                    method:'POST',headers:{'Content-Type':'application/json'},
-                    body:JSON.stringify({advisorId,coachId,advisorData:{n:firstName||'Advisor',s:score.total,as:score.anvilStreak,hp:score.habitPct,g:(data?.goals||[]).map(g=>g.title).filter(Boolean)}})
-                  }).then(()=>alert('✓ Score shared with your coach!')).catch(()=>alert('Could not reach coach. Try again.'));
-                }} className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-purple-400 border border-purple-500/30 hover:bg-purple-500/10 transition-all">
-                  🎯 Share with Coach
-                </button>
-              )}
             </div>
             <button onClick={onPrint} className="p-2 rounded-xl bg-white/10 hover:bg-white/20 text-white/60 hover:text-white transition-all" title="Print Score"><PrintIcon/></button>
           </div>
@@ -3538,147 +3389,8 @@ Label should clearly describe what is being coached (e.g. "Anvil Streak", "Medit
   };
   // ── COACH SETUP (inside Setup section of MoreView) ────────────────────────
   // ── COACH CODE ENTRY (for advisors to connect to their coach) ────────────────
-  const CoachSetup = ({ authUser }) => {
-    const [codeInput, setCodeInput] = useState('');
-    const [status, setStatus] = useState('idle'); // idle | loading | success | error
-    const [errorMsg, setErrorMsg] = useState('');
-    const [connectedCoach, setConnectedCoach] = useState(()=>localStorage.getItem('sea_connected_coach_name')||'');
-
-    const connect = async () => {
-      const code = codeInput.trim().toUpperCase();
-      if (!code) return;
-      setStatus('loading'); setErrorMsg('');
-      try {
-        const res = await fetch(`${COACH_API}?action=resolve-code&code=${encodeURIComponent(code)}`);
-        const d = await res.json();
-        if (!res.ok || d.error) { setStatus('error'); setErrorMsg(d.error||'Invalid code'); return; }
-        // Save coach UUID + name
-        localStorage.setItem('sea_coach_id', d.coachId);
-        localStorage.setItem('sea_connected_coach_name', d.coachName||code);
-        setConnectedCoach(d.coachName||code);
-        window.dispatchEvent(new Event('sea-coach-id-changed'));
-        // Persist to Supabase profile + notify coach
-        if (authUser?.id) {
-          try {
-            const session = await _supabase.auth.getSession();
-            const token = session?.data?.session?.access_token;
-            if (token) {
-              await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${authUser.id}`, {
-                method: 'PATCH',
-                headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
-                body: JSON.stringify({ coach_id: d.coachId }),
-              });
-            }
-          } catch(e) { /* silent */ }
-          // Notify coach via push + email (fire and forget)
-          const profileRes = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${authUser.id}&select=full_name,email`, {
-            headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': `Bearer ${(await _supabase.auth.getSession()).data.session?.access_token||''}` }
-          }).catch(()=>null);
-          const profileData = profileRes?.ok ? await profileRes.json() : [];
-          const myName = profileData[0]?.full_name || authUser.email || '';
-          const myEmail = profileData[0]?.email || authUser.email || '';
-          fetch(`${COACH_API}?action=notify-coach-connected`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ coachId: d.coachId, advisorId: authUser.id, advisorName: myName, advisorEmail: myEmail }),
-          }).catch(()=>{});
-        }
-        setStatus('success');
-        setCodeInput('');
-        setTimeout(()=>setStatus('idle'), 3000);
-      } catch(e) { setStatus('error'); setErrorMsg('Connection error. Try again.'); }
-    };
-
-    const disconnect = () => {
-      localStorage.removeItem('sea_coach_id');
-      localStorage.removeItem('sea_connected_coach_name');
-      setConnectedCoach('');
-      window.dispatchEvent(new Event('sea-coach-id-changed'));
-      setStatus('idle');
-    };
-
-    return (
-      <div className="bg-slate-800/60 rounded-2xl p-5 border border-slate-700">
-        <h3 className="text-sm font-bold text-purple-400 mb-1">⚓ Coach Connection</h3>
-        <p className="text-xs text-slate-400 mb-4">Enter your coach's code to connect — they can then see your progress and send you messages.</p>
-        {connectedCoach ? (
-          <div className="space-y-3">
-            <div className="flex items-center gap-3 bg-green-500/10 border border-green-500/30 rounded-xl px-4 py-3">
-              <span className="text-green-400 text-xl">✅</span>
-              <div className="flex-1">
-                <p className="text-sm font-bold text-white">Connected to {connectedCoach}</p>
-                <p className="text-xs text-slate-400">Your coach can see your progress and message you.</p>
-              </div>
-            </div>
-            <button onClick={disconnect} className="w-full py-2 rounded-xl text-xs text-slate-400 border border-slate-600/50 hover:border-red-500/50 hover:text-red-400 transition-all">
-              Disconnect from coach
-            </button>
-          </div>
-        ) : (
-          <div className="space-y-3">
-            <div>
-              <label className="text-xs font-bold text-slate-400 uppercase tracking-wide block mb-2">Coach Code</label>
-              <div className="flex gap-2">
-                <input
-                  value={codeInput}
-                  onChange={e=>setCodeInput(e.target.value.toUpperCase())}
-                  onKeyDown={e=>e.key==='Enter'&&connect()}
-                  placeholder="e.g. GINO-98FB"
-                  maxLength={12}
-                  className="flex-1 bg-slate-700/50 border border-slate-600/50 rounded-xl p-3 text-white placeholder-slate-500 text-sm font-mono focus:border-purple-500 focus:outline-none tracking-widest"
-                />
-                <button onClick={connect} disabled={status==='loading'||!codeInput.trim()}
-                  className="px-4 rounded-xl font-bold text-sm text-white transition-all disabled:opacity-50"
-                  style={{background:status==='success'?'#10b981':'linear-gradient(135deg,#6366f1,#8b5cf6)',minWidth:'80px'}}>
-                  {status==='loading'?'...':status==='success'?'✓ Done!':'Connect'}
-                </button>
-              </div>
-              {status==='error' && <p className="text-xs text-red-400 mt-1.5">{errorMsg}</p>}
-              <p className="text-xs text-slate-500 mt-1.5">Ask your coach for their code — they can share it from their app.</p>
-            </div>
-          </div>
-        )}
-      </div>
-    );
-  };
 
   // ── COACH CODE DISPLAY (for coaches to share their code) ─────────────────
-  const CoachCodeDisplay = ({ authUser }) => {
-    const [coachCode, setCoachCode] = useState('');
-    const [copied, setCopied] = useState(false);
-    useEffect(()=>{
-      if (!authUser?.id) return;
-      const load = async () => {
-        try {
-          const session = await _supabase.auth.getSession();
-          const token = session?.data?.session?.access_token;
-          if (!token) return;
-          const res = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${authUser.id}&select=coach_code`, {
-            headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': `Bearer ${token}` }
-          });
-          const rows = await res.json();
-          if (rows[0]?.coach_code) setCoachCode(rows[0].coach_code);
-        } catch(e) {}
-      };
-      load();
-    },[authUser]);
-    const copy = () => {
-      navigator.clipboard.writeText(coachCode).then(()=>{ setCopied(true); setTimeout(()=>setCopied(false),2000); }).catch(()=>{});
-    };
-    if (!coachCode) return null;
-    return (
-      <div className="bg-purple-500/10 border border-purple-500/30 rounded-2xl p-5 mb-4">
-        <h3 className="text-sm font-bold text-purple-400 mb-1">🔑 Your Coach Code</h3>
-        <p className="text-xs text-slate-400 mb-3">Share this code with your advisors so they can connect to you.</p>
-        <div className="flex gap-2 items-center">
-          <div className="flex-1 bg-slate-900/60 border border-purple-500/40 rounded-xl p-3 font-mono text-xl font-bold text-white tracking-widest text-center">{coachCode}</div>
-          <button onClick={copy} className="bg-purple-600 hover:bg-purple-500 text-white px-4 py-3 rounded-xl text-sm font-bold transition-all">
-            {copied?'✓ Copied!':'📋 Copy'}
-          </button>
-        </div>
-      </div>
-    );
-  };
 
   // Wrapper so WeekView has its own local week nav — prevents nav arrows from changing global weekNum
   const WeekViewWrapper = ({ data, updateField, initialWeekNum, openCoach, onPrint, onMilestone, onBack }) => {
@@ -3845,7 +3557,6 @@ Label should clearly describe what is being coached (e.g. "Anvil Streak", "Medit
             </div>
             <ChevRight/>
           </button>
-          <CoachMessages advisorId={authUser?.id || getOrCreateAdvisorId()} coachId={localStorage.getItem('sea_coach_id')||''} advisorName={data?.name||data?.fullName||''} autoOpen={autoOpenMessages}/>
         </div>
 
         {/* TOOLS */}
@@ -4511,8 +4222,6 @@ Label should clearly describe what is being coached (e.g. "Anvil Streak", "Medit
             </div>
 
             {/* Coach Connection */}
-            {isCoachOrAdmin && <CoachCodeDisplay authUser={authUser}/>}
-            <CoachSetup authUser={authUser}/>
           </div>
         )}
       </div>
@@ -4626,7 +4335,6 @@ Label should clearly describe what is being coached (e.g. "Anvil Streak", "Medit
     useEffect(()=>{
       if (authUser) {
         syncPlannerData(authUser.id);
-        syncCoachIdToProfile(authUser.id);
       }
     },[authUser]);
 
@@ -4705,7 +4413,6 @@ Label should clearly describe what is being coached (e.g. "Anvil Streak", "Medit
           coachCommitment: localStorage.getItem('coach-commitment'),
           coachCommitmentDate: localStorage.getItem('coach-commitment-date'),
           shareUsed: localStorage.getItem('share-used'),
-          coachId: localStorage.getItem('sea_coach_id'),
           archives: (() => { try { return JSON.parse(localStorage.getItem('sea-archives')||'[]'); } catch(e){return [];} })()
         };
         const payload = { ...d, _meta: meta };
@@ -4767,7 +4474,6 @@ Label should clearly describe what is being coached (e.g. "Anvil Streak", "Medit
             if (m.coachCommitment) localStorage.setItem('coach-commitment', m.coachCommitment);
             if (m.coachCommitmentDate) localStorage.setItem('coach-commitment-date', m.coachCommitmentDate);
             if (m.shareUsed) localStorage.setItem('share-used', m.shareUsed);
-            if (m.coachId) localStorage.setItem('sea_coach_id', m.coachId);
             if (m.archives && m.archives.length > 0) localStorage.setItem('sea-archives', JSON.stringify(m.archives));
           }
           // Strip _meta before setting into app state (it's not planner data)
@@ -4795,37 +4501,6 @@ Label should clearly describe what is being coached (e.g. "Anvil Streak", "Medit
       }
     };
 
-    // Sync coach ID from localStorage → Supabase profile (runs once on login)
-    const syncCoachIdToProfile = async (userId) => {
-      try {
-        const localCoachId = localStorage.getItem('sea_coach_id');
-        // Reject missing or anonymous IDs (adv_ prefix = old local format, not a real Supabase UUID)
-        if (!localCoachId || localCoachId.startsWith('adv_')) return;
-        const session = await _supabase.auth.getSession();
-        const token = session.data.session?.access_token;
-        if (!token) return;
-        // Only write if profile coach_id is currently null
-        const profileRes = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${userId}&select=coach_id`, {
-          headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': `Bearer ${token}` }
-        });
-        const profileRows = await profileRes.json();
-        const currentCoachId = profileRows?.[0]?.coach_id;
-        if (!currentCoachId) {
-          await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${userId}`, {
-            method: 'PATCH',
-            headers: {
-              'apikey': SUPABASE_ANON_KEY,
-              'Authorization': `Bearer ${token}`,
-              'Content-Type': 'application/json',
-              'Prefer': 'return=minimal',
-            },
-            body: JSON.stringify({ coach_id: localCoachId }),
-          });
-        }
-      } catch (e) {
-        console.error('syncCoachIdToProfile error:', e);
-      }
-    };
 
     const saveData = useCallback((d)=>{
       try{localStorage.setItem('sea-planner-data',JSON.stringify(d||data));setSaveStatus('Saved ✓');setTimeout(()=>setSaveStatus(''),2000);}
@@ -4861,8 +4536,7 @@ Label should clearly describe what is being coached (e.g. "Anvil Streak", "Medit
             summaryName: localStorage.getItem('summary-name'),
             summaryOptIn: localStorage.getItem('summary-optin'),
             coachCommitment: localStorage.getItem('coach-commitment'),
-            coachId: localStorage.getItem('sea_coach_id'),
-            archives: (() => { try { return JSON.parse(localStorage.getItem('sea-archives')||'[]'); } catch(e){return [];} })()
+              archives: (() => { try { return JSON.parse(localStorage.getItem('sea-archives')||'[]'); } catch(e){return [];} })()
           };
           const payload = JSON.stringify({
             user_id: authUser.id,
@@ -5005,7 +4679,6 @@ Label should clearly describe what is being coached (e.g. "Anvil Streak", "Medit
       {id:'score',  label:'Score',  Icon:StarIcon},
       {id:'aicoach',label:'Edge',  Icon:BotIcon},
       {id:'more',   label:'More',   Icon:MenuIcon},
-      ...(isCoachOrAdmin?[{id:'coach',label:'My Coach',Icon:CoachTabIcon}]:[]),
       ...(userRole==='admin'?[{id:'admin',label:'Admin',Icon:()=><span style={{fontSize:'18px'}}>⚙️</span>}]:[]),
     ];
 
@@ -5151,9 +4824,6 @@ Label should clearly describe what is being coached (e.g. "Anvil Streak", "Medit
             {activeTab==='aicoach'&&<AICoachTab plannerData={data} authUserId={authUser?.id} personality={coachPersonality} conversations={conversations} onConversationsChange={setConversations}/>}
             {activeTab==='journal'&&<JournalView data={data} updateField={updateField}/>}
             {activeTab==='more'&&<MoreView data={data} updateField={updateField} saveData={saveData} openCoach={openCoach} personality={coachPersonality} setPersonality={setCoachPersonality} onReopenOnboarding={onReopenOnboarding} onMilestone={setMilestone} weekNum={plannerWeekNum} setWeekNum={setWeekNum} onSignOut={async()=>{await _supabase.auth.signOut();setAuthUser(null);}} onMetaChange={()=>{ if(authUser) savePlannerDataToCloud(authUser.id, data); }} setActiveTab={setActiveTab} authUser={authUser} onRitualBack={()=>setPlanningNextWeek(false)} isCoachOrAdmin={isCoachOrAdmin} autoOpenMessages={autoOpenMessages}/>}
-            <div style={{display:activeTab==='coach'&&isCoachOrAdmin?'block':'none'}}>
-              {isCoachOrAdmin&&<CoachDashboard coachId={authUser?.id||myCoachId} embedded={true} authUser={authUser}/>}
-            </div>
             {activeTab==='admin'&&userRole==='admin'&&<AdminPanel authUser={authUser}/>}
           </div>
         </div>
@@ -5557,124 +5227,12 @@ Label should clearly describe what is being coached (e.g. "Anvil Streak", "Medit
     );
   };
 
-  // ── CoachMessageBox — pure vanilla JS textarea, React never touches it after mount ──
-  const CoachMessageBox = ({ advisorId, coachId, coachName }) => {
-    const wrapRef = useRef(null);
-    useEffect(() => {
-      const wrap = wrapRef.current;
-      if (!wrap) return;
-      // Build textarea and button purely in vanilla JS — immune to React re-renders
-      const ta = document.createElement('textarea');
-      ta.placeholder = 'Write a coaching message...';
-      ta.rows = 2;
-      ta.style.cssText = 'flex:1;padding:10px 12px;border-radius:10px;border:1px solid #334155;background:#0f172a;color:#f8fafc;font-size:16px;resize:none;font-family:inherit;min-width:0;width:100%;';
-      const btn = document.createElement('button');
-      btn.textContent = 'Send';
-      btn.disabled = true;
-      btn.style.cssText = 'padding:10px 16px;border-radius:10px;border:none;cursor:pointer;font-weight:700;font-size:13px;align-self:stretch;min-width:70px;background:#1e293b;color:#475569;transition:all 0.2s;flex-shrink:0;';
-      ta.addEventListener('input', () => {
-        const has = !!ta.value.trim();
-        btn.disabled = !has;
-        btn.style.background = has ? '#6366f1' : '#1e293b';
-        btn.style.color = has ? 'white' : '#475569';
-      });
-      btn.addEventListener('click', async () => {
-        const msg = ta.value.trim();
-        if (!msg || btn.disabled) return;
-        btn.disabled = true; btn.textContent = '...';
-        try {
-          const res = await fetch('/.netlify/functions/coach?action=send-message', {
-            method: 'POST', headers: {'Content-Type':'application/json'},
-            body: JSON.stringify({ advisorId, coachId, coachName: coachName||'Your Coach', message: msg })
-          });
-          const d = await res.json();
-          if (d.success) {
-            ta.value = ''; ta.dispatchEvent(new Event('input'));
-            btn.textContent = '✓ Sent'; btn.style.background = '#22c55e'; btn.style.color = 'white';
-            setTimeout(() => { btn.textContent = 'Send'; btn.style.background = '#1e293b'; btn.style.color = '#475569'; btn.disabled = true; }, 2500);
-            return;
-          }
-        } catch(e) { alert('Failed to send. Please try again.'); }
-        btn.disabled = !ta.value.trim(); btn.textContent = 'Send';
-      });
-      wrap.appendChild(ta);
-      wrap.appendChild(btn);
-      return () => { wrap.innerHTML = ''; };
-    }, []); // eslint-disable-line — intentionally empty, props are stable for lifetime of card
-    return (
-      <div style={{borderTop:'1px solid #334155',paddingTop:'12px'}}>
-        <div style={{fontSize:'10px',color:'#64748b',marginBottom:'8px',fontWeight:'700',textTransform:'uppercase',letterSpacing:'0.06em'}}>Send Message</div>
-        <div ref={wrapRef} style={{display:'flex',gap:'8px',alignItems:'flex-start'}}/>
-      </div>
-    );
-  };
-
-    // ── Coach sub-components (defined at module level to prevent remount on keypress) ──
-  const CoachScoreRing = ({ score }) => {
-    const pct = Math.min(100, Math.max(0, score||0));
-    const r=28, cx=32, cy=32, circ=2*Math.PI*r, dash=(pct/100)*circ;
-    const color = pct>=80?'#22c55e':pct>=50?'#f59e0b':'#ef4444';
-    return (
-      <svg width="64" height="64" viewBox="0 0 64 64" style={{flexShrink:0}}>
-        <circle cx={cx} cy={cy} r={r} fill="none" stroke="#1e293b" strokeWidth="6"/>
-        <circle cx={cx} cy={cy} r={r} fill="none" stroke={color} strokeWidth="6"
-          strokeDasharray={`${dash} ${circ-dash}`} strokeLinecap="round"
-          transform="rotate(-90 32 32)" style={{transition:'stroke-dasharray 0.5s'}}/>
-        <text x="32" y="37" textAnchor="middle" fill={color} fontSize="13" fontWeight="bold">{Math.round(pct)}</text>
-      </svg>
-    );
-  };
-  const CoachGoalBar = ({ goals }) => {
-    if (!goals?.length) return <span style={{color:'#64748b',fontSize:'12px'}}>No goals shared</span>;
-    const colors = ['#f97316','#3b82f6','#10b981','#a855f7'];
-    return (
-      <div style={{display:'flex',flexDirection:'column',gap:'5px'}}>
-        {goals.slice(0,4).map((g,i) => {
-          const pct = g.target>0 ? Math.min(100,(g.current/g.target)*100) : (g.completion||0);
-          return (
-            <div key={i}>
-              <div style={{display:'flex',justifyContent:'space-between',fontSize:'11px',color:'#94a3b8',marginBottom:'2px'}}>
-                <span style={{maxWidth:'170px',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{g.t || g.name}</span>
-                <span style={{fontWeight:'bold',color:colors[i%4]}}>{Math.round(pct)}%</span>
-              </div>
-              <div style={{height:'4px',background:'#1e293b',borderRadius:'2px'}}>
-                <div style={{height:'100%',width:`${pct}%`,background:colors[i%4],borderRadius:'2px',transition:'width 0.5s'}}/>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    );
-  };
-
   // ── ADMIN PANEL ─────────────────────────────────────────────────────────────
   const AdminPanel = ({ authUser }) => {
     const [users, setUsers] = useState([]);
     const [loading, setLoading] = useState(true);
     const [updating, setUpdating] = useState(null); // userId being updated
     const [error, setError] = useState(null);
-    const [coachInviteEmail, setCoachInviteEmail] = useState('');
-    const [coachInviteStatus, setCoachInviteStatus] = useState(null); // null | 'sending' | 'sent' | 'error'
-    const [coachInviteError, setCoachInviteError] = useState('');
-
-    const sendCoachInvite = async (e) => {
-      e.preventDefault();
-      if (!coachInviteEmail.trim()) return;
-      setCoachInviteStatus('sending'); setCoachInviteError('');
-      try {
-        const res = await fetch('/.netlify/functions/invite-coach', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email: coachInviteEmail.trim(), inviterId: authUser?.id }),
-        });
-        const data = await res.json();
-        if (!res.ok || data.error) { setCoachInviteError(data.error || 'Failed to send invite.'); setCoachInviteStatus('error'); }
-        else { setCoachInviteStatus('sent'); setCoachInviteEmail(''); setTimeout(() => setCoachInviteStatus(null), 4000); }
-      } catch(e) {
-        setCoachInviteError('Something went wrong. Please try again.'); setCoachInviteStatus('error');
-      }
-    };
-
     const fetchUsers = async () => {
       setLoading(true); setError(null);
       try {
@@ -5730,30 +5288,6 @@ Label should clearly describe what is being coached (e.g. "Anvil Streak", "Medit
           </button>
         </div>
 
-        {/* Invite a Coach */}
-        <div style={{ background: '#1e293b', border: '1px solid #334155', borderRadius: '14px', padding: '16px 20px', marginBottom: '20px' }}>
-          <div style={{ fontSize: '13px', fontWeight: '700', color: '#f8fafc', marginBottom: '4px' }}>🎓 Invite a Coach</div>
-          <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '12px' }}>Their account will be created with the Coach role automatically.</div>
-          <form onSubmit={sendCoachInvite} style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-            <input
-              type="email"
-              placeholder="coach@email.com"
-              value={coachInviteEmail}
-              onChange={e => setCoachInviteEmail(e.target.value)}
-              required
-              style={{ flex: 1, minWidth: '200px', padding: '9px 14px', borderRadius: '8px', border: '1px solid #334155', background: '#0f172a', color: '#f8fafc', fontSize: '13px', outline: 'none' }}
-            />
-            <button
-              type="submit"
-              disabled={coachInviteStatus === 'sending'}
-              style={{ padding: '9px 18px', borderRadius: '8px', background: coachInviteStatus === 'sent' ? '#10b981' : '#6366f1', color: 'white', border: 'none', cursor: 'pointer', fontSize: '13px', fontWeight: '700', whiteSpace: 'nowrap' }}
-            >
-              {coachInviteStatus === 'sending' ? 'Sending…' : coachInviteStatus === 'sent' ? '✓ Invite Sent!' : 'Send Coach Invite'}
-            </button>
-          </form>
-          {coachInviteStatus === 'error' && <p style={{ color: '#f87171', fontSize: '12px', margin: '8px 0 0' }}>{coachInviteError}</p>}
-        </div>
-
         {error && <div style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '10px', padding: '10px 14px', color: '#f87171', fontSize: '13px', marginBottom: '16px' }}>{error}</div>}
 
         {loading ? (
@@ -5791,470 +5325,6 @@ Label should clearly describe what is being coached (e.g. "Anvil Streak", "Medit
               </div>
             ))}
             {users.length === 0 && <div style={{ textAlign: 'center', padding: '40px', color: '#64748b' }}>No users found.</div>}
-          </div>
-        )}
-      </div>
-    );
-  };
-
-  // ── COACH DASHBOARD (shown at ?coach=ID) ──────────────────────────────────
-  // ── CoachMessageModal — top-level modal, completely isolated from advisor list ──
-  const CoachMessageModal = ({ advisorId, advisorName, coachId, coachName, onClose }) => {
-    const [msg, setMsg] = useState('');
-    const [sending, setSending] = useState(false);
-    const [sent, setSent] = useState(false);
-    const textareaRef = useRef(null);
-
-    useEffect(() => {
-      // Auto-focus when modal opens
-      setTimeout(() => textareaRef.current?.focus(), 50);
-    }, []);
-
-    const send = async () => {
-      const text = msg.trim();
-      if (!text) return;
-      setSending(true);
-      try {
-        const res = await fetch(`${COACH_API}?action=send-nudge`, {
-          method: 'POST', headers: {'Content-Type':'application/json'},
-          body: JSON.stringify({ advisorId, coachId, coachName: coachName||'Your Coach', message: text })
-        });
-        const d = await res.json();
-        if (d.success) { setSent(true); setTimeout(onClose, 1200); return; }
-      } catch(e) {}
-      setSending(false);
-      alert('Failed to send. Please try again.');
-    };
-
-    return (
-      <div style={{position:'fixed',inset:0,zIndex:9999,display:'flex',alignItems:'center',justifyContent:'center',padding:'20px',paddingBottom:'80px',background:'rgba(0,0,0,0.7)',backdropFilter:'blur(4px)'}}
-        onClick={onClose}>
-        <div style={{width:'100%',maxWidth:'560px',background:'#1e293b',borderRadius:'20px',padding:'24px',border:'1px solid #334155'}}
-          onClick={e=>e.stopPropagation()}>
-          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'16px'}}>
-            <div>
-              <div style={{fontWeight:'700',fontSize:'16px',color:'#f8fafc'}}>Message to {advisorName}</div>
-              <div style={{fontSize:'12px',color:'#64748b',marginTop:'2px'}}>From: {coachName||'Your Coach'}</div>
-            </div>
-            <button onClick={onClose} style={{background:'#334155',border:'none',borderRadius:'8px',color:'#94a3b8',cursor:'pointer',padding:'8px 12px',fontSize:'13px'}}>✕ Cancel</button>
-          </div>
-          <textarea
-            ref={textareaRef}
-            value={msg}
-            onChange={e=>setMsg(e.target.value)}
-            placeholder={`Write your coaching message to ${advisorName.split(' ')[0]}...`}
-            rows={4}
-            style={{width:'100%',padding:'14px',borderRadius:'12px',border:'1px solid #334155',background:'#0f172a',color:'#f8fafc',fontSize:'16px',resize:'none',fontFamily:'inherit',boxSizing:'border-box'}}
-          />
-          <button onClick={send} disabled={sending||!msg.trim()}
-            style={{marginTop:'12px',width:'100%',padding:'14px',borderRadius:'12px',border:'none',cursor:'pointer',fontWeight:'700',fontSize:'15px',
-                    background:sent?'#22c55e':msg.trim()?'#6366f1':'#334155',
-                    color:msg.trim()||sent?'white':'#475569',transition:'background 0.2s'}}>
-            {sent?'✓ Sent!':sending?'Sending...':'Send Message'}
-          </button>
-        </div>
-      </div>
-    );
-  };
-
-  const CoachDashboard = ({ coachId, embedded = false }) => {
-    const [advisors, setAdvisors] = useState([]);
-    const [loading, setLoading]   = useState(true);
-    const [error, setError]       = useState(null);
-    const [coachName, setCoachName] = useState(() => localStorage.getItem(`coach_name_${coachId}`) || '');
-    const [editingName, setEditingName] = useState(false);
-    const [messaging, setMessaging] = useState(null); // { advisorId, name }
-    const [activeView, setActiveView] = useState('advisors'); // 'advisors' | 'inbox'
-    const [inbox, setInbox] = useState([]);
-    const [inboxLoading, setInboxLoading] = useState(false);
-    const nameInputRef = useRef(null);
-    const [inviteEmail, setInviteEmail] = useState('');
-    const [inviteStatus, setInviteStatus] = useState(null); // null | 'sending' | 'sent' | 'error'
-    const [inviteError, setInviteError] = useState('');
-
-    const sendInvite = async (e) => {
-      e.preventDefault();
-      if (!inviteEmail.trim()) return;
-      setInviteStatus('sending'); setInviteError('');
-      try {
-        const res = await fetch('/.netlify/functions/invite-user', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email: inviteEmail.trim(), coachId }),
-        });
-        const data = await res.json();
-        if (!res.ok || data.error) { setInviteError(data.error || 'Failed to send invite.'); setInviteStatus('error'); }
-        else { setInviteStatus('sent'); setInviteEmail(''); setTimeout(() => setInviteStatus(null), 4000); }
-      } catch(err) {
-        setInviteError('Something went wrong. Please try again.'); setInviteStatus('error');
-      }
-    };
-
-    const fetchAdvisors = useCallback(async () => {
-      setLoading(true); setError(null);
-      try {
-        const res = await fetch(`${COACH_API}?action=get-advisors&coachId=${encodeURIComponent(coachId)}`);
-        const data = await res.json();
-        if (Array.isArray(data)) setAdvisors(data.sort((a,b)=>(b.lastUpdated||0)-(a.lastUpdated||0)));
-        else setError('Could not load advisors.');
-      } catch(e) { setError('Network error.'); }
-      setLoading(false);
-    }, [coachId]);
-
-    const fetchInbox = useCallback(async () => {
-      setInboxLoading(true);
-      try {
-        const res = await fetch(`${COACH_API}?action=get-coach-inbox&coachId=${encodeURIComponent(coachId)}`);
-        const data = await res.json();
-        if (Array.isArray(data)) setInbox(data);
-      } catch(e) {}
-      setInboxLoading(false);
-    }, [coachId]);
-
-    useEffect(() => { fetchAdvisors(); }, [fetchAdvisors]);
-    useEffect(() => {
-      if (activeView==='inbox') { fetchInbox(); }
-      // Poll every 60s regardless of which view is active so inbox badge stays fresh
-      const t = setInterval(() => { fetchInbox(); fetchAdvisors(); }, 60*1000);
-      return () => clearInterval(t);
-    }, [activeView, fetchInbox, fetchAdvisors]);
-
-    const markCoachRead = async (advisorId) => {
-      setInbox(prev=>prev.map(m=>m.advisor_id===advisorId?{...m,read:true}:m));
-      fetch(`${COACH_API}?action=mark-coach-read`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({coachId,advisorId})}).catch(()=>{});
-    };
-
-    const saveCoachName = () => {
-      const n = nameInputRef.current?.value?.trim() || '';
-      localStorage.setItem(`coach_name_${coachId}`, n);
-      setCoachName(n); setEditingName(false);
-    };
-
-    const [coachLinkCopied, setCoachLinkCopied] = React.useState(false);
-    const copyCoachLink = () => {
-      const url = `${window.location.origin}${window.location.pathname}?coach=${encodeURIComponent(coachId)}&invite=1`;
-      // Try clipboard API first, fall back to execCommand
-      const doCopy = (text) => {
-        if (navigator.clipboard && navigator.clipboard.writeText) {
-          navigator.clipboard.writeText(text).then(()=>{ setCoachLinkCopied(true); setTimeout(()=>setCoachLinkCopied(false),2500); }).catch(fallback);
-        } else { fallback(); }
-        function fallback() {
-          const el = document.createElement('textarea');
-          el.value = text; el.style.position='fixed'; el.style.opacity='0';
-          document.body.appendChild(el); el.select();
-          document.execCommand('copy');
-          document.body.removeChild(el);
-          setCoachLinkCopied(true); setTimeout(()=>setCoachLinkCopied(false),2500);
-        }
-      };
-      doCopy(url);
-    };
-
-    return (
-      <div style={embedded?{color:'#f8fafc',paddingBottom:'16px'}:{minHeight:'100vh',background:'#0f172a',color:'#f8fafc',fontFamily:'system-ui,sans-serif'}}>
-
-        {/* Message Modal — rendered at top level, completely isolated from advisor list */}
-        {messaging && <CoachMessageModal
-          advisorId={messaging.advisorId}
-          advisorName={messaging.name}
-          coachId={coachId}
-          coachName={coachName}
-          onClose={() => setMessaging(null)}
-        />}
-
-        {/* Header — standalone only */}
-        {!embedded && (
-          <div style={{background:'#1e293b',padding:'16px 20px',borderBottom:'1px solid #334155',display:'flex',alignItems:'center',justifyContent:'space-between',flexWrap:'wrap',gap:'12px'}}>
-            <div>
-              <div style={{display:'flex',alignItems:'center',gap:'8px'}}>
-                <span style={{fontSize:'22px'}}>⚓</span>
-                <span style={{fontSize:'18px',fontWeight:'800'}}>Coach Dashboard</span>
-              </div>
-              <div style={{fontSize:'12px',color:'#64748b',marginTop:'2px'}}>S.E.A. Accelerator · Getting Results Inc.</div>
-            </div>
-            <div style={{textAlign:'right'}}>
-              {editingName ? (
-                <div style={{display:'flex',gap:'6px',alignItems:'center'}}>
-                  <input ref={nameInputRef} defaultValue={coachName} placeholder="Your name"
-                    style={{padding:'7px 10px',borderRadius:'8px',border:'1px solid #334155',background:'#0f172a',color:'#f8fafc',fontSize:'13px',width:'130px'}}
-                    onKeyDown={e=>e.key==='Enter'&&saveCoachName()}/>
-                  <button onClick={saveCoachName} style={{padding:'7px 12px',borderRadius:'8px',background:'#6366f1',color:'white',border:'none',cursor:'pointer',fontSize:'12px',fontWeight:'600'}}>Save</button>
-                </div>
-              ) : (
-                <button onClick={()=>setEditingName(true)} style={{background:'transparent',border:'1px solid #334155',borderRadius:'8px',padding:'7px 14px',color:coachName?'#f8fafc':'#94a3b8',cursor:'pointer',fontSize:'13px'}}>
-                  {coachName || '✏️ Set your name'}
-                </button>
-              )}
-              <div style={{fontSize:'11px',color:'#475569',marginTop:'4px'}}>Coach ID: {coachId}</div>
-            </div>
-          </div>
-        )}
-
-        {/* Coach Link panel — replaces email invite */}
-        {(() => {
-          const coachLink = `${window.location.origin}${window.location.pathname}?coach=${encodeURIComponent(coachId)}&invite=1`;
-          const qrSrc = `https://api.qrserver.com/v1/create-qr-code/?size=140x140&data=${encodeURIComponent(coachLink)}`;
-          const [showQR, setShowQR] = React.useState(false);
-          return (
-            <div style={{background: embedded ? 'rgba(99,102,241,0.08)' : '#151d2e', padding: embedded ? '14px 16px' : '16px 20px', borderRadius: embedded ? '12px' : '0', marginBottom: embedded ? '16px' : '0', border: embedded ? '1px solid rgba(99,102,241,0.2)' : 'none', borderBottom: embedded ? undefined : '1px solid #1e293b'}}>
-              <div style={{maxWidth:'720px',margin:'0 auto'}}>
-                <div style={{fontSize:'12px',color:'#94a3b8',marginBottom:'10px',fontWeight:'700',letterSpacing:'0.05em',textTransform:'uppercase'}}>🔗 Your Client Invite Link</div>
-                <div style={{fontSize:'11px',color:'#64748b',marginBottom:'10px'}}>Share this link anywhere — text, email, Zoom chat. Anyone who clicks it will be connected to you as their coach automatically.</div>
-                <div style={{display:'flex',gap:'8px',flexWrap:'wrap',alignItems:'center'}}>
-                  <div style={{flex:1,minWidth:'180px',padding:'8px 12px',borderRadius:'8px',border:'1px solid rgba(99,102,241,0.3)',background:'rgba(15,18,41,0.6)',color:'#94a3b8',fontSize:'12px',fontFamily:'monospace',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
-                    {coachLink}
-                  </div>
-                  <button onClick={copyCoachLink}
-                    style={{padding:'8px 16px',borderRadius:'8px',background:coachLinkCopied?'#10b981':'#6366f1',color:'white',border:'none',cursor:'pointer',fontSize:'12px',fontWeight:'700',whiteSpace:'nowrap',transition:'background 0.2s'}}>
-                    {coachLinkCopied ? '✓ Copied!' : '📋 Copy Link'}
-                  </button>
-                  <button onClick={()=>setShowQR(p=>!p)}
-                    style={{padding:'8px 14px',borderRadius:'8px',background:'rgba(99,102,241,0.15)',color:'#a5b4fc',border:'1px solid rgba(99,102,241,0.3)',cursor:'pointer',fontSize:'12px',fontWeight:'700',whiteSpace:'nowrap'}}>
-                    {showQR ? 'Hide QR' : '⊞ QR Code'}
-                  </button>
-                </div>
-                {showQR && (
-                  <div style={{marginTop:'12px',display:'flex',alignItems:'center',gap:'14px',flexWrap:'wrap'}}>
-                    <img src={qrSrc} alt="Coach invite QR code" style={{width:'120px',height:'120px',borderRadius:'8px',border:'2px solid rgba(99,102,241,0.3)',background:'white',padding:'4px'}}/>
-                    <div style={{fontSize:'12px',color:'#64748b',lineHeight:'1.6'}}>
-                      Show this in a Zoom call or meeting.<br/>Clients scan it with their phone camera<br/>and land directly on sign-up connected to you.
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-          );
-        })()}
-
-        {/* Tab switcher */}
-        <div style={{padding:embedded?'0 0 12px':'12px 20px 0',maxWidth:'720px',margin:'0 auto'}}>
-          <div style={{display:'flex',gap:'8px',background:'rgba(255,255,255,0.04)',borderRadius:'12px',padding:'4px',width:'fit-content'}}>
-            {[{id:'advisors',label:'👥 Clients'},{id:'inbox',label:`📬 Inbox${inbox.filter(m=>!m.read).length>0?' ('+inbox.filter(m=>!m.read).length+')':''}`}].map(v=>(
-              <button key={v.id} onClick={()=>setActiveView(v.id)}
-                style={{padding:'7px 18px',borderRadius:'9px',border:'none',cursor:'pointer',fontSize:'13px',fontWeight:'600',background:activeView===v.id?'#6366f1':'transparent',color:activeView===v.id?'white':'#64748b',transition:'all 0.15s'}}>
-                {v.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Content */}
-        <div style={{padding:embedded?'12px 0 0':'20px',maxWidth:'720px',margin:'0 auto'}}>
-          {/* Inbox view */}
-          {activeView==='inbox' && (
-            <div>
-              {inboxLoading && <div style={{textAlign:'center',padding:'40px',color:'#64748b'}}>Loading messages...</div>}
-              {!inboxLoading && inbox.length===0 && (
-                <div style={{textAlign:'center',padding:'60px 20px',color:'#64748b'}}>
-                  <div style={{fontSize:'52px',marginBottom:'16px'}}>📭</div>
-                  <div style={{fontSize:'17px',fontWeight:'700',color:'#94a3b8',marginBottom:'8px'}}>No messages yet</div>
-                  <div style={{fontSize:'14px'}}>When clients send you updates, they appear here.</div>
-                </div>
-              )}
-              {!inboxLoading && inbox.length>0 && (
-                <div>
-                  <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'12px'}}>
-                    <span style={{color:'#64748b',fontSize:'13px'}}>{inbox.length} message{inbox.length!==1?'s':''} from clients</span>
-                    <button onClick={fetchInbox} style={{background:'#1e293b',color:'#94a3b8',border:'1px solid #334155',borderRadius:'8px',padding:'6px 14px',cursor:'pointer',fontSize:'12px'}}>🔄 Refresh</button>
-                  </div>
-                  {inbox.map(msg=>{
-                    const fmt = ts => { const d=new Date(ts),now=new Date(); return (now-d)<86400000?d.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'}):d.toLocaleDateString('en-US',{month:'short',day:'numeric'}); };
-                    return (
-                      <div key={msg.id||msg.timestamp} onClick={()=>markCoachRead(msg.advisor_id)}
-                        style={{background:msg.read?'#1e293b':'rgba(99,102,241,0.08)',border:`1px solid ${msg.read?'#334155':'rgba(99,102,241,0.3)'}`,borderRadius:'14px',padding:'16px',marginBottom:'10px',cursor:'pointer'}}>
-                        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'6px'}}>
-                          <span style={{fontWeight:'700',fontSize:'14px',color:'#f8fafc'}}>{msg.advisor_name||'Client'}</span>
-                          <div style={{display:'flex',alignItems:'center',gap:'8px'}}>
-                            {!msg.read&&<span style={{background:'#6366f1',color:'white',fontSize:'10px',fontWeight:'700',padding:'2px 8px',borderRadius:'20px'}}>NEW</span>}
-                            <span style={{fontSize:'11px',color:'#475569'}}>{fmt(msg.timestamp)}</span>
-                          </div>
-                        </div>
-                        <p style={{fontSize:'13px',color:'#cbd5e1',margin:0,lineHeight:'1.5'}}>{msg.message}</p>
-                        <button onClick={e=>{e.stopPropagation();setMessaging({advisorId:msg.advisor_id,name:msg.advisor_name||'Client'});setActiveView('advisors');}}
-                          style={{marginTop:'10px',padding:'6px 14px',borderRadius:'8px',border:'1px solid #6366f1',background:'rgba(99,102,241,0.1)',color:'#a78bfa',cursor:'pointer',fontSize:'12px',fontWeight:'600'}}>↩ Reply</button>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          )}
-
-          {activeView==='advisors' && loading && <div style={{textAlign:'center',padding:'60px',color:'#64748b'}}><div style={{fontSize:'36px',marginBottom:'12px'}}>⏳</div><div>Loading advisors...</div></div>}
-          {activeView==='advisors' && error && (
-            <div style={{background:'#450a0a',border:'1px solid #ef4444',borderRadius:'12px',padding:'16px',color:'#fca5a5',marginBottom:'16px'}}>
-              ⚠️ {error}
-              <button onClick={fetchAdvisors} style={{marginLeft:'12px',background:'#ef4444',color:'white',border:'none',borderRadius:'6px',padding:'4px 10px',cursor:'pointer',fontSize:'12px'}}>Retry</button>
-            </div>
-          )}
-          {activeView==='advisors' && !loading && !error && advisors.length === 0 && (
-            <div style={{textAlign:'center',padding:'60px 20px',color:'#64748b'}}>
-              <div style={{fontSize:'52px',marginBottom:'16px'}}>👥</div>
-              <div style={{fontSize:'17px',fontWeight:'700',color:'#94a3b8',marginBottom:'8px'}}>No clients yet</div>
-              <div style={{fontSize:'14px',lineHeight:'1.6'}}>Use the invite field above to add your first client.</div>
-            </div>
-          )}
-          {activeView==='advisors' && !loading && advisors.length > 0 && (
-            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'16px'}}>
-              <span style={{color:'#64748b',fontSize:'13px'}}>{advisors.length} advisor{advisors.length!==1?'s':''}</span>
-              <button onClick={fetchAdvisors} style={{background:'#1e293b',color:'#94a3b8',border:'1px solid #334155',borderRadius:'8px',padding:'6px 14px',cursor:'pointer',fontSize:'12px'}}>🔄 Refresh</button>
-            </div>
-          )}
-          {advisors.map(advisor => {
-            const d = advisor.advisorData || {};
-            const score = d.s ?? d.score ?? 0;
-            const streak = d.as ?? d.anvilStreak ?? d.streak ?? 0;
-            const name = (d.n ?? d.name) || 'Unnamed Advisor';
-            const goals = d.g ?? d.goals ?? [];
-            const habits = d.hp ?? d.habitPct ?? d.habitCompletion ?? 0;
-            const lastUpdated = advisor.lastUpdated ? new Date(advisor.lastUpdated).toLocaleDateString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}) : '';
-            const scoreColor = score>=80?'#22c55e':score>=50?'#f59e0b':'#ef4444';
-            return (
-              <div key={advisor.advisorId} style={{background:'#1e293b',borderRadius:'16px',padding:'20px',marginBottom:'16px',border:'1px solid #334155'}}>
-                <div style={{display:'flex',alignItems:'center',gap:'16px',marginBottom:'16px'}}>
-                  <CoachScoreRing score={score}/>
-                  <div style={{flex:1,minWidth:0}}>
-                    <div style={{fontWeight:'700',fontSize:'17px',color:'#f8fafc',marginBottom:'4px'}}>{name}</div>
-                    <div style={{display:'flex',gap:'14px',flexWrap:'wrap'}}>
-                      <span style={{fontSize:'12px',color:'#94a3b8'}}>🔥 {streak}-day streak</span>
-                      <span style={{fontSize:'12px',color:'#94a3b8'}}>✅ {habits}% habits</span>
-                    </div>
-                    {lastUpdated && <div style={{fontSize:'11px',color:'#475569',marginTop:'3px'}}>Updated {lastUpdated}</div>}
-                  </div>
-                  <div style={{textAlign:'right',flexShrink:0}}>
-                    <div style={{fontSize:'10px',color:'#64748b',marginBottom:'2px',textTransform:'uppercase',letterSpacing:'0.05em'}}>S.E.A. Score</div>
-                    <div style={{fontSize:'30px',fontWeight:'900',color:scoreColor}}>{Math.round(score)}</div>
-                  </div>
-                </div>
-                <CoachGoalBar goals={goals}/>
-                <button onClick={()=>setMessaging({advisorId:advisor.advisorId, name})}
-                  style={{marginTop:'14px',width:'100%',padding:'10px',borderRadius:'10px',border:'1px solid #6366f1',background:'rgba(99,102,241,0.1)',color:'#a78bfa',cursor:'pointer',fontSize:'13px',fontWeight:'600'}}>
-                  💬 Send Message to {name.split(' ')[0]}
-                </button>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-    );
-  };
-
-
-  // Two-way coach messaging — client sees conversation thread + can reply
-  const CoachMessages = ({ advisorId, coachId, advisorName, autoOpen }) => {
-    const [messages, setMessages] = useState([]);
-    const [loading, setLoading] = useState(false);
-    const [open, setOpen] = useState(!!autoOpen);
-    const [unread, setUnread] = useState(0);
-    const [replyText, setReplyText] = useState('');
-    const [sending, setSending] = useState(false);
-    const [sent, setSent] = useState(false);
-
-    const fetchMessages = useCallback(async () => {
-      if (!advisorId) return;
-      setLoading(true);
-      try {
-        const res = await fetch(`${COACH_API}?action=get-messages&advisorId=${encodeURIComponent(advisorId)}`);
-        const data = await res.json();
-        if (Array.isArray(data)) {
-          setMessages(data); // already asc by timestamp
-          setUnread(data.filter(m=>!m.read && m.sender==='coach').length);
-        }
-      } catch(e) { /* silent */ }
-      setLoading(false);
-    }, [advisorId]);
-
-    useEffect(() => {
-      fetchMessages();
-      const t = setInterval(fetchMessages, 3*60*1000);
-      return () => clearInterval(t);
-    }, [fetchMessages]);
-
-    const markAllRead = async () => {
-      if (unread===0) return;
-      setUnread(0);
-      setMessages(m=>m.map(msg=>({...msg,read:true})));
-      fetch(`${COACH_API}?action=mark-read`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({advisorId})}).catch(()=>{});
-    };
-
-    const sendReply = async () => {
-      const msg = replyText.trim();
-      if (!msg || !coachId) return;
-      setSending(true);
-      try {
-        await fetch(`${COACH_API}?action=send-reply`, {
-          method: 'POST',
-          headers: {'Content-Type':'application/json'},
-          body: JSON.stringify({ coachId, advisorId, advisorName: advisorName||'Advisor', message: msg }),
-        });
-        setReplyText('');
-        setSent(true);
-        setTimeout(()=>setSent(false), 3000);
-        fetchMessages();
-      } catch(e) { /* silent */ }
-      setSending(false);
-    };
-
-    const toggle = () => { if (!open && unread>0) markAllRead(); setOpen(o=>!o); };
-    const fmt = ts => { const d=new Date(ts),now=new Date(); return (now-d)<86400000?d.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'}):d.toLocaleDateString('en-US',{month:'short',day:'numeric'}); };
-
-    return (
-      <div className={`bg-slate-800/60 rounded-2xl border overflow-hidden ${unread>0?'border-purple-500/50':'border-slate-700'}`} style={{transition:'border-color 0.3s'}}>
-        <button onClick={toggle} className="w-full p-4 flex items-center justify-between text-left" style={{background:'transparent',border:'none',cursor:'pointer',color:'#f8fafc'}}>
-          <div className="flex items-center gap-3">
-            <span className="text-2xl">💬</span>
-            <div>
-              <p className="font-bold text-white text-sm">Coach Messages</p>
-              <p className="text-xs text-slate-400 mt-0.5">{loading?'Checking...':(messages.length===0?'No messages yet':`${messages.length} message${messages.length!==1?'s':''}`)}</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            {unread>0&&<span className="bg-purple-600 text-white text-xs font-bold rounded-full px-2 py-0.5">{unread} new</span>}
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{transform:open?'rotate(180deg)':'rotate(0deg)',transition:'transform 0.2s',color:'#64748b'}}><polyline points="6 9 12 15 18 9"/></svg>
-          </div>
-        </button>
-        {open && (
-          <div className="border-t border-slate-700 p-4 space-y-3">
-            {/* Message thread */}
-            {messages.length===0 ? (
-              <div className="text-center py-6 text-slate-500">
-                <div className="text-3xl mb-2">📭</div>
-                <p className="text-sm">No messages yet. Send your coach an update below.</p>
-              </div>
-            ) : messages.map(msg => {
-              const isMe = msg.sender === 'advisor';
-              return (
-                <div key={msg.id||msg.timestamp} style={{display:'flex',flexDirection:'column',alignItems:isMe?'flex-end':'flex-start'}}>
-                  <div style={{maxWidth:'85%',borderRadius:isMe?'16px 16px 4px 16px':'16px 16px 16px 4px',padding:'10px 14px',background:isMe?'rgba(99,102,241,0.25)':'rgba(255,255,255,0.06)',border:`1px solid ${isMe?'rgba(99,102,241,0.4)':'rgba(255,255,255,0.08)'}`}}>
-                    <p style={{fontSize:'11px',fontWeight:'700',color:isMe?'#a78bfa':'#60a5fa',marginBottom:'4px'}}>{isMe?'You':(msg.coach_name||'Coach')}</p>
-                    <p style={{fontSize:'13px',color:'#e2e8f0',lineHeight:'1.5',margin:0}}>{msg.message}</p>
-                  </div>
-                  <span style={{fontSize:'10px',color:'#475569',marginTop:'3px',paddingLeft:'4px',paddingRight:'4px'}}>{fmt(msg.timestamp)}</span>
-                </div>
-              );
-            })}
-
-            {/* Reply box — only show if connected to a coach */}
-            {coachId && (
-              <div style={{marginTop:'8px',borderTop:'1px solid #1e293b',paddingTop:'12px'}}>
-                <textarea
-                  value={replyText}
-                  onChange={e=>setReplyText(e.target.value)}
-                  placeholder="Send a message to your coach..."
-                  rows={2}
-                  style={{width:'100%',background:'rgba(15,23,42,0.8)',border:'1px solid #334155',borderRadius:'10px',padding:'10px 12px',color:'#f8fafc',fontSize:'13px',resize:'vertical',boxSizing:'border-box',fontFamily:'inherit'}}
-                  onKeyDown={e=>{if(e.key==='Enter'&&(e.metaKey||e.ctrlKey))sendReply();}}
-                />
-                <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginTop:'8px'}}>
-                  <span style={{fontSize:'11px',color:'#475569'}}>⌘+Enter to send</span>
-                  <button onClick={sendReply} disabled={sending||!replyText.trim()}
-                    style={{padding:'8px 18px',borderRadius:'8px',border:'none',cursor:sending||!replyText.trim()?'not-allowed':'pointer',opacity:sending||!replyText.trim()?0.5:1,background:'#6366f1',color:'white',fontSize:'12px',fontWeight:'700'}}>
-                    {sending?'Sending...':sent?'✓ Sent!':'Send'}
-                  </button>
-                </div>
-              </div>
-            )}
-            <button onClick={fetchMessages} style={{width:'100%',padding:'8px',fontSize:'11px',color:'#475569',background:'transparent',border:'1px solid #1e293b',borderRadius:'10px',cursor:'pointer',marginTop:'4px'}}>🔄 Refresh</button>
           </div>
         )}
       </div>
@@ -6619,7 +5689,6 @@ Label should clearly describe what is being coached (e.g. "Anvil Streak", "Medit
         });
       } else {
         // Non-invite coach param: if logged in show coach dashboard, else just save and clear
-        if (authUser) return <CoachDashboard coachId={coachParam}/>;
         if (window.history && window.history.replaceState) {
           window.history.replaceState({}, '', window.location.pathname);
         }
