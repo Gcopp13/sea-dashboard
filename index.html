@@ -9,7 +9,7 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
   <script>
     const SUPABASE_URL = 'https://vilsfabrovxwgdrhkvso.supabase.co';
-    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZpbHNmYWJyb3Z4d2dkcmhrdnNvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQxMjIxMjgsImV4cCI6MjA4OTY5ODEyOH0.3GGxaTgxZHxn_hFOcwNyBs9XxridjeWEdM3a5lRPomU';
+    const SUPABASE_ANON_KEY = 'sb_publishable_bjLb-CPdfQ12wv03XYfC3Q_UIqvZGph';
     const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
       auth: { flowType: 'implicit', detectSessionInUrl: true }
     });
@@ -735,7 +735,7 @@
   const saveConversation = async (userId, convId, messages, titleHint) => {
     if (!userId) return convId;
     const SUPABASE_URL = 'https://vilsfabrovxwgdrhkvso.supabase.co';
-    const ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZpbHNmYWJyb3Z4d2dkcmhrdnNvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQxMjIxMjgsImV4cCI6MjA4OTY5ODEyOH0.3GGxaTgxZHxn_hFOcwNyBs9XxridjeWEdM3a5lRPomU';
+    const ANON_KEY = 'sb_publishable_bjLb-CPdfQ12wv03XYfC3Q_UIqvZGph';
     const token = await getSessionToken();
     const authHeader = token ? `Bearer ${token}` : `Bearer ${ANON_KEY}`;
     try {
@@ -762,7 +762,7 @@
   const loadConversations = async (userId) => {
     if (!userId) return [];
     const SUPABASE_URL = 'https://vilsfabrovxwgdrhkvso.supabase.co';
-    const ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZpbHNmYWJyb3Z4d2dkcmhrdnNvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQxMjIxMjgsImV4cCI6MjA4OTY5ODEyOH0.3GGxaTgxZHxn_hFOcwNyBs9XxridjeWEdM3a5lRPomU';
+    const ANON_KEY = 'sb_publishable_bjLb-CPdfQ12wv03XYfC3Q_UIqvZGph';
     const token = await getSessionToken();
     const authHeader = token ? `Bearer ${token}` : `Bearer ${ANON_KEY}`;
     try {
@@ -777,7 +777,7 @@
   const deleteConversation = async (userId, convId) => {
     if (!userId || !convId) return;
     const SUPABASE_URL = 'https://vilsfabrovxwgdrhkvso.supabase.co';
-    const ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZpbHNmYWJyb3Z4d2dkcmhrdnNvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQxMjIxMjgsImV4cCI6MjA4OTY5ODEyOH0.3GGxaTgxZHxn_hFOcwNyBs9XxridjeWEdM3a5lRPomU';
+    const ANON_KEY = 'sb_publishable_bjLb-CPdfQ12wv03XYfC3Q_UIqvZGph';
     const token = await getSessionToken();
     const authHeader = token ? `Bearer ${token}` : `Bearer ${ANON_KEY}`;
     try {
