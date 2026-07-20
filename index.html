@@ -4610,14 +4610,29 @@ Label should clearly describe what is being coached (e.g. "Anvil Streak", "Medit
       return()=>clearTimeout(saveTimer.current);
     },[data]);
 
+    // Flush any pending cloud save when the page is hidden — backgrounded, tab switched
+    // or closed. visibilitychange fires reliably on mobile where beforeunload often does
+    // not, and unlike unload the page is still alive here, so the normal authenticated
+    // save works: user's own token, RLS enforced, no service key, no 64KB payload cap.
+    useEffect(()=>{
+      const flushOnHide = () => {
+        if (document.visibilityState !== 'hidden' || !authUser) return;
+        try { localStorage.setItem('sea-planner-data', JSON.stringify(data)); } catch(e){}
+        if (saveTimer.current) { clearTimeout(saveTimer.current); saveTimer.current = null; }
+        savePlannerDataToCloud(authUser.id, data);
+      };
+      document.addEventListener('visibilitychange', flushOnHide);
+      return () => document.removeEventListener('visibilitychange', flushOnHide);
+    },[data, authUser]);
+
     // Force-save to cloud when user closes/navigates away
     useEffect(()=>{
       const handleUnload = () => {
         if(!authUser) return;
         // Always save to localStorage first (synchronous, guaranteed)
         try{localStorage.setItem('sea-planner-data',JSON.stringify(data));} catch(e){}
-        // Use sendBeacon for reliable async-safe cloud save on page close
-        // sendBeacon is specifically designed for this — browser guarantees delivery even during unload
+        // Cloud saving is handled by the visibilitychange flush above; this handler
+        // only guarantees the synchronous localStorage write.
         try {
           const meta = {
             coachProfile: (() => { try { return JSON.parse(localStorage.getItem('coach-profile')||'null'); } catch(e){return null;} })(),
@@ -4633,11 +4648,12 @@ Label should clearly describe what is being coached (e.g. "Anvil Streak", "Medit
             data: { ...data, _meta: meta },
             updated_at: new Date().toISOString()
           });
-          // sendBeacon to a Netlify function that handles the Supabase write
-          // Falls back to queued fetch if sendBeacon not available
-          if (navigator.sendBeacon) {
-            navigator.sendBeacon('/.netlify/functions/beacon-save', payload);
-          }
+          // NOTE: this previously sendBeacon'd to /.netlify/functions/beacon-save, which
+          // took user_id straight from this payload and wrote with the service key — any
+          // user id could overwrite any user's planner data. It was also silently failing:
+          // the payload is ~83KB and sendBeacon caps at 64KB. Cloud saving now happens in
+          // the visibilitychange handler above, over the normal authenticated path.
+          void payload;
         } catch(e){}
       };
       window.addEventListener('beforeunload', handleUnload);
