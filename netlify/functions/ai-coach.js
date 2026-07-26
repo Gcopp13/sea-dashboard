@@ -125,7 +125,11 @@ exports.handler = async (event) => {
         'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-6',
+        model: 'claude-sonnet-5',
+        // Thinking is ON by default on Sonnet 5, and max_tokens caps thinking +
+        // reply together. Disable it so the whole 2000-token budget goes to the
+        // coach's reply (matches Sonnet 4.6's prior no-thinking behavior — no truncation).
+        thinking: { type: 'disabled' },
         max_tokens: cappedMaxTokens,
         system,
         messages: messages.map(m => ({ role: m.role, content: m.content })),
