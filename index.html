@@ -4095,7 +4095,7 @@ Label should clearly describe what is being coached (e.g. "Anvil Streak", "Medit
                     if (!userId) { setStatus('Error: not logged in. Please close and reopen the app.'); setLoading(false); return; }
                     const saveRes = await fetch('/.netlify/functions/save-push-subscription', {
                       method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
+                      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${sessionData?.session?.access_token || ''}` },
                       body: JSON.stringify({ userId, subscription: { endpoint: sub.endpoint, keys: { p256dh, auth } }, preferences: mergedPrefs })
                     });
                     if (!saveRes.ok) {
@@ -4135,9 +4135,10 @@ Label should clearly describe what is being coached (e.g. "Anvil Streak", "Medit
                     if (sub) {
                       const p256dh = btoa(String.fromCharCode(...new Uint8Array(sub.getKey('p256dh'))));
                       const auth = btoa(String.fromCharCode(...new Uint8Array(sub.getKey('auth'))));
+                      const { data: sd2 } = await window._supabase.auth.getSession();
                       await fetch('/.netlify/functions/save-push-subscription', {
                         method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
+                        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${sd2?.session?.access_token || ''}` },
                         body: JSON.stringify({ userId: authUser?.id, subscription: { endpoint: sub.endpoint, keys: { p256dh, auth } }, preferences: { ...newPrefs, timezone: Intl.DateTimeFormat().resolvedOptions().timeZone } })
                       });
                     }
