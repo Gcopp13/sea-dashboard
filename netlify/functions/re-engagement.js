@@ -165,6 +165,7 @@ exports.handler = async (event) => {
 
   } catch (e) {
     console.error('[re-engagement] error:', e);
+    require('./_lib/sentry').captureException(e, { fn: 're-engagement' });
     return err(e.message, 500);
   }
 };

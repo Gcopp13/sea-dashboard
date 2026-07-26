@@ -28,6 +28,7 @@ exports.handler = async () => {
   if (!res.ok) {
     const text = await res.text();
     console.error('coach-nudge-push fetch error:', text);
+    require('./_lib/sentry').captureException(text, { fn: 'coach-nudge-push' });
     return { statusCode: 500, body: JSON.stringify({ error: text }) };
   }
 

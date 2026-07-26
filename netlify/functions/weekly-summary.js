@@ -259,6 +259,7 @@ exports.handler = async (event) => {
 
   } catch (e) {
     console.error('[weekly-summary] Fatal error:', e);
+    require('./_lib/sentry').captureException(e, { fn: 'weekly-summary' });
     return { statusCode: 500, headers: CORS_HEADERS, body: JSON.stringify({ error: e.message }) };
   }
 };

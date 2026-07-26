@@ -52,6 +52,7 @@ exports.handler = async (event) => {
     };
   } catch (e) {
     console.error('stripe-checkout error:', e);
+    require('./_lib/sentry').captureException(e, { fn: 'stripe-checkout' });
     return { statusCode: 500, body: JSON.stringify({ error: e.message }) };
   }
 };

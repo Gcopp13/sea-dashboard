@@ -225,6 +225,7 @@ exports.handler = async (event) => {
     return { statusCode: 200, body: JSON.stringify({ sent: true, pdf: true }) };
   } catch (e) {
     console.error('[send-daily-brief] PDF error:', e.message);
+    require('./_lib/sentry').captureException(e, { fn: 'send-daily-brief' });
     // Fall back to plain email if PDF generation fails
     const res = await sendEmail({ to: email, subject: `Daily Brief — Week ${weekNum} · ${score} pts`, html, text: plainText });
     return { statusCode: 200, body: JSON.stringify({ sent: true, pdf: false, pdfError: e.message }) };

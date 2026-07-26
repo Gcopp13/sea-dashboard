@@ -144,6 +144,7 @@ exports.handler = async (event) => {
     return { statusCode: 200, body: JSON.stringify({ received: true }) };
   } catch (e) {
     console.error('Webhook handler error:', e);
+    require('./_lib/sentry').captureException(e, { fn: 'stripe-webhook' });
     return { statusCode: 500, body: JSON.stringify({ error: e.message }) };
   }
 };

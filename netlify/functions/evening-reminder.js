@@ -27,6 +27,7 @@ exports.handler = async () => {
   if (!res.ok) {
     const text = await res.text();
     console.error('evening-reminder fetch error:', text);
+    require('./_lib/sentry').captureException(text, { fn: 'evening-reminder' });
     return { statusCode: 500, body: JSON.stringify({ error: text }) };
   }
 

@@ -207,6 +207,7 @@ exports.handler = async (event) => {
 
   } catch (e) {
     console.error('[invite-user] error:', e);
+    require('./_lib/sentry').captureException(e, { fn: 'invite-user' });
     return err(e.message, 500);
   }
 };

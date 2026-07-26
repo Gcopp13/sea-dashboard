@@ -345,6 +345,7 @@ exports.handler = async (event) => {
     return ok({ success: true, id: result.data?.id });
   } catch (e) {
     console.error('[send-summary] Unhandled error:', e);
+    require('./_lib/sentry').captureException(e, { fn: 'send-summary' });
     return err(e.message || 'Failed to send email');
   }
 };

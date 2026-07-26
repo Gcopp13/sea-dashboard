@@ -152,6 +152,7 @@ exports.handler = async (event) => {
 
   } catch (e) {
     console.error('[reset-password] error:', e);
+    require('./_lib/sentry').captureException(e, { fn: 'reset-password' });
     return ok({ success: true }); // Always return success to prevent email enumeration
   }
 };

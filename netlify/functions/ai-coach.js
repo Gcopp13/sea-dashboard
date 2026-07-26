@@ -142,6 +142,7 @@ exports.handler = async (event) => {
     return { statusCode: 200, headers, body: JSON.stringify(data) };
   } catch (e) {
     console.error(`[ai-coach] fetch error (user ${user.id}):`, e);
+    require('./_lib/sentry').captureException(e, { fn: 'ai-coach' });
     return { statusCode: 500, headers, body: JSON.stringify({ error: e.message }) };
   }
 };

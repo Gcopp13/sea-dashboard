@@ -285,6 +285,7 @@ export const handler = async (event) => {
 
   } catch (e) {
     console.error('welcome-email error:', e);
+    require('./_lib/sentry').captureException(e, { fn: 'welcome-email' });
     return { statusCode: 500, body: JSON.stringify({ error: e.message }) };
   }
 };
