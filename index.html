@@ -9,6 +9,8 @@
   <!-- Sentry error monitoring (loads first to catch early errors) -->
   <script src="https://js.sentry-cdn.com/33f3847e5bb266605f09b2b4357ddd56.min.js" crossorigin="anonymous"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+  <!-- Cloudflare Turnstile CAPTCHA (bot protection on sign-in / sign-up) -->
+  <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
   <script>
     const SUPABASE_URL = 'https://vilsfabrovxwgdrhkvso.supabase.co';
     const SUPABASE_ANON_KEY = 'sb_publishable_bjLb-CPdfQ12wv03XYfC3Q_UIqvZGph';
@@ -160,12 +162,47 @@
     </div>
   );
 
+  // ── Cloudflare Turnstile CAPTCHA widget (managed / mostly invisible) ──────
+  // Renders the challenge and bubbles the solved single-use token up via onToken.
+  // Parent remounts it (via a changing key) after each attempt for a fresh token.
+  const TURNSTILE_SITE_KEY = '0x4AAAAAAD_OHzT5GRDfJion';
+  const TurnstileWidget = ({ onToken, onExpire }) => {
+    const boxRef = useRef(null);
+    const idRef  = useRef(null);
+    useEffect(() => {
+      let cancelled = false, tries = 0;
+      const render = () => {
+        if (cancelled) return;
+        if (window.turnstile && boxRef.current) {
+          try {
+            idRef.current = window.turnstile.render(boxRef.current, {
+              sitekey: TURNSTILE_SITE_KEY,
+              callback: (token) => { if (onToken) onToken(token); },
+              'expired-callback': () => { if (onExpire) onExpire(); },
+              'error-callback': () => { if (onExpire) onExpire(); },
+            });
+          } catch (e) { /* double-render race — ignore */ }
+        } else if (tries++ < 100) {
+          setTimeout(render, 100); // script still loading — retry up to ~10s
+        }
+      };
+      render();
+      return () => {
+        cancelled = true;
+        try { if (idRef.current && window.turnstile) window.turnstile.remove(idRef.current); } catch (e) {}
+      };
+    }, []);
+    return <div ref={boxRef} style={{ margin: '0 0 14px', minHeight: '65px' }} />;
+  };
+
   // ── Login Screen — email + password ─────────────────────────────────────
   const LoginScreen = ({ onShowForgot, onShowMagicLink }) => {
     const [email, setEmail]       = useState('');
     const [password, setPassword] = useState('');
     const [errorMsg, setErrorMsg] = useState('');
     const [loading, setLoading]   = useState(false);
+    const [captchaToken, setCaptchaToken] = useState('');
+    const [captchaKey, setCaptchaKey]     = useState(0);
 
     const handleLogin = async (e) => {
       e.preventDefault();
@@ -173,12 +210,18 @@
       setLoading(true); setErrorMsg('');
       try {
         const { error } = await _supabase.auth.signInWithPassword({
-          email: email.trim(), password
+          email: email.trim(), password,
+          options: { captchaToken }
         });
-        if (error) setErrorMsg(error.message);
+        if (error) {
+          setErrorMsg(error.message);
+          // Turnstile tokens are single-use — remount for a fresh one on retry
+          setCaptchaToken(''); setCaptchaKey(k => k + 1);
+        }
         // on success onAuthStateChange fires automatically
       } catch(err) {
         setErrorMsg('Something went wrong. Please try again.');
+        setCaptchaToken(''); setCaptchaKey(k => k + 1);
       } finally { setLoading(false); }
     };
 
@@ -192,6 +235,7 @@
           <input type="password" placeholder="Password" value={password}
             onChange={e => setPassword(e.target.value)} required style={authInputStyle}/>
           {errorMsg && <p style={{ color: '#f87171', fontSize: '0.82rem', margin: '-6px 0 10px' }}>{errorMsg}</p>}
+          <TurnstileWidget key={captchaKey} onToken={setCaptchaToken} onExpire={() => setCaptchaToken('')} />
           <button type="submit" disabled={loading} style={authBtnStyle(loading)}>
             {loading ? 'Signing in…' : 'Sign In'}
           </button>
@@ -216,6 +260,8 @@
     const [status, setStatus]   = useState(null);
     const [errorMsg, setErrorMsg] = useState('');
     const [loading, setLoading] = useState(false);
+    const [captchaToken, setCaptchaToken] = useState('');
+    const [captchaKey, setCaptchaKey]     = useState(0);
 
     const handleSubmit = async (e) => {
       e.preventDefault();
@@ -224,13 +270,18 @@
       try {
         const { error } = await _supabase.auth.signInWithOtp({
           email: email.trim(),
-          options: { emailRedirectTo: `${window.location.origin}?set_password=1` }
+          options: { emailRedirectTo: `${window.location.origin}?set_password=1`, captchaToken }
         });
-        if (error) { setErrorMsg(error.message); setStatus('error'); }
+        if (error) {
+          setErrorMsg(error.message); setStatus('error');
+          // Turnstile tokens are single-use — remount for a fresh one on retry
+          setCaptchaToken(''); setCaptchaKey(k => k + 1);
+        }
         else setStatus('sent');
       } catch(err) {
         setErrorMsg('Something went wrong. Please try again.');
         setStatus('error');
+        setCaptchaToken(''); setCaptchaKey(k => k + 1);
       } finally { setLoading(false); }
     };
 
@@ -255,6 +306,7 @@
             <input type="email" placeholder="your@email.com" value={email}
               onChange={e => setEmail(e.target.value)} required style={authInputStyle}/>
             {status === 'error' && <p style={{ color: '#f87171', fontSize: '0.82rem', margin: '-6px 0 10px' }}>{errorMsg}</p>}
+            <TurnstileWidget key={captchaKey} onToken={setCaptchaToken} onExpire={() => setCaptchaToken('')} />
             <button type="submit" disabled={loading} style={authBtnStyle(loading)}>
               {loading ? 'Sending…' : 'Send Sign-Up Link'}
             </button>
