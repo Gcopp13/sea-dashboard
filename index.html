@@ -4424,6 +4424,30 @@ Label should clearly describe what is being coached (e.g. "Anvil Streak", "Medit
     const plannerWeekNum = planningNextWeek ? Math.min(17, weekNum + 1) : weekNum;
     const [coachPersonality, setCoachPersonality] = useState(()=>{try{const s=localStorage.getItem('coach-personality');return s?JSON.parse(s):{style:2,tone:2,approach:2,energy:2};}catch(e){return{style:2,tone:2,approach:2,energy:2};}});
     const saveTimer = useRef(null);
+    // Cross-device sync conflict resolution. cloudBaseRef = the planner_data.updated_at
+    // this device is currently based on (set on sync + on each successful save). If the
+    // cloud's updated_at no longer matches this base when we save, another device wrote
+    // after us — so we must NOT blindly overwrite (the bug that lost a week of data).
+    const cloudBaseRef = useRef(null);
+    const skipNextSaveRef = useRef(false);
+    // Union two Anvil logs by date+note so an entry from either device is never dropped.
+    const mergeAnvilLog = (a, b) => {
+      const seen = new Set(); const out = [];
+      for (const e of [...(Array.isArray(a)?a:[]), ...(Array.isArray(b)?b:[])]) {
+        if (!e || !e.date) continue;
+        const k = e.date + '|' + (e.note || '');
+        if (seen.has(k)) continue;
+        seen.add(k); out.push(e);
+      }
+      out.sort((x, y) => String(y.date).localeCompare(String(x.date))); // newest first
+      return out;
+    };
+    // Copy of `base` whose anvilProject.log is the union of base's and incoming's logs.
+    const withMergedAnvilLog = (base, incoming) => {
+      const ba = (base && base.anvilProject) || {};
+      const ia = (incoming && incoming.anvilProject) || {};
+      return { ...base, anvilProject: { ...ba, log: mergeAnvilLog(ba.log, ia.log) } };
+    };
 
     const createDay = () => ({aActivities:['','','',''],grateful:['','',''],wins:['','',''],tomorrowPriorities:['','',''],tasks:[{text:'',done:false,reminder:''},{text:'',done:false,reminder:''},{text:'',done:false,reminder:''}],notes:'',reflection:'',hardThings:'',hardThingsCompleted:false,stillness:'',stillnessCompleted:false,study:'',studyCompleted:false,todaysWins:['','','']});
     const createWeek = () => ({wins:['','',''],improvements:'',focus:'',goalPriorities:['','','',''],aActivities:Array(3).fill(null).map(()=>({name:'',days:[false,false,false,false,false,false,false]})),messes:Array(3).fill(null).map(()=>({description:'',nextSteps:'',byWhen:'',completed:false})),wheelOfJohn:{family:5,fun:5,fitness:5,finance:5,faith:5}});
@@ -4560,7 +4584,6 @@ Label should clearly describe what is being coached (e.g. "Anvil Streak", "Medit
           shareUsed: localStorage.getItem('share-used'),
           archives: (() => { try { return JSON.parse(localStorage.getItem('sea-archives')||'[]'); } catch(e){return [];} })()
         };
-        const payload = { ...d, _meta: meta };
         const now = new Date().toISOString();
         const headers = {
           'apikey': SUPABASE_ANON_KEY,
@@ -4574,20 +4597,57 @@ Label should clearly describe what is being coached (e.g. "Anvil Streak", "Medit
           body: JSON.stringify({ last_seen: now }),
         }).catch(() => {});
 
-        // Try PATCH first (update existing record) — avoids 409 conflict on unique user_id
-        const patchRes = await fetch(`${SUPABASE_URL}/rest/v1/planner_data?user_id=eq.${userId}`, {
-          method: 'PATCH',
-          headers: { ...headers, 'Prefer': 'return=minimal' },
-          body: JSON.stringify({ data: payload, updated_at: now }),
-        });
-        // If no row existed (204 with 0 rows updated), fall back to INSERT
-        const rowsUpdated = patchRes.headers.get('content-range');
-        if (patchRes.status === 404 || rowsUpdated === '*/0') {
-          await fetch(`${SUPABASE_URL}/rest/v1/planner_data`, {
-            method: 'POST',
-            headers,
-            body: JSON.stringify({ user_id: userId, data: payload, updated_at: now }),
+        // Read the current cloud row FIRST so we never blindly clobber a newer copy
+        // written by another device, and so we can union the Anvil log.
+        let cloudPlanner = null, cloudUpdatedAt = null, readOk = false;
+        try {
+          const getRes = await fetch(`${SUPABASE_URL}/rest/v1/planner_data?user_id=eq.${userId}&select=data,updated_at`, { headers });
+          const gr = await getRes.json();
+          readOk = true;
+          if (Array.isArray(gr) && gr.length > 0 && gr[0].data) {
+            cloudUpdatedAt = gr[0].updated_at;
+            const { _meta: _cm, ...rest } = gr[0].data;
+            cloudPlanner = rest;
+          }
+        } catch (e) { readOk = false; /* read failed — skip the write to avoid clobbering a copy we couldn't see */ }
+
+        if (cloudPlanner && cloudUpdatedAt) {
+          // Up to date → our fields win. Cloud moved under us (or we never synced) →
+          // the cloud's fields win and we adopt them. Either way, UNION the Anvil log.
+          const upToDate = cloudBaseRef.current === cloudUpdatedAt;
+          const winner = upToDate ? withMergedAnvilLog(d, cloudPlanner)
+                                  : withMergedAnvilLog(cloudPlanner, d);
+          if (!upToDate) {
+            // We were stale — adopt the reconciled copy locally so the user sees it,
+            // and suppress the re-save the resulting setData would otherwise trigger.
+            skipNextSaveRef.current = true;
+            try { localStorage.setItem('sea-planner-data', JSON.stringify(winner)); } catch(e){}
+            setData(winner);
+          }
+          const payload = { ...winner, _meta: meta };
+          await fetch(`${SUPABASE_URL}/rest/v1/planner_data?user_id=eq.${userId}`, {
+            method: 'PATCH',
+            headers: { ...headers, 'Prefer': 'return=minimal' },
+            body: JSON.stringify({ data: payload, updated_at: now }),
           });
+          cloudBaseRef.current = now;
+        } else if (readOk) {
+          // Confirmed no cloud row yet (new user) — write ours.
+          const payload = { ...d, _meta: meta };
+          const patchRes = await fetch(`${SUPABASE_URL}/rest/v1/planner_data?user_id=eq.${userId}`, {
+            method: 'PATCH',
+            headers: { ...headers, 'Prefer': 'return=minimal' },
+            body: JSON.stringify({ data: payload, updated_at: now }),
+          });
+          const rowsUpdated = patchRes.headers.get('content-range');
+          if (patchRes.status === 404 || rowsUpdated === '*/0') {
+            await fetch(`${SUPABASE_URL}/rest/v1/planner_data`, {
+              method: 'POST',
+              headers,
+              body: JSON.stringify({ user_id: userId, data: payload, updated_at: now }),
+            });
+          }
+          cloudBaseRef.current = now;
         }
       } catch (e) {
         console.error('savePlannerDataToCloud error:', e);
@@ -4599,7 +4659,7 @@ Label should clearly describe what is being coached (e.g. "Anvil Streak", "Medit
         const session = await _supabase.auth.getSession();
         const token = session.data.session?.access_token;
         if (!token) return;
-        const res = await fetch(`${SUPABASE_URL}/rest/v1/planner_data?user_id=eq.${userId}&select=data`, {
+        const res = await fetch(`${SUPABASE_URL}/rest/v1/planner_data?user_id=eq.${userId}&select=data,updated_at`, {
           headers: {
             'apikey': SUPABASE_ANON_KEY,
             'Authorization': `Bearer ${token}`,
@@ -4608,6 +4668,7 @@ Label should clearly describe what is being coached (e.g. "Anvil Streak", "Medit
         const rows = await res.json();
         if (rows && rows.length > 0 && rows[0].data) {
           const cloudData = rows[0].data;
+          const cloudUpdatedAt = rows[0].updated_at;
           // Restore _meta settings to localStorage if present
           if (cloudData._meta) {
             const m = cloudData._meta;
@@ -4621,10 +4682,20 @@ Label should clearly describe what is being coached (e.g. "Anvil Streak", "Medit
             if (m.shareUsed) localStorage.setItem('share-used', m.shareUsed);
             if (m.archives && m.archives.length > 0) localStorage.setItem('sea-archives', JSON.stringify(m.archives));
           }
-          // Strip _meta before setting into app state (it's not planner data)
-          const { _meta, ...plannerData } = cloudData;
-          localStorage.setItem('sea-planner-data', JSON.stringify(plannerData));
-          setData(plannerData);
+          // Strip _meta, then UNION any local-only Anvil entries into the cloud copy so
+          // a day logged on this device but not yet synced is never dropped on adopt.
+          const { _meta, ...cloudPlanner } = cloudData;
+          let localData = null;
+          try { const lr = localStorage.getItem('sea-planner-data'); if (lr) localData = JSON.parse(lr); } catch(e) {}
+          const merged = localData ? withMergedAnvilLog(cloudPlanner, localData) : cloudPlanner;
+          skipNextSaveRef.current = true;
+          localStorage.setItem('sea-planner-data', JSON.stringify(merged));
+          setData(merged);
+          cloudBaseRef.current = cloudUpdatedAt;
+          // If the union added local-only Anvil entries, push the reconciled copy up.
+          const cloudLogLen = (cloudPlanner.anvilProject && Array.isArray(cloudPlanner.anvilProject.log)) ? cloudPlanner.anvilProject.log.length : 0;
+          const mergedLogLen = (merged.anvilProject && Array.isArray(merged.anvilProject.log)) ? merged.anvilProject.log.length : 0;
+          if (mergedLogLen > cloudLogLen) savePlannerDataToCloud(userId, merged);
         } else {
           // No cloud data = new user — send welcome email
           const alreadyWelcomed = localStorage.getItem('sea-welcomed');
@@ -4654,6 +4725,9 @@ Label should clearly describe what is being coached (e.g. "Anvil Streak", "Medit
 
     useEffect(()=>{
       if(loading)return;
+      // A sync/adopt just set `data` from the cloud — it's already persisted, so don't
+      // bounce it straight back to the cloud as if it were a fresh local edit.
+      if(skipNextSaveRef.current){ skipNextSaveRef.current = false; return; }
       if(saveTimer.current)clearTimeout(saveTimer.current);
       setSaveStatus('...');
       // Save to localStorage immediately, cloud after 1.5s debounce
