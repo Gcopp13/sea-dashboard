@@ -889,6 +889,10 @@
   // getTimeContext's week math but WITHOUT the 17-week cap, so we can detect when a
   // user has reached (or, once they Continue, passed) the end of their cycle.
   const CYCLE_WEEKS = 17;
+  // Master switch for the 120-day completion experience. Stays FALSE until the full
+  // flow (choice screen + Continue + Reset + recap email + alerts) is built and
+  // verified end-to-end, so no half-finished flow can ever reach a real user.
+  const CYCLE_COMPLETION_ENABLED = false;
   const getCycleContext = (plannerData, now) => {
     if (!plannerData?.startDate) return null;
     const ref = now ? new Date(now) : new Date();
@@ -2761,6 +2765,68 @@ Label should clearly describe what is being coached (e.g. "Anvil Streak", "Medit
     );
   };
 
+  // ── 120-DAY CYCLE COMPLETION SCREEN ────────────────────────────────────────
+  // Opens the weekly ritual on the completion Sunday. Offers Continue (keep the
+  // plan rolling, streaks intact) or Start Fresh (archive + recap + new cycle).
+  const CycleCompletionScreen = ({ data, cycleCtx, onContinue, onReset, onBack }) => {
+    const anvilStreak = (() => {
+      const log = data.anvilProject?.log || [];
+      const days = [...new Set(log.map(e => (e.date||'').slice(0,10)))].filter(Boolean).sort().reverse();
+      if (!days.length) return 0;
+      const today = new Date(); today.setHours(0,0,0,0);
+      const latest = new Date(days[0]+'T00:00:00');
+      if (Math.round((today - latest)/86400000) > 1) return 0; // broken if last log > 1 day ago
+      let streak = 0; const expect = new Date(latest);
+      for (const ds of days) {
+        const d = new Date(ds+'T00:00:00');
+        if (d.getTime() === expect.getTime()) { streak++; expect.setDate(expect.getDate()-1); }
+        else if (d.getTime() < expect.getTime()) break;
+      }
+      return streak;
+    })();
+    const weeksPlanned = (data.weeks||[]).filter(w => w && ((w.wins||[]).some(x=>x&&x.trim()) || (w.focus||'').trim())).length;
+    const dateRange = (() => {
+      if (!data.startDate) return '';
+      const [y,m,d] = data.startDate.split('-').map(Number);
+      const s = new Date(y,m-1,d); const dow=s.getDay(); if(dow!==1){const adj=dow===0?1:8-dow;s.setDate(s.getDate()+adj);}
+      const f = dt => dt.toLocaleDateString('en-US',{month:'short',day:'numeric'});
+      return `${f(s)} – ${cycleCtx.completionSunday.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}`;
+    })();
+    const choiceCard = {background:'rgba(30,41,59,0.9)',border:'1px solid #334155',borderRadius:'16px',padding:'16px'};
+    const cardHead = {display:'flex',alignItems:'center',gap:'8px',marginBottom:'6px'};
+    const cardTitle = {color:'#fff',fontWeight:800,fontSize:'16px'};
+    const cardDesc = {color:'#94a3b8',fontSize:'13px',margin:'0 0 12px',lineHeight:1.5};
+    const cta = grad => ({width:'100%',background:grad,color:'#fff',fontWeight:800,fontSize:'14px',padding:'13px',borderRadius:'12px',border:'none',cursor:'pointer'});
+    const safeNote = {color:'#34d399',fontSize:'12px',textAlign:'center',margin:'8px 0 0'};
+    return (
+      <div className="page-content px-4 py-5">
+        {onBack && <button onClick={onBack} className="flex items-center gap-1 text-slate-400 hover:text-white text-sm mb-3 transition-colors"><ChevLeft/> Back</button>}
+        <div style={{maxWidth:'420px',margin:'0 auto'}}>
+          <div style={{textAlign:'center',fontSize:'44px',lineHeight:1,margin:'8px 0'}}>🎉</div>
+          <h2 style={{color:'#fff',textAlign:'center',fontSize:'22px',fontWeight:800,margin:'0 0 4px'}}>120 Days Complete</h2>
+          <p style={{color:'#94a3b8',textAlign:'center',fontSize:'13px',margin:'0 0 16px'}}>{dateRange}</p>
+          <div style={{display:'flex',gap:'8px',justifyContent:'center',flexWrap:'wrap',marginBottom:'20px'}}>
+            <span style={{background:'rgba(245,158,11,0.15)',color:'#fbbf24',fontSize:'12px',fontWeight:700,padding:'6px 12px',borderRadius:'999px'}}>🔥 {anvilStreak}-day streak</span>
+            <span style={{background:'rgba(59,130,246,0.15)',color:'#60a5fa',fontSize:'12px',fontWeight:700,padding:'6px 12px',borderRadius:'999px'}}>📅 {weeksPlanned} weeks planned</span>
+          </div>
+          <p style={{color:'#cbd5e1',textAlign:'center',fontSize:'14px',margin:'0 0 18px'}}>You've reached the end of this cycle. What's next?</p>
+          <div style={{...choiceCard,marginBottom:'14px'}}>
+            <div style={cardHead}><span style={{fontSize:'20px'}}>➡️</span><span style={cardTitle}>Keep Going</span></div>
+            <p style={cardDesc}>Continue the journey. Roll into your next week — tweak your goals &amp; vision, or leave them as they are.</p>
+            <button onClick={onContinue} style={cta('linear-gradient(135deg,#3b82f6,#8b5cf6)')}>Continue →</button>
+            <p style={safeNote}>✓ Streak stays intact</p>
+          </div>
+          <div style={choiceCard}>
+            <div style={cardHead}><span style={{fontSize:'20px'}}>✨</span><span style={cardTitle}>Start Fresh</span></div>
+            <p style={cardDesc}>Close these 120 days with a recap email, then begin a clean cycle with new goals &amp; vision.</p>
+            <button onClick={onReset} style={cta('linear-gradient(135deg,#10b981,#059669)')}>Reset &amp; recap →</button>
+            <p style={safeNote}>✓ Streak stays intact</p>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   // ── WEEK VIEW ──────────────────────────────────────────────────────────────
   const WeekView = ({ data, updateField, weekNum, setWeekNum, openCoach, onPrint, onMilestone, onBack }) => {
     const [ritualStep, setRitualStep] = useState(0);
@@ -2788,6 +2854,21 @@ Label should clearly describe what is being coached (e.g. "Anvil Streak", "Medit
     const CATS = [{key:'family',label:'Family',color:'#f43f5e'},{key:'fun',label:'Fun',color:'#f59e0b'},{key:'fitness',label:'Fitness',color:'#10b981'},{key:'finance',label:'Finance',color:'#3b82f6'},{key:'faith',label:'Faith',color:'#a855f7'}];
     const wheel = week.wheelOfJohn||{family:5,fun:5,fitness:5,finance:5,faith:5};
     const prevWheel = weekNum>1?(data.weeks[weekNum-2].wheelOfJohn||null):null;
+
+    // 120-day completion: on the Sunday that closes week 17 (and until they choose),
+    // the ritual opens with the Reset/Continue screen instead of the normal steps.
+    const cycleCtx = getCycleContext(data);
+    if (CYCLE_COMPLETION_ENABLED && cycleCtx?.reachedCompletion && !data.cycleContinued) {
+      return (
+        <CycleCompletionScreen
+          data={data}
+          cycleCtx={cycleCtx}
+          onBack={onBack}
+          onContinue={() => updateField('cycleContinued', true)}
+          onReset={() => { /* Stage 3: archive completed cycle + fresh start + recap email */ }}
+        />
+      );
+    }
 
     return (
       <div className="page-content px-4 py-5 space-y-5">
