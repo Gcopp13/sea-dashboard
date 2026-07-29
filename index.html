@@ -892,7 +892,7 @@
   // Master switch for the 120-day completion experience. Stays FALSE until the full
   // flow (choice screen + Continue + Reset + recap email + alerts) is built and
   // verified end-to-end, so no half-finished flow can ever reach a real user.
-  const CYCLE_COMPLETION_ENABLED = false;
+  const CYCLE_COMPLETION_ENABLED = true;
   const getCycleContext = (plannerData, now) => {
     if (!plannerData?.startDate) return null;
     const ref = now ? new Date(now) : new Date();

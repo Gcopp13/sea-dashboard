@@ -32,6 +32,9 @@
 [functions."weekly-summary"]
   schedule = "0 12 * * 0"    # Sundays 12:00 UTC (8 AM EDT) - weekly summary email
 
+[functions."cycle-heads-up"]
+  schedule = "0 13 * * 1"    # Mondays 13:00 UTC (9 AM EDT) - 120-day final-week heads-up email
+
 # Serve sw.js directly -- must not be caught by the SPA redirect
 [[redirects]]
   from = "/sw.js"
