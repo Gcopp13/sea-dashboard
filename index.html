@@ -882,6 +882,36 @@
     };
   };
 
+  // ── 120-day cycle completion math ────────────────────────────────────────
+  // A cycle is exactly CYCLE_WEEKS Monday–Sunday weeks (weeks are anchored to the
+  // first Monday on/after startDate, same as getTimeContext), so week 17 always
+  // ends on a Sunday — the natural moment for the completion ritual. This mirrors
+  // getTimeContext's week math but WITHOUT the 17-week cap, so we can detect when a
+  // user has reached (or, once they Continue, passed) the end of their cycle.
+  const CYCLE_WEEKS = 17;
+  const getCycleContext = (plannerData, now) => {
+    if (!plannerData?.startDate) return null;
+    const ref = now ? new Date(now) : new Date();
+    const [y,m,d] = plannerData.startDate.split('-').map(Number);
+    const start = new Date(y, m-1, d);
+    const sd = start.getDay();
+    if (sd !== 1) { const adj = sd===0?1:8-sd; start.setDate(start.getDate()+adj); } // normalize to Monday
+    start.setHours(0,0,0,0);
+    const today = new Date(ref.getFullYear(), ref.getMonth(), ref.getDate());
+    const weekNumRaw = Math.max(1, Math.floor((today - start)/(24*60*60*1000)/7) + 1);
+    const completionSunday = new Date(start);
+    completionSunday.setDate(start.getDate() + CYCLE_WEEKS*7 - 1); // last day of week 17 (a Sunday)
+    return {
+      weekNumRaw,                                  // uncapped week number (can exceed 17)
+      cycleWeeks: CYCLE_WEEKS,
+      inFinalWeek: weekNumRaw === CYCLE_WEEKS,      // currently inside week 17
+      reachedCompletion: weekNumRaw >= CYCLE_WEEKS, // week 17 or beyond (cycle done)
+      cycleContinued: !!plannerData.cycleContinued, // user chose "keep going" this cycle
+      cycleNumber: plannerData.cycleNumber || 1,
+      completionSunday,                             // Date: the Sunday that closes week 17
+    };
+  };
+
   // Render one week's habits as "name done/target [HIT]"
   const DAY_ABBR = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
 
@@ -4459,7 +4489,9 @@ Label should clearly describe what is being coached (e.g. "Anvil Streak", "Medit
       weeks:Array(17).fill(null).map(()=>createWeek()),
       dailyPlans:Array(17).fill(null).map(()=>Array(7).fill(null).map(()=>createDay())),
       anvilProject:{project:'',cadence:'',why:'',log:[]},
-      notes:[],startDate:''
+      notes:[],startDate:'',
+      // 120-day cycle tracking (added for the completion experience)
+      cycleNumber:1, cycleContinued:false, cycleArchives:[]
     });
 
     useEffect(()=>{
