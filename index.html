@@ -4929,6 +4929,42 @@ Label should clearly describe what is being coached (e.g. "Anvil Streak", "Medit
         reflection,
         data: JSON.parse(JSON.stringify(data))
       };
+      // Fire the 120-day recap email (Edge narrative + stats). Gated by the master
+      // switch so no recap emails go out until the completion flow is turned on & tested.
+      if (CYCLE_COMPLETION_ENABLED) {
+        try {
+          const log = data.anvilProject?.log || [];
+          const days = [...new Set(log.map(e => (e.date||'').slice(0,10)))].filter(Boolean).sort().reverse();
+          let streak = 0;
+          if (days.length) {
+            const today = new Date(); today.setHours(0,0,0,0);
+            const latest = new Date(days[0]+'T00:00:00');
+            if (Math.round((today - latest)/86400000) <= 1) {
+              const expect = new Date(latest);
+              for (const ds of days) {
+                const d2 = new Date(ds+'T00:00:00');
+                if (d2.getTime() === expect.getTime()) { streak++; expect.setDate(expect.getDate()-1); }
+                else if (d2.getTime() < expect.getTime()) break;
+              }
+            }
+          }
+          const filled = (data.weeks||[]).map((w,i)=>({w,i})).filter(({w})=>w && ((w.wins||[]).some(x=>x&&x.trim())||(w.focus||'').trim()));
+          const weeksPlanned = filled.length;
+          const avgScore = weeksPlanned ? Math.round(filled.reduce((s,{i})=>s+calcSEAScore(data,i).total,0)/weeksPlanned) : 0;
+          const topWins = (data.weeks||[]).flatMap(w=>(w?.wins||[])).filter(x=>x&&x.trim()).slice(-5);
+          const goals = (data.goals||[]).map(g=>g&&g.title).filter(x=>x&&x.trim());
+          const stats = { streak, sessions: log.length, weeksPlanned, avgScore, topWins, goals,
+            anvilProject: data.anvilProject?.project || '', cycleWeeks: (data.weeks?.length || 17) };
+          const email = authUser?.email || localStorage.getItem('summary-email') || '';
+          const name = localStorage.getItem('summary-name') || '';
+          if (email) {
+            fetch('/.netlify/functions/cycle-recap-email', {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ email, name, stats, reflection }),
+            }).catch(e => console.error('recap email failed:', e));
+          }
+        } catch (e) { console.error('recap stats failed:', e); }
+      }
       const archives = JSON.parse(localStorage.getItem('sea-archives')||'[]');
       archives.push(archive);
       localStorage.setItem('sea-archives', JSON.stringify(archives));
