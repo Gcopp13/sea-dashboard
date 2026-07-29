@@ -2828,7 +2828,7 @@ Label should clearly describe what is being coached (e.g. "Anvil Streak", "Medit
   };
 
   // ── WEEK VIEW ──────────────────────────────────────────────────────────────
-  const WeekView = ({ data, updateField, weekNum, setWeekNum, openCoach, onPrint, onMilestone, onBack }) => {
+  const WeekView = ({ data, updateField, weekNum, setWeekNum, openCoach, onPrint, onMilestone, onBack, onStartFresh }) => {
     const [ritualStep, setRitualStep] = useState(0);
     const [showConfetti, setShowConfetti] = useState(false);
     const week = data.weeks[weekNum-1];
@@ -2865,7 +2865,7 @@ Label should clearly describe what is being coached (e.g. "Anvil Streak", "Medit
           cycleCtx={cycleCtx}
           onBack={onBack}
           onContinue={() => updateField('cycleContinued', true)}
-          onReset={() => { /* Stage 3: archive completed cycle + fresh start + recap email */ }}
+          onReset={onStartFresh}
         />
       );
     }
@@ -3648,12 +3648,12 @@ Label should clearly describe what is being coached (e.g. "Anvil Streak", "Medit
   // ── COACH CODE DISPLAY (for coaches to share their code) ─────────────────
 
   // Wrapper so WeekView has its own local week nav — prevents nav arrows from changing global weekNum
-  const WeekViewWrapper = ({ data, updateField, initialWeekNum, openCoach, onPrint, onMilestone, onBack }) => {
+  const WeekViewWrapper = ({ data, updateField, initialWeekNum, openCoach, onPrint, onMilestone, onBack, onStartFresh }) => {
     const [localWeekNum, setLocalWeekNum] = useState(initialWeekNum);
-    return <WeekView data={data} updateField={updateField} weekNum={localWeekNum} setWeekNum={setLocalWeekNum} openCoach={openCoach} onPrint={onPrint} onMilestone={onMilestone} onBack={onBack}/>;
+    return <WeekView data={data} updateField={updateField} weekNum={localWeekNum} setWeekNum={setLocalWeekNum} openCoach={openCoach} onPrint={onPrint} onMilestone={onMilestone} onBack={onBack} onStartFresh={onStartFresh}/>;
   };
 
-  const MoreView = ({ data, updateField, saveData, openCoach, personality, setPersonality, onReopenOnboarding, onMilestone, weekNum, setWeekNum, onSignOut, onMetaChange, setActiveTab, authUser, onRitualBack, isCoachOrAdmin, autoOpenMessages }) => {
+  const MoreView = ({ data, updateField, saveData, openCoach, personality, setPersonality, onReopenOnboarding, onMilestone, weekNum, setWeekNum, onSignOut, onMetaChange, setActiveTab, authUser, onRitualBack, isCoachOrAdmin, autoOpenMessages, onStartFresh }) => {
     const [section, setSection] = useState(null);
     const [newNote, setNewNote] = useState('');
     const [noteTitle, setNoteTitle] = useState('');
@@ -3854,7 +3854,7 @@ Label should clearly describe what is being coached (e.g. "Anvil Streak", "Medit
         {/* Vision & Goals */}
         {/* Weekly Ritual */}
         {section==='weekly' && (
-          <WeekViewWrapper data={data} updateField={updateField} initialWeekNum={weekNum} openCoach={openCoach} onPrint={()=>window.print()} onMilestone={onMilestone} onBack={()=>{setSection(null);onRitualBack&&onRitualBack();}}/>
+          <WeekViewWrapper data={data} updateField={updateField} initialWeekNum={weekNum} openCoach={openCoach} onPrint={()=>window.print()} onMilestone={onMilestone} onBack={()=>{setSection(null);onRitualBack&&onRitualBack();}} onStartFresh={onStartFresh}/>
         )}
 
         {/* Messes */}
@@ -4946,7 +4946,9 @@ Label should clearly describe what is being coached (e.g. "Anvil Streak", "Medit
         weekByDesign: data.weekByDesign,
         weeks: Array(17).fill(null).map(()=>createWeek()),
         dailyPlans: Array(17).fill(null).map(()=>Array(7).fill(null).map(()=>createDay())),
-        anvilProject: {project: reflection.nextAnvil || data.anvilProject?.project || '', cadence: data.anvilProject?.cadence || '', why: data.anvilProject?.why || '', log: []},
+        // Streak PERSISTS across a reset: keep the full Anvil log (was `log: []`, which
+        // silently wiped the streak — the exact thing users must never lose on reset).
+        anvilProject: {project: reflection.nextAnvil || data.anvilProject?.project || '', cadence: data.anvilProject?.cadence || '', why: data.anvilProject?.why || '', log: data.anvilProject?.log || []},
         notes: [],
         startDate: newStartDate
       };
@@ -5188,7 +5190,7 @@ Label should clearly describe what is being coached (e.g. "Anvil Streak", "Medit
             {activeTab==='score'&&<ScoreView data={data} updateField={updateField} weekNum={weekNum} setWeekNum={setWeekNum} setActiveTab={setActiveTab} openCoach={openCoach} onPrint={printTab} onMilestone={setMilestone} setShowResetModal={setShowResetModal}/>}
             {activeTab==='aicoach'&&<AICoachTab plannerData={data} authUserId={authUser?.id} personality={coachPersonality} conversations={conversations} onConversationsChange={setConversations}/>}
             {activeTab==='journal'&&<JournalView data={data} updateField={updateField}/>}
-            {activeTab==='more'&&<MoreView data={data} updateField={updateField} saveData={saveData} openCoach={openCoach} personality={coachPersonality} setPersonality={setCoachPersonality} onReopenOnboarding={onReopenOnboarding} onMilestone={setMilestone} weekNum={plannerWeekNum} setWeekNum={setWeekNum} onSignOut={async()=>{await _supabase.auth.signOut();setAuthUser(null);}} onMetaChange={()=>{ if(authUser) savePlannerDataToCloud(authUser.id, data); }} setActiveTab={setActiveTab} authUser={authUser} onRitualBack={()=>setPlanningNextWeek(false)} isCoachOrAdmin={isCoachOrAdmin} autoOpenMessages={autoOpenMessages}/>}
+            {activeTab==='more'&&<MoreView data={data} updateField={updateField} saveData={saveData} openCoach={openCoach} personality={coachPersonality} setPersonality={setCoachPersonality} onReopenOnboarding={onReopenOnboarding} onMilestone={setMilestone} weekNum={plannerWeekNum} setWeekNum={setWeekNum} onSignOut={async()=>{await _supabase.auth.signOut();setAuthUser(null);}} onMetaChange={()=>{ if(authUser) savePlannerDataToCloud(authUser.id, data); }} setActiveTab={setActiveTab} authUser={authUser} onRitualBack={()=>setPlanningNextWeek(false)} isCoachOrAdmin={isCoachOrAdmin} autoOpenMessages={autoOpenMessages} onStartFresh={()=>setShowResetModal(true)}/>}
             {activeTab==='admin'&&userRole==='admin'&&<AdminPanel authUser={authUser}/>}
           </div>
         </div>
