@@ -4546,6 +4546,17 @@ Label should clearly describe what is being coached (e.g. "Anvil Streak", "Medit
     // after us — so we must NOT blindly overwrite (the bug that lost a week of data).
     const cloudBaseRef = useRef(null);
     const skipNextSaveRef = useRef(false);
+    const hasSyncedRef = useRef(false);
+    // Cloud timestamps round-trip through Postgres as '...+00:00' at microsecond
+    // precision, while this client writes/remembers them as '...Z' at millisecond
+    // precision. Comparing the raw strings reported a false conflict on every save
+    // after the first — so freshly typed fields were reverted to the cloud copy
+    // ~1.5s later. Compare the actual instants instead of the string forms.
+    const sameCloudStamp = (a, b) => {
+      if (!a || !b) return false;
+      const ta = Date.parse(a), tb = Date.parse(b);
+      return !isNaN(ta) && !isNaN(tb) && ta === tb;
+    };
     // Union two Anvil logs by date+note so an entry from either device is never dropped.
     const mergeAnvilLog = (a, b) => {
       const seen = new Set(); const out = [];
@@ -4617,10 +4628,15 @@ Label should clearly describe what is being coached (e.g. "Anvil Streak", "Medit
       return () => navigator.serviceWorker?.removeEventListener('message', handleSWMessage);
     }, []);
 
-    // Sync with Supabase when authUser becomes available
-    // No !loading guard — auth can resolve before or after localStorage read, both cases need sync
+    // Sync with Supabase when authUser becomes available.
+    // No !loading guard — auth can resolve before or after localStorage read, both cases need sync.
+    // Guard so we sync ONCE per mount: Supabase hands back a new user object on every token
+    // refresh / re-emitted SIGNED_IN, and re-running the sync would re-adopt the cloud copy and
+    // clobber edits not yet flushed to the cloud. A real account switch unmounts this component
+    // (AuthRouter renders when authUser is null), which resets the ref, so the next user still syncs.
     useEffect(()=>{
-      if (authUser) {
+      if (authUser && !hasSyncedRef.current) {
+        hasSyncedRef.current = true;
         syncPlannerData(authUser.id);
       }
     },[authUser]);
@@ -4747,7 +4763,7 @@ Label should clearly describe what is being coached (e.g. "Anvil Streak", "Medit
         if (cloudPlanner && cloudUpdatedAt) {
           // Up to date → our fields win. Cloud moved under us (or we never synced) →
           // the cloud's fields win and we adopt them. Either way, UNION the Anvil log.
-          const upToDate = cloudBaseRef.current === cloudUpdatedAt;
+          const upToDate = sameCloudStamp(cloudBaseRef.current, cloudUpdatedAt);
           const winner = upToDate ? withMergedAnvilLog(d, cloudPlanner)
                                   : withMergedAnvilLog(cloudPlanner, d);
           if (!upToDate) {
