@@ -4546,6 +4546,11 @@ Label should clearly describe what is being coached (e.g. "Anvil Streak", "Medit
     // after us — so we must NOT blindly overwrite (the bug that lost a week of data).
     const cloudBaseRef = useRef(null);
     const skipNextSaveRef = useRef(false);
+    // Compare two timestamps by the instant they represent, NOT by string. PostgREST returns
+    // "2026-07-29T20:03:28.953+00:00" while the client generates "…953Z" via toISOString() —
+    // the same moment, different text. String equality treated every second edit as a remote
+    // conflict and reverted the user's fresh input ~1.5s after typing. Parse both, compare epoch ms.
+    const sameInstant = (a, b) => !!a && !!b && new Date(a).getTime() === new Date(b).getTime();
     // Union two Anvil logs by date+note so an entry from either device is never dropped.
     const mergeAnvilLog = (a, b) => {
       const seen = new Set(); const out = [];
@@ -4747,7 +4752,7 @@ Label should clearly describe what is being coached (e.g. "Anvil Streak", "Medit
         if (cloudPlanner && cloudUpdatedAt) {
           // Up to date → our fields win. Cloud moved under us (or we never synced) →
           // the cloud's fields win and we adopt them. Either way, UNION the Anvil log.
-          const upToDate = cloudBaseRef.current === cloudUpdatedAt;
+          const upToDate = sameInstant(cloudBaseRef.current, cloudUpdatedAt);
           const winner = upToDate ? withMergedAnvilLog(d, cloudPlanner)
                                   : withMergedAnvilLog(cloudPlanner, d);
           if (!upToDate) {
