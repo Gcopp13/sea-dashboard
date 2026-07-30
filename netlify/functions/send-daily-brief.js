@@ -15,7 +15,7 @@ exports.handler = async (event) => {
   const {
     email, weekNum, score, prevScore,
     habitsDone, habitsTarget, habitsCount,
-    anvilDone, anvilTarget, anvilProject,
+    anvilDone, anvilTarget, anvilProject = '',
     goals = [], withPdf = false,
   } = body;
 
@@ -182,7 +182,7 @@ exports.handler = async (event) => {
           ? `${habitsDone} of ${habitsTarget} days completed so far this week`
           : 'No habits set up yet');
 
-      section('⚒️', anvilProject.toUpperCase(),
+      section('⚒️', (anvilProject || 'Anvil').toUpperCase(),
         anvilTarget > 0
           ? `${anvilDone} of ${anvilTarget} scheduled session${anvilTarget !== 1 ? 's' : ''} logged this week`
           : 'No sessions scheduled yet');
