@@ -13,6 +13,11 @@
 
 [functions]
   node_bundler = "esbuild"
+  # esbuild inlines pdfkit's JS but not its runtime .afm font-metric data files.
+  # At runtime the bundled code reads them from __dirname + '/data/*.afm', which
+  # resolves to /var/task/netlify/functions/data/. Ship the vendored copies there
+  # so send-daily-brief's PDF generation stops throwing ENOENT on Helvetica.afm.
+  included_files = ["netlify/functions/data/*.afm"]
 
 # Scheduled functions -- migrated off the external (Perplexity-chat) scheduler so
 # these run on Netlify's own infrastructure. Times are UTC. Netlify triggers each
