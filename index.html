@@ -3398,8 +3398,9 @@ Label should clearly describe what is being coached (e.g. "Anvil Streak", "Medit
     return (
       <div className="page-content px-4 py-5 space-y-5">
 
-        {/* Week 17 Completion Banner */}
-        {weekNum === 17 && (
+        {/* Week 17 Completion Banner — only for users who have NOT chosen to continue.
+            A continued user gets the quiet "Start a new cycle" entry lower down instead. */}
+        {weekNum === 17 && !data.cycleContinued && (
           <div className="rounded-3xl p-6 text-center border" style={{background:'linear-gradient(135deg,rgba(99,102,241,0.15),rgba(139,92,246,0.15))',borderColor:'rgba(99,102,241,0.4)'}}>
             <span className="text-4xl">🏁</span>
             <h3 className="text-xl font-black text-white mt-3 mb-2">You finished 120 days!</h3>
@@ -3615,6 +3616,19 @@ Label should clearly describe what is being coached (e.g. "Anvil Streak", "Medit
             })}
           </div>
         </div>
+
+        {/* Continued-cycle reset — a quiet, always-available entry so a user who chose
+            "Keep Going" past 120 days can still start a fresh cycle whenever they're ready
+            (their only other path was navigating back to week 17). Streak carries over. */}
+        {data.cycleContinued && (
+          <div className="bg-slate-800/40 rounded-2xl p-5 border border-slate-700/60">
+            <h3 className="text-sm font-bold text-slate-300 uppercase tracking-wide mb-1">Start a new cycle</h3>
+            <p className="text-xs text-slate-500 mb-3">You're rolling past your first 120 days. When you're ready for a clean slate, archive this cycle and begin a fresh one — your Anvil streak carries over.</p>
+            <button onClick={()=>setShowResetModal(true)} className="w-full py-3 rounded-xl font-bold text-white text-sm" style={{background:'linear-gradient(135deg,#10b981,#059669)'}}>
+              Archive &amp; Start a New 120 Days →
+            </button>
+          </div>
+        )}
 
         {/* Share Modal */}
         {showShareModal && (
@@ -5002,7 +5016,12 @@ Label should clearly describe what is being coached (e.g. "Anvil Streak", "Medit
         // silently wiped the streak — the exact thing users must never lose on reset).
         anvilProject: {project: reflection.nextAnvil || data.anvilProject?.project || '', cadence: data.anvilProject?.cadence || '', why: data.anvilProject?.why || '', log: data.anvilProject?.log || []},
         notes: [],
-        startDate: newStartDate
+        startDate: newStartDate,
+        // Fresh cycle: clear the "continued" flag so this new 120 days gets its own
+        // completion choice at week 17, and advance the cycle number.
+        cycleNumber: archive.cycleNumber + 1,
+        cycleContinued: false,
+        cycleArchives: []
       };
       setData(freshData);
       localStorage.setItem('sea-planner-data', JSON.stringify(freshData));
@@ -5200,10 +5219,10 @@ Label should clearly describe what is being coached (e.g. "Anvil Streak", "Medit
                     <span className="text-5xl">📦</span>
                     <h2 className="text-xl font-black text-white mt-3">Ready to Archive & Reset?</h2>
                     <div className="bg-slate-800/60 rounded-2xl p-5 border border-slate-700 text-left space-y-2">
-                      <p className="text-sm text-slate-300">✓ Your full 17-week history will be <span className="text-green-400 font-semibold">saved to archive</span></p>
+                      <p className="text-sm text-slate-300">✓ Your full cycle history will be <span className="text-green-400 font-semibold">saved to archive</span></p>
                       <p className="text-sm text-slate-300">✓ Your reflection will be <span className="text-green-400 font-semibold">preserved</span></p>
-                      <p className="text-sm text-slate-300">✓ Your settings, coach, and Slight Edge will <span className="text-green-400 font-semibold">carry over</span></p>
-                      <p className="text-sm text-slate-300">✓ Goals, weeks, and Anvil log will <span className="text-yellow-400 font-semibold">reset fresh</span></p>
+                      <p className="text-sm text-slate-300">✓ Your settings, coach, Slight Edge, and <span className="text-green-400 font-semibold">Anvil streak</span> will <span className="text-green-400 font-semibold">carry over</span></p>
+                      <p className="text-sm text-slate-300">✓ Goals and weekly plans will <span className="text-yellow-400 font-semibold">reset fresh</span></p>
                     </div>
                     <p className="text-xs text-slate-500">This cannot be undone — but your archive is always saved.</p>
                     <button onClick={()=>archiveAndReset(resetReflection)} className="w-full py-4 rounded-2xl font-black text-white text-base" style={{background:'linear-gradient(135deg,#10b981,#059669)'}}>
