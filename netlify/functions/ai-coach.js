@@ -9,6 +9,7 @@
  */
 
 const ALLOWED_ORIGINS = [
+  'https://sea-dashboard.gettingresultsinc.com',
   'https://sea-dashboard.netlify.app',
   'https://main--sea-dashboard.netlify.app',
 ];

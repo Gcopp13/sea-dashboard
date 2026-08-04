@@ -4,7 +4,7 @@
 // users pick up the new HTML on their next visit. Format: YYYY-MM-DD-N.
 // Any change to this file (including this string) triggers a byte-diff on
 // /sw.js, which the browser detects and installs as a new worker.
-const SW_VERSION = '2026-07-30-3';
+const SW_VERSION = '2026-07-30-4';
 const CACHE_NAME = `sea-dashboard-${SW_VERSION}`;
 
 // Precache the app shell so we have something to fall back to offline,
@@ -112,7 +112,7 @@ self.addEventListener('notificationclick', e => {
       // Focus existing window and send a postMessage to handle routing
       // (client.navigate() is not supported on iOS Safari/PWA)
       for (const client of windowClients) {
-        if (client.url.includes('sea-dashboard.netlify.app') && 'focus' in client) {
+        if ((client.url.includes('sea-dashboard.gettingresultsinc.com') || client.url.includes('sea-dashboard.netlify.app')) && 'focus' in client) {
           client.focus();
           if (url !== '/') client.postMessage({ type: 'DEEP_LINK', url });
           return;

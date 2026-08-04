@@ -5,6 +5,7 @@ const { sendPush } = require('./send-push');
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY;
+const APP_URL = process.env.APP_URL || 'https://sea-dashboard.netlify.app';
 
 const supabaseHeaders = {
   'apikey': SUPABASE_SERVICE_KEY,
@@ -56,7 +57,7 @@ exports.handler = async () => {
       title: 'S.E.A. Evening Review',
       body: msg,
       tag: 'evening-review',
-      url: 'https://sea-dashboard.netlify.app/'
+      url: APP_URL + '/'
     });
 
     if (result.ok) {

@@ -64,7 +64,7 @@ const resetEmailHTML = (resetUrl) => `
           <p style="color:#94a3b8;font-size:0.8rem;margin:0;text-align:center;">
             You received this email because a password reset was requested for your S.E.A. Dashboard account.<br>
             Please do not reply to this email &mdash; this mailbox is not monitored.<br>
-            <a href="https://sea-dashboard.netlify.app" style="color:#6366f1;">Getting Results Inc.</a> &middot; Coaching for Financial Advisors
+            <a href="https://sea-dashboard.gettingresultsinc.com" style="color:#6366f1;">Getting Results Inc.</a> &middot; Coaching for Financial Advisors
           </p>
         </td>
       </tr>

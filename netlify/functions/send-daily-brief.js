@@ -5,6 +5,7 @@
 
 const RESEND_API_KEY = process.env.RESEND_API_KEY;
 const FROM_EMAIL = 'S.E.A. Dashboard <onboarding@gettingresultsinc.com>';
+const APP_URL = process.env.APP_URL || 'https://sea-dashboard.netlify.app';
 
 exports.handler = async (event) => {
   if (event.httpMethod !== 'POST') return { statusCode: 405, body: 'Method Not Allowed' };
@@ -49,7 +50,7 @@ exports.handler = async (event) => {
       : ['No goals in progress']),
     ``,
     `─────────────────────────`,
-    `Log in to S.E.A. Dashboard → https://sea-dashboard.netlify.app`,
+    `Log in to S.E.A. Dashboard → ${APP_URL}`,
   ];
   const plainText = textLines.join('\n');
 
@@ -116,7 +117,7 @@ exports.handler = async (event) => {
 
     <!-- CTA -->
     <div style="text-align:center;margin-bottom:32px;">
-      <a href="https://sea-dashboard.netlify.app" style="display:inline-block;background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff;text-decoration:none;font-weight:800;font-size:15px;padding:14px 32px;border-radius:50px;">Open Dashboard →</a>
+      <a href="${APP_URL}" style="display:inline-block;background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff;text-decoration:none;font-weight:800;font-size:15px;padding:14px 32px;border-radius:50px;">Open Dashboard →</a>
     </div>
 
     <p style="margin:0;font-size:11px;color:#334155;text-align:center;">S.E.A. Dashboard &nbsp;·&nbsp; Getting Results Inc.</p>
@@ -206,7 +207,7 @@ exports.handler = async (event) => {
       // Footer
       pdfDoc.rect(50, 748, 512, 1).fill('#1e293b');
       pdfDoc.fillColor('#334155').fontSize(9).font('Helvetica')
-        .text('S.E.A. Dashboard  ·  Getting Results Inc.  ·  https://sea-dashboard.netlify.app', 50, 756, { align: 'center', width: 512 });
+        .text('S.E.A. Dashboard  ·  Getting Results Inc.  ·  ' + APP_URL, 50, 756, { align: 'center', width: 512 });
 
       pdfDoc.end();
     });
