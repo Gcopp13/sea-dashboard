@@ -882,6 +882,28 @@
     };
   };
 
+  // Consecutive-day Anvil streak that does NOT break mid-day. A streak stays intact through the
+  // whole current day even before today's session is logged, and only breaks once a full day has
+  // passed with no entry — so counting is anchored at TODAY if logged today, else YESTERDAY (today
+  // is still in progress). specificDays (0=Mon..6=Sun) restricts which weekdays count; falsy = daily.
+  const computeAnvilStreak = (log, specificDays) => {
+    if (!Array.isArray(log) || !log.length) return 0;
+    const norm = v => { const x = new Date(v); x.setHours(0,0,0,0); return x; };
+    const now = norm(new Date());
+    const loggedSet = new Set(log.map(e => norm(e.date).toDateString()));
+    const useSD = Array.isArray(specificDays) && specificDays.length > 0;
+    const anchor = new Date(now);
+    if (!loggedSet.has(now.toDateString())) anchor.setDate(anchor.getDate() - 1);
+    let streak = 0;
+    for (let i = 0; i < 366; i++) {
+      const d = new Date(anchor); d.setDate(anchor.getDate() - i);
+      if (useSD) { const di = (d.getDay() + 6) % 7; if (!specificDays.includes(di)) continue; }
+      if (loggedSet.has(d.toDateString())) streak++;
+      else break;
+    }
+    return streak;
+  };
+
   // ── 120-day cycle completion math ────────────────────────────────────────
   // A cycle is exactly CYCLE_WEEKS Monday–Sunday weeks (weeks are anchored to the
   // first Monday on/after startDate, same as getTimeContext), so week 17 always
@@ -954,15 +976,7 @@
       const latestHabitWeek = pickHabitWeek(plannerData.weeks, latestWeek);
       const recentWins = latestWeek?.wins?.filter(x=>x.trim()).join(', ') || 'None logged';
       const recentFocus = latestWeek?.focus || 'Not set';
-      const anvilStreak = (()=>{
-        const log = plannerData.anvilProject?.log||[];
-        if(!log.length) return 0;
-        const now=new Date();now.setHours(0,0,0,0);
-        const unique=[...new Set(log.map(e=>{const d=new Date(e.date);d.setHours(0,0,0,0);return d.toDateString()}))].map(s=>new Date(s)).sort((a,b)=>b-a);
-        let streak=0;
-        for(let i=0;i<unique.length;i++){const exp=new Date(now);exp.setDate(now.getDate()-i);if(unique[i].toDateString()===exp.toDateString())streak++;else break;}
-        return streak;
-      })();
+      const anvilStreak = computeAnvilStreak(plannerData.anvilProject?.log, plannerData.anvilProject?.useSpecificDays ? plannerData.anvilProject?.specificDays : null);
       const habitSummary = (()=>{
         return formatHabits(T.currentWeek);
       })();
@@ -1152,6 +1166,10 @@
     const unique=[...new Set(anvilLog.map(e=>{const d=new Date(e.date);d.setHours(0,0,0,0);return d.toDateString()}))].map(s=>new Date(s)).sort((a,b)=>b-a);
     const streakBase = anvilToday ? today : yesterday;
     let anvilStreak=0;for(let i=0;i<unique.length;i++){const exp=new Date(streakBase);exp.setDate(streakBase.getDate()-i);if(unique[i].toDateString()===exp.toDateString())anvilStreak++;else break;}
+    // Streak status so the coach never calls a still-alive streak "broken": logged today = safe;
+    // not yet today but streak>0 = intact-but-pending (needs today to CONTINUE, NOT broken);
+    // streak 0 = genuinely lapsed.
+    const anvilStreakStatus = anvilToday ? 'logged-today-safe' : (anvilStreak > 0 ? 'alive-today-pending' : 'broken');
 
     const weeksWithData = (plannerData.weeks||[]).filter(w=>w.wins?.some(x=>x.trim())||w.focus?.trim());
     const latestWeek = weeksWithData[weeksWithData.length-1];
@@ -1191,6 +1209,7 @@
     const snapshot = {
       anvilProject: plannerData.anvilProject?.project||'Not set',
       anvilStreak,
+      anvilStreakStatus,
       anvilToday,
       anvilYesterday,
       habits,
@@ -1216,6 +1235,7 @@ CRITICAL — TWO COMPLETELY SEPARATE SYSTEMS, DO NOT CONFUSE THEM:
 1. ANVIL PROJECT: A single focused deep-work project (anvilProject field). anvilStreak = consecutive days they logged an Anvil session. anvilToday/anvilYesterday = whether they logged a session.
 2. HABITS: Daily habits tracked in the habit tracker (habits array). Each habit has its own name, days completed this week, and weekly target. These are entirely independent from the Anvil project — even if a habit has the same name as the Anvil project, they are different things.
 NEVER mix Anvil streak data with habit completion data. If you mention a habit, only reference that habit's own days/target numbers. If you mention Anvil, only reference anvilStreak/anvilToday.
+STREAK IS NEVER "BROKEN" JUST BECAUSE TODAY ISN'T LOGGED YET — the user has until the end of today. Use anvilStreakStatus: 'logged-today-safe' = they already did it today (celebrate the current anvilStreak count); 'alive-today-pending' = streak is INTACT from yesterday and just needs today's session to CONTINUE — frame as "keep your N-day streak alive, get today's in" and NEVER say it broke/lapsed/reset; 'broken' = streak has genuinely lapsed (it is 0). ONLY use broke/broken/lost/reset language when anvilStreakStatus is exactly 'broken'.
 
 RULES:
 - Only speak up if there is a real pattern, gap, streak, or follow-up commitment worth addressing
@@ -2098,14 +2118,7 @@ Label should clearly describe what is being coached (e.g. "Anvil Streak", "Medit
     const loggedSet = new Set((anvil.log||[]).map(e=>{const d=new Date(e.date);d.setHours(0,0,0,0);return d.toDateString();}));
     const useSpecDays = anvil.useSpecificDays && (anvil.specificDays||[]).length>0;
     const specDays = anvil.specificDays||[]; // 0=Mon…6=Sun
-    let streak=0;
-    if(useSpecDays){
-      // Walk back day by day; skip non-scheduled days, break on missed scheduled day
-      for(let i=0;i<365;i++){const d=new Date(today);d.setDate(today.getDate()-i);const di=(d.getDay()+6)%7;if(!specDays.includes(di))continue;if(loggedSet.has(d.toDateString()))streak++;else break;}
-    } else {
-      const sortedUnique=[...loggedSet].map(s=>new Date(s)).sort((a,b)=>b-a);
-      for(let i=0;i<sortedUnique.length;i++){const exp=new Date(today);exp.setDate(today.getDate()-i);if(sortedUnique[i].toDateString()===exp.toDateString())streak++;else break;}
-    }
+    const streak = computeAnvilStreak(anvil.log, useSpecDays ? specDays : null);
 
     // This week
     const monday=new Date(today);monday.setDate(today.getDate()-((today.getDay()+6)%7));
@@ -2509,8 +2522,7 @@ Label should clearly describe what is being coached (e.g. "Anvil Streak", "Medit
     const greeting = hour<12?'Good morning':hour<17?'Good afternoon':'Good evening';
 
     const anvilLog = data.anvilProject?.log||[];
-    let anvilStreak=0;
-    if(anvilLog.length>0){const now=new Date();now.setHours(0,0,0,0);const loggedSetD=new Set(anvilLog.map(e=>{const d=new Date(e.date);d.setHours(0,0,0,0);return d.toDateString();}));const useSD=data.anvilProject?.useSpecificDays&&(data.anvilProject?.specificDays||[]).length>0;const sdArr=data.anvilProject?.specificDays||[];if(useSD){for(let i=0;i<365;i++){const d=new Date(now);d.setDate(now.getDate()-i);const di=(d.getDay()+6)%7;if(!sdArr.includes(di))continue;if(loggedSetD.has(d.toDateString()))anvilStreak++;else break;}}else{const unique=[...loggedSetD].map(s=>new Date(s)).sort((a,b)=>b-a);for(let i=0;i<unique.length;i++){const exp=new Date(now);exp.setDate(now.getDate()-i);if(unique[i].toDateString()===exp.toDateString())anvilStreak++;else break;}}}
+    const anvilStreak = computeAnvilStreak(anvilLog, data.anvilProject?.useSpecificDays ? data.anvilProject?.specificDays : null);
     // Detect if today is a scheduled Anvil day (specific days mode)
     const todayDayIdx2 = (new Date().getDay()+6)%7; // 0=Mon…6=Sun
     const anvilSpecificDays = data.anvilProject?.specificDays||[];
@@ -3125,16 +3137,7 @@ Label should clearly describe what is being coached (e.g. "Anvil Streak", "Medit
 
     // Current streak
     const today = new Date(); today.setHours(0,0,0,0);
-    let streak = 0;
-    const loggedSetS = new Set(log.map(e => { const d = new Date(e.date); d.setHours(0,0,0,0); return d.toDateString(); }));
-    const useSDScore = anvilData?.useSpecificDays && (anvilData?.specificDays||[]).length > 0;
-    const sdScore = anvilData?.specificDays || [];
-    if (useSDScore) {
-      for (let i = 0; i < 365; i++) { const d = new Date(today); d.setDate(today.getDate()-i); const di=(d.getDay()+6)%7; if(!sdScore.includes(di))continue; if(loggedSetS.has(d.toDateString()))streak++; else break; }
-    } else {
-      const sortedUnique = [...loggedSetS].map(s => new Date(s)).sort((a,b) => b-a);
-      for (let i = 0; i < sortedUnique.length; i++) { const exp = new Date(today); exp.setDate(today.getDate() - i); if (sortedUnique[i].toDateString() === exp.toDateString()) streak++; else break; }
-    }
+    const streak = computeAnvilStreak(log, anvilData?.useSpecificDays ? anvilData?.specificDays : null);
 
     // This week (Mon–Sun)
     const weekStart = new Date(today);
@@ -5048,16 +5051,7 @@ Label should clearly describe what is being coached (e.g. "Anvil Streak", "Medit
       window.print();
     };
 
-    const getAnvilStreak = () => {
-      const log = data.anvilProject?.log || [];
-      if (!log.length) return 0;
-      const now = new Date(); now.setHours(0,0,0,0);
-      const unique = [...new Set(log.map(e=>{const d=new Date(e.date);d.setHours(0,0,0,0);return d.toDateString();}))]
-        .map(s=>new Date(s)).sort((a,b)=>b-a);
-      let streak = 0;
-      for (let i=0;i<unique.length;i++){const exp=new Date(now);exp.setDate(now.getDate()-i);if(unique[i].toDateString()===exp.toDateString())streak++;else break;}
-      return streak;
-    };
+    const getAnvilStreak = () => computeAnvilStreak(data.anvilProject?.log, data.anvilProject?.useSpecificDays ? data.anvilProject?.specificDays : null);
 
     const logAnvil = () => {
       if (!anvilEntry.trim()) return;
