@@ -163,7 +163,11 @@ function buildEmailHtml(name, data) {
         </div>` : ''}
 
         <div style="text-align:center;margin-top:28px;">
-          <a href="${APP_URL}" style="display:inline-block;background:linear-gradient(135deg,#1d4ed8,#7c3aed);color:#ffffff;text-decoration:none;padding:14px 32px;border-radius:10px;font-weight:700;font-size:15px;">Open My Dashboard →</a>
+          <p style="color:#94a3b8;font-size:13px;margin:0 0 12px;">New week ahead — take a few minutes to plan it.</p>
+          <a href="${APP_URL}?tab=more&section=weekly" style="display:inline-block;background:linear-gradient(135deg,#3b82f6,#8b5cf6);color:#ffffff;text-decoration:none;padding:14px 32px;border-radius:10px;font-weight:700;font-size:15px;">Plan This Week's Ritual →</a>
+          <div style="margin-top:12px;">
+            <a href="${APP_URL}" style="color:#94a3b8;text-decoration:none;font-size:13px;">or just open the dashboard</a>
+          </div>
         </div>
 
         <p style="color:#475569;font-size:12px;text-align:center;margin-top:24px;line-height:1.6;">
