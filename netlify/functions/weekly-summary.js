@@ -103,7 +103,7 @@ function buildEmailHtml(name, data) {
 
   const winsHtml = wins.length > 0
     ? wins.map(w => `<li style="margin-bottom:6px;color:#e2e8f0;">${escapeHtml(w)}</li>`).join('')
-    : '<li style="color:#94a3b8;font-style:italic;">No wins recorded this week yet</li>';
+    : '<li style="color:#94a3b8;font-style:italic;">No wins recorded last week</li>';
 
   const goalsHtml = goals.length > 0
     ? goals.map(g => `<div style="padding:10px 14px;background:#1e293b;border-radius:8px;margin-bottom:8px;border-left:3px solid #6366f1;"><span style="color:#e2e8f0;font-size:14px;">${escapeHtml(g.title)}</span><span style="color:#64748b;font-size:12px;float:right;">${g.completion || 0}%</span></div>`).join('')
@@ -133,17 +133,17 @@ function buildEmailHtml(name, data) {
         </div>` : ''}
 
         <div style="background:#0f172a;border-radius:12px;padding:24px;margin-bottom:20px;border:1px solid #334155;text-align:center;">
-          <div style="font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#94a3b8;margin-bottom:8px;">This Week's S.E.A. Score</div>
+          <div style="font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#94a3b8;margin-bottom:8px;">Last Week's S.E.A. Score</div>
           <div style="font-size:48px;font-weight:800;color:${scoreColor};">${scoreDisplay}</div>
         </div>
 
         <div style="margin-bottom:20px;">
-          <div style="font-size:13px;text-transform:uppercase;letter-spacing:1px;color:#94a3b8;font-weight:600;margin-bottom:12px;">Top Wins This Week</div>
+          <div style="font-size:13px;text-transform:uppercase;letter-spacing:1px;color:#94a3b8;font-weight:600;margin-bottom:12px;">Top Wins Last Week</div>
           <ul style="margin:0;padding:0 0 0 18px;list-style:disc;">${winsHtml}</ul>
         </div>
 
         ${weekFocus ? `<div style="background:#0f172a;border-radius:12px;padding:16px 20px;margin-bottom:20px;border:1px solid #334155;">
-          <div style="font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#94a3b8;margin-bottom:6px;">Week Focus</div>
+          <div style="font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#94a3b8;margin-bottom:6px;">Last Week's Focus</div>
           <div style="font-size:14px;color:#e2e8f0;line-height:1.5;">${escapeHtml(weekFocus)}</div>
         </div>` : ''}
 
@@ -223,7 +223,13 @@ exports.handler = async (event) => {
         const html = buildEmailHtml(profile.full_name || profile.email, plannerData);
         const emailRes = await fetch('https://api.resend.com/emails', {
           method: 'POST',
-          headers: { 'Authorization': `Bearer ${RESEND_API_KEY}`, 'Content-Type': 'application/json' },
+          headers: {
+            'Authorization': `Bearer ${RESEND_API_KEY}`,
+            'Content-Type': 'application/json',
+            // Netlify scheduled functions can fire more than once (at-least-once delivery). A
+            // deterministic key per user+day makes a double-fire a no-op — Resend dedupes it for 24h.
+            'Idempotency-Key': `weekly-summary-${profile.id}-${new Date().toISOString().slice(0,10)}`,
+          },
           body: JSON.stringify({
             from: 'SEA Dashboard <onboarding@gettingresultsinc.com>',
             to: [profile.email],
