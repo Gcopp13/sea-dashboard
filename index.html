@@ -2845,7 +2845,8 @@ Label should clearly describe what is being coached (e.g. "Anvil Streak", "Medit
   const WeekView = ({ data, updateField, weekNum, setWeekNum, openCoach, onPrint, onMilestone, onBack, onStartFresh }) => {
     const [ritualStep, setRitualStep] = useState(0);
     const [showConfetti, setShowConfetti] = useState(false);
-    const week = data.weeks[weekNum-1];
+    // Defense-in-depth: never let a missing week slot crash the ritual (falls back to an empty week).
+    const week = data.weeks[weekNum-1] || {wins:['','',''],improvements:'',focus:'',goalPriorities:['','','',''],aActivities:[],messes:[],wheelOfJohn:{family:5,fun:5,fitness:5,finance:5,faith:5}};
     const updateWeek = (f,v) => { const ws=JSON.parse(JSON.stringify(data.weeks)); ws[weekNum-1][f]=v; updateField('weeks',ws); };
 
     const getWeekDates = () => {
@@ -4560,7 +4561,10 @@ Label should clearly describe what is being coached (e.g. "Anvil Streak", "Medit
     });
     // On Sunday, planning ritual should target next week's slot (week starts Monday)
     const [planningNextWeek, setPlanningNextWeek] = useState(false);
-    const plannerWeekNum = planningNextWeek ? Math.min(data.cycleContinued ? 520 : 17, weekNum + 1) : weekNum;
+    // Clamp the planned week to the weeks that actually exist, so the ritual can never target a
+    // week slot that isn't in the array yet (which crashed WeekView). The grow effect below keeps
+    // a slot ahead available, so in the normal case this still resolves to weekNum+1.
+    const plannerWeekNum = planningNextWeek ? Math.min(data.weeks?.length || 17, weekNum + 1) : weekNum;
     const [coachPersonality, setCoachPersonality] = useState(()=>{try{const s=localStorage.getItem('coach-personality');return s?JSON.parse(s):{style:2,tone:2,approach:2,energy:2};}catch(e){return{style:2,tone:2,approach:2,energy:2};}});
     const saveTimer = useRef(null);
     // Cross-device sync conflict resolution. cloudBaseRef = the planner_data.updated_at
@@ -4690,7 +4694,7 @@ Label should clearly describe what is being coached (e.g. "Anvil Streak", "Medit
       if (loading || !data.startDate) return;
       const wk = calcWeekNum(data.startDate, data.cycleContinued);
       if (data.cycleContinued) {
-        const need = wk + 1;
+        const need = wk + 2;   // +2 keeps a slot ahead of the current week so planning next week always has a real slot
         if ((data.weeks?.length || 0) < need || (data.dailyPlans?.length || 0) < need) {
           setData(d => {
             const weeks = [...(d.weeks || [])];
