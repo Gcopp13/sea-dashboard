@@ -4564,7 +4564,7 @@ Label should clearly describe what is being coached (e.g. "Anvil Streak", "Medit
     // Clamp the planned week to the weeks that actually exist, so the ritual can never target a
     // week slot that isn't in the array yet (which crashed WeekView). The grow effect below keeps
     // a slot ahead available, so in the normal case this still resolves to weekNum+1.
-    const plannerWeekNum = planningNextWeek ? Math.min(data.weeks?.length || 17, weekNum + 1) : weekNum;
+    const plannerWeekNum = planningNextWeek ? Math.min(data.cycleContinued ? 520 : 17, weekNum + 1) : weekNum;
     const [coachPersonality, setCoachPersonality] = useState(()=>{try{const s=localStorage.getItem('coach-personality');return s?JSON.parse(s):{style:2,tone:2,approach:2,energy:2};}catch(e){return{style:2,tone:2,approach:2,energy:2};}});
     const saveTimer = useRef(null);
     // Cross-device sync conflict resolution. cloudBaseRef = the planner_data.updated_at
@@ -4691,21 +4691,30 @@ Label should clearly describe what is being coached (e.g. "Anvil Streak", "Medit
     // next week) in the SAME batched update that sets weekNum — so no render ever indexes
     // a week slot that doesn't exist yet.
     useEffect(()=>{
-      if (loading || !data.startDate) return;
-      const wk = calcWeekNum(data.startDate, data.cycleContinued);
-      if (data.cycleContinued) {
-        const need = wk + 2;   // +2 keeps a slot ahead of the current week so planning next week always has a real slot
-        if ((data.weeks?.length || 0) < need || (data.dailyPlans?.length || 0) < need) {
+      // Recompute the current cycle week AND ensure enough week slots exist. Runs on load and every
+      // time the app becomes visible again — a PWA left open for days would otherwise keep a stale
+      // week number and a too-short weeks array, so "plan next week" had no slot to land on and the
+      // ritual got stuck a week behind. Keeping 2 slots ahead means next week always has a real slot.
+      const syncCycle = () => {
+        if (loading || !data.startDate) return;
+        const wk = calcWeekNum(data.startDate, data.cycleContinued);
+        if (data.cycleContinued) {
+          const need = wk + 2;
           setData(d => {
             const weeks = [...(d.weeks || [])];
             const dailyPlans = [...(d.dailyPlans || [])];
+            if (weeks.length >= need && dailyPlans.length >= need) return d;   // already covered — no change
             while (weeks.length < need) weeks.push(createWeek());
             while (dailyPlans.length < need) dailyPlans.push(Array(7).fill(null).map(()=>createDay()));
             return { ...d, weeks, dailyPlans };
           });
         }
-      }
-      setWeekNum(wk);
+        setWeekNum(wk);
+      };
+      syncCycle();
+      const onVisible = () => { if (document.visibilityState === 'visible') syncCycle(); };
+      document.addEventListener('visibilitychange', onVisible);
+      return () => document.removeEventListener('visibilitychange', onVisible);
     },[loading, data.startDate, data.cycleContinued]);
 
     // Load conversation history from Supabase
