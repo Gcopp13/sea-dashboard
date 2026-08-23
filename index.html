@@ -3674,8 +3674,11 @@ Label should clearly describe what is being coached (e.g. "Anvil Streak", "Medit
   };
 
   const MoreView = ({ data, updateField, saveData, openCoach, personality, setPersonality, onReopenOnboarding, onMilestone, weekNum, setWeekNum, onSignOut, onMetaChange, setActiveTab, authUser, onRitualBack, isCoachOrAdmin, autoOpenMessages, autoOpenRitual, clearAutoOpenRitual, onStartFresh }) => {
-    const [section, setSection] = useState(null);
-    // One-shot: jump straight into the weekly ritual (from the Sunday banner or an email link).
+    // Open straight to the ritual when launched from the Sunday banner / email link. Set it in the
+    // INITIAL state so it's synchronous on mount (the effect-based open was unreliable — it navigated
+    // to More but left the menu showing). The effect below is a backup for the already-mounted case
+    // and clears the one-shot flag so a later manual visit to More opens the menu normally.
+    const [section, setSection] = useState(autoOpenRitual ? 'weekly' : null);
     useEffect(()=>{ if(autoOpenRitual){ setSection('weekly'); clearAutoOpenRitual && clearAutoOpenRitual(); } },[autoOpenRitual]);
     const [newNote, setNewNote] = useState('');
     const [noteTitle, setNoteTitle] = useState('');
