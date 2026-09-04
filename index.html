@@ -3047,7 +3047,7 @@ Order the priorities with the #1 FIRST. Never output the ${RITUAL_SENTINEL} bloc
   };
 
 
-  const TodayView = ({ data, updateField, weekNum, dayIdx, setDayIdx, openCoach, score, onPrint, setActiveTab, authUser, autoOpenEvening, clearAutoOpenEvening }) => {
+  const TodayView = ({ data, updateField, weekNum, dayIdx, setDayIdx, openCoach, score, onPrint, setActiveTab, authUser, autoOpenEvening, clearAutoOpenEvening, autoOpenMorning, clearAutoOpenMorning }) => {
     const dayNames = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
     const dayFull  = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
     const day = data.dailyPlans[weekNum-1][dayIdx];
@@ -3065,6 +3065,8 @@ Order the priorities with the #1 FIRST. Never output the ${RITUAL_SENTINEL} bloc
 
     // Open the Edge evening review straight from the 7 PM push (?tab=today&section=evening).
     useEffect(()=>{ if(autoOpenEvening){ setShowEveningCoach(true); clearAutoOpenEvening && clearAutoOpenEvening(); } },[autoOpenEvening]);
+    // Open the Edge morning kickoff straight from the 7 AM push (?tab=today&section=morning).
+    useEffect(()=>{ if(autoOpenMorning){ setShowMorningCoach(true); clearAutoOpenMorning && clearAutoOpenMorning(); } },[autoOpenMorning]);
 
     // Write a confirmed Edge-led evening recap into today's plan. Tomorrow's
     // priorities feed the existing carry-over engine → tomorrow's Top 3.
@@ -4888,7 +4890,7 @@ Order the priorities with the #1 FIRST. Never output the ${RITUAL_SENTINEL} bloc
                 const [loading, setLoading] = React.useState(false);
                 const [status, setStatus] = React.useState('');
                 const [prefs, setPrefs] = React.useState(()=>{
-                  return { eveningReminder: true, weeklyRitual: true, coachNudge: true };
+                  return { morningReminder: true, eveningReminder: true, weeklyRitual: true, coachNudge: true };
                 });
 
                 const VAPID_PUBLIC_KEY = 'BLL4ZFFDRkZ_5AWIc4TCffRufyd58pXqQZ05YDXbuoJE6wW6eIUm6wTukDNL8qu_wXVwSIrLofObwBkVTymFb7E';
@@ -4945,7 +4947,7 @@ Order the priorities with the #1 FIRST. Never output the ${RITUAL_SENTINEL} bloc
                     const p256dh = arrayBufferToBase64(sub.getKey('p256dh'));
                     const auth = arrayBufferToBase64(sub.getKey('auth'));
 
-                    const mergedPrefs = { eveningReminder: true, weeklyRitual: true, coachNudge: true, timezone: Intl.DateTimeFormat().resolvedOptions().timeZone };
+                    const mergedPrefs = { morningReminder: true, eveningReminder: true, weeklyRitual: true, coachNudge: true, timezone: Intl.DateTimeFormat().resolvedOptions().timeZone };
 
                     const { data: sessionData } = await window._supabase.auth.getSession();
                     const userId = sessionData?.session?.user?.id;
@@ -5015,7 +5017,7 @@ Order the priorities with the #1 FIRST. Never output the ${RITUAL_SENTINEL} bloc
                       <h3 className="text-sm font-bold text-green-400">🔔 Push Notifications</h3>
                       {subscribed && <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-green-500/20 text-green-400">ON</span>}
                     </div>
-                    <p className="text-xs text-slate-400 mb-4">Get nudged on your phone — evening check-in, Sunday planning, and coach alerts when you've been away.</p>
+                    <p className="text-xs text-slate-400 mb-4">Get nudged on your phone — morning kickoff, evening check-in, Sunday planning, and coach alerts when you've been away.</p>
 
                     {needsHomeScreen ? (
                       <div className="rounded-xl border border-blue-500/40 bg-blue-500/10 p-4 space-y-3">
@@ -5050,6 +5052,7 @@ Order the priorities with the #1 FIRST. Never output the ${RITUAL_SENTINEL} bloc
                       <div className="space-y-3">
                         <div className="space-y-2">
                           {[
+                            { key: 'morningReminder', label: 'Morning Kickoff', desc: '7 AM daily — lock in today\'s #1' },
                             { key: 'eveningReminder', label: 'Evening Review', desc: '7 PM daily — close out your day' },
                             { key: 'weeklyRitual', label: 'Weekly Ritual', desc: 'Sunday 8 AM — design your week' },
                             { key: 'coachNudge', label: 'Coach Nudges', desc: 'Only when you\'ve been away 6+ hours' },
@@ -5199,6 +5202,7 @@ Order the priorities with the #1 FIRST. Never output the ${RITUAL_SENTINEL} bloc
     const [autoOpenMessages, setAutoOpenMessages] = useState(false);
     const [autoOpenRitual, setAutoOpenRitual] = useState(false);
     const [autoOpenEvening, setAutoOpenEvening] = useState(false);
+    const [autoOpenMorning, setAutoOpenMorning] = useState(false);
     const [weekNum, setWeekNum]     = useState(1);
     const [dayIdx, setDayIdx]       = useState(()=>{ const d=new Date().getDay(); return d===0?6:d-1; });
     const [loading, setLoading]     = useState(true);
@@ -5310,6 +5314,9 @@ Order the priorities with the #1 FIRST. Never output the ${RITUAL_SENTINEL} bloc
         if (tabParam === 'today' && sectionParam === 'evening') {
           setAutoOpenEvening(true);    // 7 PM push opens the Edge evening review directly
         }
+        if (tabParam === 'today' && sectionParam === 'morning') {
+          setAutoOpenMorning(true);    // 7 AM push opens the Edge morning kickoff directly
+        }
       }
       if (tabParam || sectionParam) {
         window.history.replaceState({}, '', window.location.pathname);
@@ -5326,6 +5333,7 @@ Order the priorities with the #1 FIRST. Never output the ${RITUAL_SENTINEL} bloc
           if (tab === 'more' && section === 'messages') setAutoOpenMessages(true);
           if (tab === 'more' && section === 'weekly') { setPlanningNextWeek(true); setAutoOpenRitual(true); }
           if (tab === 'today' && section === 'evening') setAutoOpenEvening(true);
+          if (tab === 'today' && section === 'morning') setAutoOpenMorning(true);
         }
       };
       navigator.serviceWorker?.addEventListener('message', handleSWMessage);
@@ -6046,7 +6054,7 @@ Order the priorities with the #1 FIRST. Never output the ${RITUAL_SENTINEL} bloc
                 </div>
               );
             })()}
-            {activeTab==='today'&&<TodayView data={data} updateField={updateField} weekNum={weekNum} dayIdx={dayIdx} setDayIdx={setDayIdx} openCoach={openCoach} score={score} onPrint={printTab} setActiveTab={setActiveTab} authUser={authUser} autoOpenEvening={autoOpenEvening} clearAutoOpenEvening={()=>setAutoOpenEvening(false)}/>}
+            {activeTab==='today'&&<TodayView data={data} updateField={updateField} weekNum={weekNum} dayIdx={dayIdx} setDayIdx={setDayIdx} openCoach={openCoach} score={score} onPrint={printTab} setActiveTab={setActiveTab} authUser={authUser} autoOpenEvening={autoOpenEvening} clearAutoOpenEvening={()=>setAutoOpenEvening(false)} autoOpenMorning={autoOpenMorning} clearAutoOpenMorning={()=>setAutoOpenMorning(false)}/>}
             {activeTab==='anvil'&&<AnvilView data={data} updateField={updateField} openCoach={openCoach}/>}
             {activeTab==='score'&&<ScoreView data={data} updateField={updateField} weekNum={weekNum} setWeekNum={setWeekNum} setActiveTab={setActiveTab} openCoach={openCoach} onPrint={printTab} onMilestone={setMilestone} setShowResetModal={setShowResetModal}/>}
             {activeTab==='aicoach'&&<AICoachTab plannerData={data} authUserId={authUser?.id} personality={coachPersonality} conversations={conversations} onConversationsChange={setConversations}/>}

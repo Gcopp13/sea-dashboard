@@ -22,6 +22,9 @@
 # Scheduled functions -- migrated off the external (Perplexity-chat) scheduler so
 # these run on Netlify's own infrastructure. Times are UTC. Netlify triggers each
 # function directly (no HTTP request), so handlers must not depend on the body.
+[functions."morning-reminder"]
+  schedule = "0 11 * * *"    # daily 11:00 UTC (7 AM EDT / 6 AM EST) - morning kickoff push
+
 [functions."evening-reminder"]
   schedule = "0 23 * * *"    # daily 23:00 UTC (7 PM EDT) - evening review push
 

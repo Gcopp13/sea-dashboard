@@ -59,6 +59,7 @@ exports.handler = async (event) => {
     endpoint: subscription.endpoint,
     p256dh: subscription.keys?.p256dh || '',
     auth: subscription.keys?.auth || '',
+    morning_reminder: preferences?.morningReminder ?? true,
     evening_reminder: preferences?.eveningReminder ?? true,
     evening_time: preferences?.eveningTime || '19:00',
     weekly_ritual: preferences?.weeklyRitual ?? true,
