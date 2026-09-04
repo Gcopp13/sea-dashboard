@@ -4453,7 +4453,6 @@ Never output the ${RITUAL_SENTINEL} block until you have their one priority. Ins
     const profileAnswered = (()=>{
       try { const s=localStorage.getItem('coach-profile'); return s?Object.values(JSON.parse(s)).filter(v=>v?.trim()).length:0; } catch(e){return 0;}
     })();
-    const activeMesses = (data.weeks[weekNum-1]?.messes||[]).filter(m=>m.description?.trim()&&!m.completed).length;
 
     if (!section) return (
       <div className="page-content px-4 py-5">
@@ -4486,14 +4485,6 @@ Never output the ${RITUAL_SENTINEL} block until you have their one priority. Ins
             <div className="flex-1">
               <p className="font-semibold text-white">Vision & Goals</p>
               <p className="text-xs text-slate-400 mt-0.5">3-year, 1-year, 120-day vision + 4 goals</p>
-            </div>
-            <ChevRight/>
-          </button>
-          <button onClick={()=>setSection('messes')} className="w-full flex items-center gap-4 p-4 bg-slate-800/60 rounded-2xl border border-slate-700 hover:border-slate-600 transition-all text-left">
-            <span className="text-3xl">🧹</span>
-            <div className="flex-1">
-              <p className="font-semibold text-white">Messes to Clean Up</p>
-              <p className="text-xs text-slate-400 mt-0.5">{activeMesses > 0 ? `${activeMesses} active mess${activeMesses!==1?'es':''}` : 'No active messes'}</p>
             </div>
             <ChevRight/>
           </button>
@@ -4566,40 +4557,6 @@ Never output the ${RITUAL_SENTINEL} block until you have their one priority. Ins
         {/* Weekly Ritual */}
         {section==='weekly' && (
           <WeekViewWrapper data={data} updateField={updateField} initialWeekNum={weekNum} openCoach={openCoach} onPrint={()=>window.print()} onMilestone={onMilestone} onBack={()=>{setSection(null);onRitualBack&&onRitualBack();}} onStartFresh={onStartFresh}/>
-        )}
-
-        {/* Messes */}
-        {section==='messes' && (
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <h2 className="text-xl font-bold text-white">🧹 Messes</h2>
-              <button onClick={()=>{const ws=JSON.parse(JSON.stringify(data.weeks));const m=ws[weekNum-1].messes||[];m.push({description:'',nextSteps:'',byWhen:'',completed:false});ws[weekNum-1].messes=m;updateField('weeks',ws);}} className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-red-400 border border-red-500/30 hover:bg-red-500/10 transition-all">
-                + Add Mess
-              </button>
-            </div>
-            <div className="space-y-3">
-              {(data.weeks[weekNum-1].messes||[]).length===0&&(
-                <div className="text-center py-8 text-slate-500"><div className="text-4xl mb-2">✨</div><p className="text-sm">No messes — nice work!</p></div>
-              )}
-              {(data.weeks[weekNum-1].messes||[]).map((mess,mi)=>{
-                const upd=(f,v)=>{const ws=JSON.parse(JSON.stringify(data.weeks));const m=ws[weekNum-1].messes||[];m[mi]={...m[mi],[f]:v};ws[weekNum-1].messes=m;updateField('weeks',ws);};
-                const remove=()=>{const ws=JSON.parse(JSON.stringify(data.weeks));ws[weekNum-1].messes.splice(mi,1);updateField('weeks',ws);};
-                return(
-                  <div key={mi} className={`bg-slate-800/60 rounded-2xl p-4 border transition-all ${mess.completed?'border-green-500/30 opacity-60':'border-slate-700'}`}>
-                    <div className="flex gap-2 mb-2">
-                      <input value={mess.description||''} onChange={e=>upd('description',e.target.value)} placeholder="Describe the mess..." className={`flex-1 bg-slate-700/50 border border-slate-600/50 rounded-xl p-2.5 text-white placeholder-slate-500 text-sm focus:outline-none ${mess.completed?'line-through text-slate-500':''}`}/>
-                      <button onClick={()=>upd('completed',!mess.completed)} className={`w-10 h-10 rounded-xl flex items-center justify-center border transition-all flex-shrink-0 ${mess.completed?'border-green-500 bg-green-500/20 text-green-400':'border-slate-600 text-slate-500'}`}><CheckIcon/></button>
-                      <button onClick={remove} className="w-10 h-10 rounded-xl flex items-center justify-center text-slate-600 hover:text-red-400 hover:bg-red-500/10 transition-all flex-shrink-0 text-lg">✕</button>
-                    </div>
-                    <div className="grid grid-cols-2 gap-2">
-                      <input value={mess.nextSteps||''} onChange={e=>upd('nextSteps',e.target.value)} placeholder="Next step" className="bg-slate-700/50 border border-slate-600/50 rounded-lg p-2 text-white placeholder-slate-500 text-xs focus:outline-none"/>
-                      <input type="date" value={mess.byWhen||''} onChange={e=>upd('byWhen',e.target.value)} className="bg-slate-700/50 border border-slate-600/50 rounded-lg p-2 text-white text-xs focus:outline-none"/>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
         )}
 
         {section==='vision' && (
@@ -5295,7 +5252,7 @@ Never output the ${RITUAL_SENTINEL} block until you have their one priority. Ins
     };
 
     const createDay = () => ({aActivities:['','','',''],grateful:['','',''],wins:['','',''],tomorrowPriorities:['','',''],tasks:[{text:'',done:false,reminder:''},{text:'',done:false,reminder:''},{text:'',done:false,reminder:''}],notes:'',reflection:'',hardThings:'',hardThingsCompleted:false,stillness:'',stillnessCompleted:false,study:'',studyCompleted:false,todaysWins:['','',''],topPriorityDone:false});
-    const createWeek = () => ({wins:['','',''],improvements:'',focus:'',goalPriorities:['','','',''],aActivities:Array(3).fill(null).map(()=>({name:'',days:[false,false,false,false,false,false,false]})),messes:Array(3).fill(null).map(()=>({description:'',nextSteps:'',byWhen:'',completed:false})),wheelOfJohn:{family:5,fun:5,fitness:5,finance:5,faith:5}});
+    const createWeek = () => ({wins:['','',''],improvements:'',focus:'',goalPriorities:['','','',''],aActivities:Array(3).fill(null).map(()=>({name:'',days:[false,false,false,false,false,false,false]})),messes:[],wheelOfJohn:{family:5,fun:5,fitness:5,finance:5,faith:5}});
 
     const [data, setData] = useState({
       slightEdge:'',yearTheme:'',vision3Year:'',vision1Year:'',vision120Day:'',
