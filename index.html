@@ -3126,7 +3126,7 @@ Never output the ${RITUAL_SENTINEL} block until you have their one priority. Ins
   };
 
 
-  const TodayView = ({ data, updateField, weekNum, dayIdx, setDayIdx, openCoach, score, onPrint, setActiveTab, authUser, autoOpenEvening, clearAutoOpenEvening, autoOpenMorning, clearAutoOpenMorning, onCelebrate }) => {
+  const TodayView = ({ data, updateField, weekNum, dayIdx, setDayIdx, openCoach, score, onPrint, setActiveTab, authUser, autoOpenEvening, clearAutoOpenEvening, autoOpenMorning, clearAutoOpenMorning, onCelebrate, onOpenNotificationSettings }) => {
     const dayNames = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
     const dayFull  = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
     const day = data.dailyPlans[weekNum-1][dayIdx];
@@ -3138,6 +3138,7 @@ Never output the ${RITUAL_SENTINEL} block until you have their one priority. Ins
     // disappears (Edge stays reachable via the header + tab). Resets next day.
     const [morningDoneToday, setMorningDoneToday] = useState(()=>{ try { return localStorage.getItem('sea-morning-done') === new Date().toDateString(); } catch(e){ return false; } });
     const [celebrate, setCelebrate] = useState(false); // quick confetti burst on #1 done
+    const [notifPromptDismissed, setNotifPromptDismissed] = useState(()=>{ try { return localStorage.getItem('sea-notif-prompt-dismissed')==='1'; } catch(e){ return false; } });
 
     // Toggle today's #1 done; celebrate with a confetti burst when newly checked.
     const toggleTopPriority = () => {
@@ -3330,6 +3331,27 @@ Never output the ${RITUAL_SENTINEL} block until you have their one priority. Ins
             <input value={day.aActivities?.[0]||''} onChange={e=>{const a=[...(day.aActivities||['','','',''])];a[0]=e.target.value;updateDay('aActivities',a);}} placeholder="The one thing that has to happen today" className={`flex-1 bg-slate-800/50 border border-slate-600/50 rounded-xl p-3 text-white placeholder-slate-500 text-base focus:border-blue-500 focus:outline-none ${day.topPriorityDone?'line-through text-slate-400':''}`}/>
           </div>
         </div>
+
+        {/* One-time nudge to turn on reminders — shown once they've set up, when push
+            is available and permission hasn't been decided yet. */}
+        {(() => {
+          const canPush = typeof Notification !== 'undefined' && 'serviceWorker' in navigator && 'PushManager' in window;
+          const show = canPush && Notification.permission === 'default' && !notifPromptDismissed
+            && !!(data.anvilProject && data.anvilProject.project) && dayIdx===todayDayIdx2;
+          if (!show) return null;
+          const dismiss = () => { try { localStorage.setItem('sea-notif-prompt-dismissed','1'); } catch(e){} setNotifPromptDismissed(true); };
+          return (
+            <div className="rounded-2xl p-4 border border-green-500/30 flex items-center gap-3" style={{background:'linear-gradient(135deg,rgba(16,185,129,0.12),rgba(59,130,246,0.08))'}}>
+              <span className="text-2xl flex-shrink-0">🔔</span>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-bold text-white">Never lose momentum</p>
+                <p className="text-xs text-slate-400">A morning nudge to set your #1, an evening one to close out.</p>
+              </div>
+              <button onClick={()=>{ dismiss(); onOpenNotificationSettings && onOpenNotificationSettings(); }} className="px-3 py-2 rounded-xl text-xs font-bold text-white flex-shrink-0" style={{background:'linear-gradient(135deg,#10b981,#059669)'}}>Turn on</button>
+              <button onClick={dismiss} aria-label="Dismiss" className="text-slate-500 hover:text-slate-300 text-lg flex-shrink-0 px-1">×</button>
+            </div>
+          );
+        })()}
 
         {/* Agreement of the Day */}
         {(()=>{
@@ -4395,13 +4417,25 @@ Never output the ${RITUAL_SENTINEL} block until you have their one priority. Ins
     return <WeekView data={data} updateField={updateField} weekNum={localWeekNum} setWeekNum={setLocalWeekNum} openCoach={openCoach} onPrint={onPrint} onMilestone={onMilestone} onBack={onBack} onStartFresh={onStartFresh}/>;
   };
 
-  const MoreView = ({ data, updateField, saveData, openCoach, personality, setPersonality, onReopenOnboarding, onMilestone, weekNum, setWeekNum, onSignOut, onMetaChange, setActiveTab, authUser, onRitualBack, isCoachOrAdmin, autoOpenMessages, autoOpenRitual, clearAutoOpenRitual, onStartFresh }) => {
+  const MoreView = ({ data, updateField, saveData, openCoach, personality, setPersonality, onReopenOnboarding, onMilestone, weekNum, setWeekNum, onSignOut, onMetaChange, setActiveTab, authUser, onRitualBack, isCoachOrAdmin, autoOpenMessages, autoOpenRitual, clearAutoOpenRitual, onStartFresh, autoOpenNotifications, clearAutoOpenNotifications }) => {
     // Open straight to the ritual when launched from the Sunday banner / email link. Set it in the
     // INITIAL state so it's synchronous on mount (the effect-based open was unreliable — it navigated
     // to More but left the menu showing). The effect below is a backup for the already-mounted case
     // and clears the one-shot flag so a later manual visit to More opens the menu normally.
     const [section, setSection] = useState(autoOpenRitual ? 'weekly' : null);
     useEffect(()=>{ if(autoOpenRitual){ setSection('weekly'); clearAutoOpenRitual && clearAutoOpenRitual(); } },[autoOpenRitual]);
+    // Arriving from the Today "turn on reminders" prompt — scroll the notifications
+    // settings card into view and pulse it so the Enable button is obvious.
+    useEffect(()=>{
+      if(!autoOpenNotifications) return;
+      setSection(null);
+      const t = setTimeout(()=>{
+        const el = document.getElementById('push-settings-card');
+        if(el){ el.scrollIntoView({behavior:'smooth',block:'center'}); el.style.transition='box-shadow 0.3s'; el.style.boxShadow='0 0 0 3px rgba(16,185,129,0.6)'; setTimeout(()=>{ el.style.boxShadow=''; },2600); }
+      }, 250);
+      clearAutoOpenNotifications && clearAutoOpenNotifications();
+      return ()=>clearTimeout(t);
+    },[autoOpenNotifications]);
     const [newNote, setNewNote] = useState('');
     const [noteTitle, setNoteTitle] = useState('');
     const [noteTag, setNoteTag] = useState('Personal');
@@ -5065,7 +5099,7 @@ Never output the ${RITUAL_SENTINEL} block until you have their one priority. Ins
                 const needsHomeScreen = (isIOS || isAndroid) && !isStandalone && !subscribed;
 
                 return (
-                  <div className="bg-slate-800/60 rounded-2xl p-5 border border-slate-700">
+                  <div id="push-settings-card" className="bg-slate-800/60 rounded-2xl p-5 border border-slate-700">
                     <div className="flex items-center justify-between mb-1">
                       <h3 className="text-sm font-bold text-green-400">🔔 Push Notifications</h3>
                       {subscribed && <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-green-500/20 text-green-400">ON</span>}
@@ -5256,6 +5290,7 @@ Never output the ${RITUAL_SENTINEL} block until you have their one priority. Ins
     const [autoOpenRitual, setAutoOpenRitual] = useState(false);
     const [autoOpenEvening, setAutoOpenEvening] = useState(false);
     const [autoOpenMorning, setAutoOpenMorning] = useState(false);
+    const [autoOpenNotifications, setAutoOpenNotifications] = useState(false);
     const [weekNum, setWeekNum]     = useState(1);
     const [dayIdx, setDayIdx]       = useState(()=>{ const d=new Date().getDay(); return d===0?6:d-1; });
     const [loading, setLoading]     = useState(true);
@@ -6124,12 +6159,12 @@ Never output the ${RITUAL_SENTINEL} block until you have their one priority. Ins
                 </div>
               );
             })()}
-            {activeTab==='today'&&<TodayView data={data} updateField={updateField} weekNum={weekNum} dayIdx={dayIdx} setDayIdx={setDayIdx} openCoach={openCoach} score={score} onPrint={printTab} setActiveTab={setActiveTab} authUser={authUser} autoOpenEvening={autoOpenEvening} clearAutoOpenEvening={()=>setAutoOpenEvening(false)} autoOpenMorning={autoOpenMorning} clearAutoOpenMorning={()=>setAutoOpenMorning(false)} onCelebrate={setCelebration}/>}
+            {activeTab==='today'&&<TodayView data={data} updateField={updateField} weekNum={weekNum} dayIdx={dayIdx} setDayIdx={setDayIdx} openCoach={openCoach} score={score} onPrint={printTab} setActiveTab={setActiveTab} authUser={authUser} autoOpenEvening={autoOpenEvening} clearAutoOpenEvening={()=>setAutoOpenEvening(false)} autoOpenMorning={autoOpenMorning} clearAutoOpenMorning={()=>setAutoOpenMorning(false)} onCelebrate={setCelebration} onOpenNotificationSettings={()=>{ setAutoOpenNotifications(true); setActiveTab('more'); }}/>}
             {activeTab==='anvil'&&<AnvilView data={data} updateField={updateField} openCoach={openCoach}/>}
             {activeTab==='score'&&<ScoreView data={data} updateField={updateField} weekNum={weekNum} setWeekNum={setWeekNum} setActiveTab={setActiveTab} openCoach={openCoach} onPrint={printTab} onMilestone={setMilestone} setShowResetModal={setShowResetModal}/>}
             {activeTab==='aicoach'&&<AICoachTab plannerData={data} authUserId={authUser?.id} personality={coachPersonality} conversations={conversations} onConversationsChange={setConversations}/>}
             {activeTab==='journal'&&<JournalView data={data} updateField={updateField}/>}
-            {activeTab==='more'&&<MoreView data={data} updateField={updateField} saveData={saveData} openCoach={openCoach} personality={coachPersonality} setPersonality={setCoachPersonality} onReopenOnboarding={onReopenOnboarding} onMilestone={setMilestone} weekNum={plannerWeekNum} setWeekNum={setWeekNum} onSignOut={async()=>{await _supabase.auth.signOut();setAuthUser(null);}} onMetaChange={()=>{ if(authUser) savePlannerDataToCloud(authUser.id, data); }} setActiveTab={setActiveTab} authUser={authUser} onRitualBack={()=>setPlanningNextWeek(false)} isCoachOrAdmin={isCoachOrAdmin} autoOpenMessages={autoOpenMessages} autoOpenRitual={autoOpenRitual} clearAutoOpenRitual={()=>setAutoOpenRitual(false)} onStartFresh={()=>setShowResetModal(true)}/>}
+            {activeTab==='more'&&<MoreView data={data} updateField={updateField} saveData={saveData} openCoach={openCoach} personality={coachPersonality} setPersonality={setCoachPersonality} onReopenOnboarding={onReopenOnboarding} onMilestone={setMilestone} weekNum={plannerWeekNum} setWeekNum={setWeekNum} onSignOut={async()=>{await _supabase.auth.signOut();setAuthUser(null);}} onMetaChange={()=>{ if(authUser) savePlannerDataToCloud(authUser.id, data); }} setActiveTab={setActiveTab} authUser={authUser} onRitualBack={()=>setPlanningNextWeek(false)} isCoachOrAdmin={isCoachOrAdmin} autoOpenMessages={autoOpenMessages} autoOpenRitual={autoOpenRitual} clearAutoOpenRitual={()=>setAutoOpenRitual(false)} onStartFresh={()=>setShowResetModal(true)} autoOpenNotifications={autoOpenNotifications} clearAutoOpenNotifications={()=>setAutoOpenNotifications(false)}/>}
             {activeTab==='admin'&&userRole==='admin'&&<AdminPanel authUser={authUser}/>}
           </div>
         </div>
