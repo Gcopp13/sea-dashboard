@@ -1798,6 +1798,180 @@ Never output the ${RITUAL_SENTINEL} block until you have at least tomorrow's top
     );
   };
 
+  // ── EDGE-LED MORNING KICKOFF ────────────────────────────────────────────
+  // The other bookend to the evening review. Edge greets with the Top 3 that
+  // carried over from last night's recap, has them confirm/adjust, then commit to
+  // the ONE that matters most — returned #1-first and written to today's Top 3.
+  // Same sentinel + confirm pattern, same ai-coach proxy (no server change).
+  const parseMorningPlan = (text) => {
+    const i = text.indexOf(RITUAL_SENTINEL);
+    if (i === -1) return { display: text, plan: null };
+    const display = text.slice(0, i).trim();
+    let plan = null;
+    try {
+      let rest = text.slice(i + RITUAL_SENTINEL.length);
+      const e = rest.indexOf(RITUAL_SENTINEL_END);
+      if (e !== -1) rest = rest.slice(0, e);
+      const parsed = JSON.parse(rest.trim());
+      const priorities = Array.isArray(parsed.priorities) ? parsed.priorities.map(x=>String(x||'').trim()).filter(Boolean).slice(0,3) : [];
+      if (priorities.length) plan = { priorities };
+    } catch(e) { plan = null; }
+    return { display: display || "Here's your day 👇", plan };
+  };
+
+  const morningLoadedPriorities = (plannerData, weekNum, dayIdx) => {
+    const dayPlan = ((plannerData.dailyPlans||[])[weekNum-1]||[])[dayIdx] || {};
+    return (dayPlan.aActivities||[]).map(x=>String(x||'').trim()).filter(Boolean);
+  };
+
+  const buildMorningSystemPrompt = (plannerData, weekNum, dayIdx, dayLabel, todayIsAnvilDay) => {
+    const week = (plannerData.weeks||[])[weekNum-1] || null;
+    const focus = week ? (week.focus||'').trim() : '';
+    const loaded = morningLoadedPriorities(plannerData, weekNum, dayIdx);
+    const anvil = plannerData.anvilProject || {};
+    const anvilStreak = computeAnvilStreak(anvil.log, anvil.useSpecificDays ? anvil.specificDays : null);
+    const anvilName = anvil.project || '';
+    return `You are Edge, the AI coach inside the S.E.A. Dashboard, running the MORNING KICKOFF for a financial advisor — a fast, energizing start-of-day check-in. Voice: warm, punchy, results-focused. Keep each turn to 1-2 sentences. This should feel like 30 seconds, not a form.
+
+You are kicking off ${dayLabel}.
+
+CONTEXT (reference naturally, do not dump it back):
+- This week's focus: ${focus||'(none set)'}
+- Top priorities carried over from last night: ${loaded.length?loaded.join(', '):'(none set yet)'}
+- Anvil project: ${anvilName||'(none)'} | current streak: ${anvilStreak} days${todayIsAnvilDay?' | TODAY is an Anvil day — nudge them to protect it':''}
+
+RUN EXACTLY TWO STEPS, ONE QUESTION PER TURN:
+1. PRIORITIES — today's top priorities (up to 3). ${loaded.length?'A list carried over from last night is shown above — the app has already read it back to them; their first message says whether it still holds or how to adjust it.':'Their first message is their top priorities for today.'} Acknowledge and lock them in.
+2. THE ONE — of those, which ONE matters most today. Make them commit to a single #1 (the law of unequal distribution — there is always one priority).
+
+Keep it tight — do not ask about anything else. If they wander, acknowledge briefly and steer back.
+
+WHEN YOU HAVE THEIR PRIORITIES WITH A CLEAR #1, write ONE short energizing sentence to send them into the day, then on a NEW LINE output the plan EXACTLY in this format with NOTHING after it:
+${RITUAL_SENTINEL}
+{"priorities":["the #1 FIRST","...","..."]}
+${RITUAL_SENTINEL_END}
+
+Order the priorities with the #1 FIRST. Never output the ${RITUAL_SENTINEL} block until step 2 is done. Inside it, valid JSON only — double quotes, no trailing commas.`;
+  };
+
+  const MorningCoach = ({ isOpen, onClose, plannerData, weekNum, dayIdx, dayLabel, todayIsAnvilDay, onSave }) => {
+    const [messages, setMessages] = useState([]);
+    const [input, setInput] = useState('');
+    const [loading, setLoading] = useState(false);
+    const [plan, setPlan] = useState(null);
+    const [saved, setSaved] = useState(false);
+    const endRef = useRef(null);
+
+    useEffect(() => {
+      if (!isOpen) return;
+      const loaded = morningLoadedPriorities(plannerData, weekNum, dayIdx);
+      const greeting = loaded.length
+        ? `Good morning! ☀️\n\nLast night you lined up:\n${loaded.map((p,idx)=>`${idx+1}. ${p}`).join('\n')}\n\nStill the plan for today, or want to adjust?`
+        : `Good morning! ☀️\n\nLet's set up ${dayLabel}. What are your top priorities today?`;
+      setMessages([{ role:'assistant', content: greeting }]);
+      setInput(''); setPlan(null); setSaved(false); setLoading(false);
+    }, [isOpen, dayLabel]);
+
+    useEffect(() => { if (isOpen) endRef.current?.scrollIntoView({behavior:'smooth'}); }, [messages, isOpen, plan]);
+
+    useEffect(() => {
+      if (!isOpen || !window.visualViewport) return;
+      const onResize = () => {
+        const panel = document.querySelector('.morning-coach-panel');
+        if (!panel || window.innerWidth > 768) return;
+        panel.style.top = window.visualViewport.offsetTop + 'px';
+        panel.style.height = window.visualViewport.height + 'px';
+        panel.style.maxHeight = window.visualViewport.height + 'px';
+        panel.style.bottom = 'auto';
+      };
+      window.visualViewport.addEventListener('resize', onResize);
+      window.visualViewport.addEventListener('scroll', onResize);
+      return () => {
+        window.visualViewport.removeEventListener('resize', onResize);
+        window.visualViewport.removeEventListener('scroll', onResize);
+        const panel = document.querySelector('.morning-coach-panel');
+        if (panel) { panel.style.top=''; panel.style.height=''; panel.style.maxHeight=''; panel.style.bottom=''; }
+      };
+    }, [isOpen]);
+
+    const send = async () => {
+      if (!input.trim() || loading) return;
+      const userMsg = { role:'user', content: input };
+      const next = [...messages, userMsg];
+      setMessages(next); setInput(''); setLoading(true);
+      try {
+        const token = await getSessionToken();
+        const combined = next.filter(m=>m.role==='user'||m.role==='assistant');
+        const firstUser = combined.findIndex(m=>m.role==='user');
+        const valid = (firstUser>=0 ? combined.slice(firstUser) : combined).slice(-14);
+        const res = await fetch('/.netlify/functions/ai-coach', {
+          method:'POST',
+          headers:{'Content-Type':'application/json','Authorization':`Bearer ${token||''}`},
+          body: JSON.stringify({
+            systemPrompt: buildMorningSystemPrompt(plannerData, weekNum, dayIdx, dayLabel, todayIsAnvilDay),
+            maxTokens: 1024,
+            messages: valid.map(({role,content})=>({role,content}))
+          })
+        });
+        if (!res.ok) throw new Error(`${res.status} - ${await res.text()}`);
+        const d = await res.json();
+        const raw = (d.content && d.content[0] && d.content[0].text) || '';
+        const { display, plan: parsed } = parseMorningPlan(raw);
+        setMessages([...next, { role:'assistant', content: display }]);
+        if (parsed) setPlan(parsed);
+      } catch(e) { alert('Morning kickoff error: ' + e.message); }
+      finally { setLoading(false); }
+    };
+
+    const confirmSave = () => {
+      if (!plan) return;
+      onSave(plan);
+      setSaved(true);
+      setTimeout(() => { onClose(); }, 1300);
+    };
+
+    if (!isOpen) return null;
+    return (
+      <>
+        <div className="coach-overlay md:hidden" onClick={onClose}/>
+        <div className="coach-panel morning-coach-panel bg-slate-900 flex flex-col shadow-2xl">
+          <div className="p-4 flex items-center justify-between" style={{background:'linear-gradient(135deg,#f59e0b,#ec4899)',borderRadius:'1.5rem 1.5rem 0 0'}}>
+            <div className="flex items-center gap-2"><BotIcon/><span className="font-bold text-white text-sm">☀️ Morning kickoff with Edge</span></div>
+            <button onClick={onClose} className="p-1.5 hover:bg-white/20 rounded-lg"><XIcon/></button>
+          </div>
+          <div className="flex-1 overflow-y-auto p-4 space-y-3 chat-messages coach-messages">
+            {messages.map((m,i)=>(
+              <div key={i} className={`flex ${m.role==='user'?'justify-end':'justify-start'}`}>
+                <div className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-relaxed whitespace-pre-wrap ${m.role==='user'?'bg-blue-600 text-white':'bg-slate-800 text-slate-200'}`}>{m.content}</div>
+              </div>
+            ))}
+            {loading && <div className="flex justify-start"><div className="bg-slate-800 text-slate-400 rounded-2xl px-4 py-3 text-sm">Thinking...</div></div>}
+            {plan && !saved && (
+              <div className="bg-slate-800/80 border border-amber-500/40 rounded-2xl p-4 slide-up">
+                <h4 className="text-sm font-bold text-amber-400 mb-2">Today's Top {plan.priorities.length} 👇</h4>
+                <ul className="text-sm text-white space-y-1 mb-2">{plan.priorities.map((p,i)=><li key={i} className={i===0?'font-bold':''}>{i===0?'⭐ ':`${i+1}. `}{p}</li>)}</ul>
+                <div className="flex gap-2 mt-3">
+                  <button onClick={()=>setPlan(null)} className="px-3 py-2 bg-slate-700 rounded-xl text-white text-xs">Not quite — keep talking</button>
+                  <button onClick={confirmSave} className="flex-1 py-2 rounded-xl font-bold text-white text-sm" style={{background:'linear-gradient(135deg,#f59e0b,#d97706)'}}>Lock in my day ✓</button>
+                </div>
+              </div>
+            )}
+            {saved && <div className="flex justify-center"><div className="bg-amber-500/20 text-amber-300 rounded-2xl px-4 py-3 text-sm font-bold">✓ Let's go! 💪</div></div>}
+            <div ref={endRef}/>
+          </div>
+          {!saved && (
+            <div className="p-4 border-t border-slate-800 coach-input-bar">
+              <div className="flex gap-2">
+                <input value={input} onChange={e=>setInput(e.target.value)} onKeyPress={e=>e.key==='Enter'&&send()} placeholder={plan?'Add a tweak...':'Type your answer...'} disabled={loading} inputMode="text" className="flex-1 bg-slate-800 border border-slate-700 rounded-xl p-3 text-white placeholder-slate-500 text-sm focus:border-blue-500 focus:outline-none"/>
+                <button onClick={send} disabled={loading||!input.trim()} className="bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white p-3 rounded-xl"><SendIcon/></button>
+              </div>
+            </div>
+          )}
+        </div>
+      </>
+    );
+  };
+
   // ── AI COACH TAB (history hub + inline chat) ────────────────────────────
   const AICoachTab = ({ plannerData, authUserId, personality, conversations, onConversationsChange }) => {
     const [view, setView] = useState('list'); // 'list' | 'chat'
@@ -2880,6 +3054,14 @@ Never output the ${RITUAL_SENTINEL} block until you have at least tomorrow's top
     const updateDay = (f,v) => { const p=JSON.parse(JSON.stringify(data.dailyPlans)); p[weekNum-1][dayIdx][f]=v; updateField('dailyPlans',p); };
     const [showCarryOver, setShowCarryOver] = useState(false);
     const [showEveningCoach, setShowEveningCoach] = useState(false);
+    const [showMorningCoach, setShowMorningCoach] = useState(false);
+
+    // Write a confirmed Edge-led morning kickoff into today's Top 3 (#1 first).
+    const saveMorningPlan = (plan) => {
+      const p = JSON.parse(JSON.stringify(data.dailyPlans));
+      p[weekNum-1][dayIdx].aActivities = [0,1,2].map(i => (plan.priorities[i]||'').trim());
+      updateField('dailyPlans', p);
+    };
 
     // Open the Edge evening review straight from the 7 PM push (?tab=today&section=evening).
     useEffect(()=>{ if(autoOpenEvening){ setShowEveningCoach(true); clearAutoOpenEvening && clearAutoOpenEvening(); } },[autoOpenEvening]);
@@ -3001,6 +3183,17 @@ Never output the ${RITUAL_SENTINEL} block until you have at least tomorrow's top
             </button>
           </div>
         </div>
+
+        {/* Morning kickoff — Edge-led, shown in the morning as the first thing on Today. */}
+        {timeOfDay==='morning' && dayIdx===todayDayIdx2 && (
+          <div className="rounded-2xl p-4 border border-amber-500/30" style={{background:'linear-gradient(135deg,rgba(245,158,11,0.12),rgba(236,72,153,0.10))'}}>
+            <button onClick={()=>setShowMorningCoach(true)} className="w-full flex items-center justify-center gap-2 py-3 rounded-xl font-bold text-white text-sm shadow-lg" style={{background:'linear-gradient(135deg,#f59e0b,#ec4899)'}}>
+              <BotIcon/> Start your day with Edge
+            </button>
+            <p className="text-center text-xs text-slate-400 mt-2">Lock in your ONE focus for today — 30 seconds.</p>
+          </div>
+        )}
+        <MorningCoach isOpen={showMorningCoach} onClose={()=>setShowMorningCoach(false)} plannerData={data} weekNum={weekNum} dayIdx={dayIdx} dayLabel={dayFull[dayIdx]} todayIsAnvilDay={todayIsAnvilDay} onSave={saveMorningPlan}/>
 
         {/* Day selector */}
         <div className="flex gap-2 overflow-x-auto pb-1">
