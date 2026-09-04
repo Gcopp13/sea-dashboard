@@ -1667,6 +1667,93 @@ Label should clearly describe what is being coached (e.g. "Anvil Streak", "Medit
     );
   };
 
+  // ── QUICK-START (2-minute activation) ──────────────────────────────────────
+  // New users get a fast path: their Anvil + one 120-day goal, start date = today, then straight
+  // into the app to log the first session (streak starts). The full setup (vision, wheel, coach
+  // profile, extra goals) is offered afterward as an optional "Finish your setup" flow, not a wall.
+  const QuickStartFlow = ({ onComplete, initialData }) => {
+    const [step, setStep] = useState(0);
+    const [anvil, setAnvil] = useState(initialData?.anvil?.project || '');
+    const [anvilWhy, setAnvilWhy] = useState(initialData?.anvil?.why || '');
+    const [goal, setGoal] = useState((initialData?.goals && initialData.goals[0]?.title) || '');
+    const [goalMeasure, setGoalMeasure] = useState((initialData?.goals && initialData.goals[0]?.measurement) || '');
+    const ANVIL_SUGGESTIONS = ['Meditation','Daily workout','Reading','Prospecting calls','Journaling','Gratitude'];
+    const primary = {background:'linear-gradient(135deg,#3b82f6,#8b5cf6)'};
+    const finish = () => {
+      const today = new Date().toISOString().split('T')[0];
+      onComplete({
+        anvil: { project: anvil.trim(), cadence: 'Daily', why: anvilWhy.trim(), freqCount: 7 },
+        goals: [{ title: goal.trim(), impact: '', measurement: goalMeasure.trim() }, {title:'',impact:'',measurement:''}, {title:'',impact:'',measurement:''}, {title:'',impact:'',measurement:''}],
+        startDate: today,
+      });
+    };
+    let content;
+    if (step === 0) content = (
+      <div className="text-center">
+        <div className="text-6xl mb-6">🌊</div>
+        <h1 className="text-4xl font-bold mb-2" style={{background:'linear-gradient(135deg,#60a5fa,#a78bfa)',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent'}}>S.E.A. Dashboard</h1>
+        <p className="text-slate-400 mb-8">Live By Design, Not By Default</p>
+        <div className="bg-slate-800/60 rounded-2xl p-6 border border-slate-700 mb-6 text-left">
+          <p className="text-slate-200 leading-relaxed">Let's get you going in <span className="text-white font-bold">2 minutes</span> — just two things:</p>
+          <p className="text-slate-300 text-sm mt-3">⚒️ Your <span className="text-white font-semibold">Anvil</span> — the one daily practice that compounds.</p>
+          <p className="text-slate-300 text-sm mt-1">🎯 One <span className="text-white font-semibold">120-day goal</span> to aim at.</p>
+          <p className="text-slate-400 text-xs mt-4">You can add your vision, coach setup, and the rest anytime — no rush.</p>
+        </div>
+        <button onClick={()=>setStep(1)} className="w-full py-4 rounded-2xl font-black text-white text-base" style={primary}>Let's go →</button>
+      </div>
+    );
+    else if (step === 1) content = (
+      <div>
+        <h2 className="text-2xl font-black text-white mb-1">⚒️ Your Anvil</h2>
+        <p className="text-slate-400 text-sm mb-5">The ONE thing you'll do (almost) every day. Small, repeatable, yours. Tap one or type your own.</p>
+        <div className="flex flex-wrap gap-2 mb-4">
+          {ANVIL_SUGGESTIONS.map(s=>(
+            <button key={s} onClick={()=>setAnvil(s)} className={`px-3 py-2 rounded-xl text-sm border transition-all ${anvil===s?'text-white border-transparent':'text-slate-300 border-slate-600 bg-slate-800/60'}`} style={anvil===s?primary:{}}>{s}</button>
+          ))}
+        </div>
+        <input value={anvil} onChange={e=>setAnvil(e.target.value)} placeholder="e.g. Meditation" className="w-full bg-slate-800/60 border border-slate-600 rounded-xl p-3 text-white placeholder-slate-500 text-sm focus:border-blue-500 focus:outline-none mb-3"/>
+        <input value={anvilWhy} onChange={e=>setAnvilWhy(e.target.value)} placeholder="Why it matters (optional)" className="w-full bg-slate-800/60 border border-slate-600 rounded-xl p-3 text-white placeholder-slate-500 text-sm focus:border-blue-500 focus:outline-none mb-6"/>
+        <div className="flex gap-3">
+          <button onClick={()=>setStep(0)} className="px-5 py-3 bg-slate-800 rounded-xl text-slate-300 text-sm">Back</button>
+          <button onClick={()=>anvil.trim()&&setStep(2)} disabled={!anvil.trim()} className="flex-1 py-3 rounded-xl font-bold text-white text-sm disabled:opacity-40" style={primary}>Next →</button>
+        </div>
+      </div>
+    );
+    else if (step === 2) content = (
+      <div>
+        <h2 className="text-2xl font-black text-white mb-1">🎯 One 120-Day Goal</h2>
+        <p className="text-slate-400 text-sm mb-5">What's one thing you want to make real in the next 120 days? Specific enough that you'll know if you hit it.</p>
+        <input value={goal} onChange={e=>setGoal(e.target.value)} placeholder="e.g. Bring on 12 new households" className="w-full bg-slate-800/60 border border-slate-600 rounded-xl p-3 text-white placeholder-slate-500 text-sm focus:border-blue-500 focus:outline-none mb-3"/>
+        <input value={goalMeasure} onChange={e=>setGoalMeasure(e.target.value)} placeholder="How you'll measure it (optional)" className="w-full bg-slate-800/60 border border-slate-600 rounded-xl p-3 text-white placeholder-slate-500 text-sm focus:border-blue-500 focus:outline-none mb-6"/>
+        <div className="flex gap-3">
+          <button onClick={()=>setStep(1)} className="px-5 py-3 bg-slate-800 rounded-xl text-slate-300 text-sm">Back</button>
+          <button onClick={()=>goal.trim()&&setStep(3)} disabled={!goal.trim()} className="flex-1 py-3 rounded-xl font-bold text-white text-sm disabled:opacity-40" style={primary}>Next →</button>
+        </div>
+      </div>
+    );
+    else content = (
+      <div className="text-center">
+        <div className="text-6xl mb-4">🎉</div>
+        <h2 className="text-2xl font-black text-white mb-3">You're in!</h2>
+        <div className="bg-slate-800/60 rounded-2xl p-6 border border-slate-700 mb-6 text-left space-y-2">
+          <p className="text-slate-300 text-sm">⚒️ Anvil: <span className="text-white font-semibold">{anvil.trim()}</span></p>
+          <p className="text-slate-300 text-sm">🎯 Goal: <span className="text-white font-semibold">{goal.trim()}</span></p>
+          <p className="text-slate-300 text-sm">📅 Your 120 days start <span className="text-white font-semibold">today</span>.</p>
+        </div>
+        <p className="text-slate-400 text-sm mb-6">First move: log today's <span className="text-white font-semibold">{anvil.trim()}</span> session and start your streak. 🔥</p>
+        <button onClick={finish} className="w-full py-4 rounded-2xl font-black text-white text-base" style={primary}>Enter Dashboard →</button>
+      </div>
+    );
+    return (
+      <div className="min-h-screen flex flex-col" style={{background:'linear-gradient(135deg,#0f172a 0%,#1e1b4b 100%)'}}>
+        <div className="h-1 bg-slate-800"><div className="h-full bg-gradient-to-r from-blue-500 to-purple-500 transition-all duration-500" style={{width:`${(step/3)*100}%`}}/></div>
+        <div className="flex-1 flex items-center justify-center px-5 py-8">
+          <div className="w-full max-w-lg slide-up">{content}</div>
+        </div>
+      </div>
+    );
+  };
+
   // ── ONBOARDING ─────────────────────────────────────────────────────────────
   const OnboardingFlow = ({ onComplete, initialData }) => {
     const [step, setStep] = useState(0);
@@ -5973,8 +6060,13 @@ Label should clearly describe what is being coached (e.g. "Anvil Streak", "Medit
     if (subStatus === null) return React.createElement('div', { style: { display:'flex', alignItems:'center', justifyContent:'center', height:'100vh', background:'#0f1229', color:'white', fontSize:'1.2rem' } }, 'Loading...');
     if (subStatus === 'inactive') return <SubscribeScreen authUser={authUser} onSubscribed={()=>setSubStatus('active')}/>;
 
-    if ((showOnboarding && !onboardingDone) || showingOnboarding) {
+    // "Finish your setup" (reopened from inside the app) → the full, deep onboarding.
+    if (showingOnboarding) {
       return <OnboardingFlow onComplete={handleOnboardingComplete} initialData={getExistingData()}/>;
+    }
+    // Brand-new user → the fast 2-minute activation (Anvil + one goal), not the full wall.
+    if (showOnboarding && !onboardingDone) {
+      return <QuickStartFlow onComplete={handleOnboardingComplete} initialData={getExistingData()}/>;
     }
     return (
       <>
