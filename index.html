@@ -3054,12 +3054,17 @@ Never output the ${RITUAL_SENTINEL} block until you have their one priority. Ins
     const [showCarryOver, setShowCarryOver] = useState(false);
     const [showEveningCoach, setShowEveningCoach] = useState(false);
     const [showMorningCoach, setShowMorningCoach] = useState(false);
+    // Once they've run the morning kickoff today, the "Start your day" banner
+    // disappears (Edge stays reachable via the header + tab). Resets next day.
+    const [morningDoneToday, setMorningDoneToday] = useState(()=>{ try { return localStorage.getItem('sea-morning-done') === new Date().toDateString(); } catch(e){ return false; } });
 
     // Write a confirmed Edge-led morning kickoff into today's Top 3 (#1 first).
     const saveMorningPlan = (plan) => {
       const p = JSON.parse(JSON.stringify(data.dailyPlans));
       p[weekNum-1][dayIdx].aActivities = [0,1,2].map(i => (plan.priorities[i]||'').trim());
       updateField('dailyPlans', p);
+      try { localStorage.setItem('sea-morning-done', new Date().toDateString()); } catch(e){}
+      setMorningDoneToday(true);
     };
 
     // Open the Edge evening review straight from the 7 PM push (?tab=today&section=evening).
@@ -3185,8 +3190,8 @@ Never output the ${RITUAL_SENTINEL} block until you have their one priority. Ins
           </div>
         </div>
 
-        {/* Morning kickoff — Edge-led, shown in the morning as the first thing on Today. */}
-        {timeOfDay==='morning' && dayIdx===todayDayIdx2 && (
+        {/* Morning kickoff — shown in the morning until they've done it today. */}
+        {timeOfDay==='morning' && dayIdx===todayDayIdx2 && !morningDoneToday && (
           <div className="rounded-2xl p-4 border border-amber-500/30" style={{background:'linear-gradient(135deg,rgba(245,158,11,0.12),rgba(236,72,153,0.10))'}}>
             <button onClick={()=>setShowMorningCoach(true)} className="w-full flex items-center justify-center gap-2 py-3 rounded-xl font-bold text-white text-sm shadow-lg" style={{background:'linear-gradient(135deg,#f59e0b,#ec4899)'}}>
               <BotIcon/> Start your day with Edge
