@@ -3046,7 +3046,7 @@ Never output the ${RITUAL_SENTINEL} block until you have their one priority. Ins
   };
 
 
-  const TodayView = ({ data, updateField, weekNum, dayIdx, setDayIdx, openCoach, score, onPrint, setActiveTab, authUser, autoOpenEvening, clearAutoOpenEvening, autoOpenMorning, clearAutoOpenMorning }) => {
+  const TodayView = ({ data, updateField, weekNum, dayIdx, setDayIdx, openCoach, score, onPrint, setActiveTab, authUser, autoOpenEvening, clearAutoOpenEvening, autoOpenMorning, clearAutoOpenMorning, onCelebrate }) => {
     const dayNames = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
     const dayFull  = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
     const day = data.dailyPlans[weekNum-1][dayIdx];
@@ -3057,6 +3057,14 @@ Never output the ${RITUAL_SENTINEL} block until you have their one priority. Ins
     // Once they've run the morning kickoff today, the "Start your day" banner
     // disappears (Edge stays reachable via the header + tab). Resets next day.
     const [morningDoneToday, setMorningDoneToday] = useState(()=>{ try { return localStorage.getItem('sea-morning-done') === new Date().toDateString(); } catch(e){ return false; } });
+    const [celebrate, setCelebrate] = useState(false); // quick confetti burst on #1 done
+
+    // Toggle today's #1 done; celebrate with a confetti burst when newly checked.
+    const toggleTopPriority = () => {
+      const next = !day.topPriorityDone;
+      updateDay('topPriorityDone', next);
+      if (next) { setCelebrate(true); setTimeout(()=>setCelebrate(false), 2500); }
+    };
 
     // Write a confirmed Edge-led morning kickoff into today's Top 3 (#1 first).
     const saveMorningPlan = (plan) => {
@@ -3166,8 +3174,25 @@ Never output the ${RITUAL_SENTINEL} block until you have their one priority. Ins
     const todayIsAnvilDay = data.anvilProject?.useSpecificDays && anvilSpecificDays.includes(todayDayIdx2);
     const anvilLoggedToday = anvilLog.some(e => new Date(e.date).toDateString() === new Date().toDateString());
 
+    // Celebrate anvil streak milestones — fires once, the day the streak hits an
+    // exact milestone (guarded so it can't refire on reload or when rebuilding).
+    useEffect(()=>{
+      const M = [3,7,14,30,60,100,200,365].find(x=>x===anvilStreak);
+      if (!M || !onCelebrate) return;
+      let last=0; try { last=parseInt(localStorage.getItem('sea-streak-celebrated')||'0',10)||0; } catch(e){}
+      if (M<=last) return;
+      try { localStorage.setItem('sea-streak-celebrated', String(M)); } catch(e){}
+      onCelebrate({
+        emoji: M>=100?'🏆':'🔥',
+        kicker: 'Streak Milestone',
+        title: `${M}-Day Streak!`,
+        subtitle: M>=100?'Unstoppable. This is just who you are now.':M>=30?'A full month of showing up — the cascade is building.':'Consistency compounds. Keep piling grains of sand.'
+      });
+    }, [anvilStreak]);
+
     return (
       <div className="page-content px-4 py-5 space-y-5">
+        <Confetti active={celebrate}/>
         {/* Header */}
         <div className="flex items-start justify-between">
           <div>
@@ -3221,7 +3246,7 @@ Never output the ${RITUAL_SENTINEL} block until you have their one priority. Ins
             {dayIdx===todayDayIdx2 && showCarryOver && <span className="text-xs text-green-300">carried from last night</span>}
           </div>
           <div className="flex items-center gap-3">
-            <button onClick={()=>updateDay('topPriorityDone',!day.topPriorityDone)} className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 border transition-all ${day.topPriorityDone?'border-green-500 bg-green-500/20 text-green-400':'border-slate-500 text-slate-500 hover:border-blue-400'}`} title="Mark done"><CheckIcon/></button>
+            <button onClick={toggleTopPriority} className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 border transition-all ${day.topPriorityDone?'border-green-500 bg-green-500/20 text-green-400':'border-slate-500 text-slate-500 hover:border-blue-400'}`} title="Mark done"><CheckIcon/></button>
             <input value={day.aActivities?.[0]||''} onChange={e=>{const a=[...(day.aActivities||['','','',''])];a[0]=e.target.value;updateDay('aActivities',a);}} placeholder="The one thing that has to happen today" className={`flex-1 bg-slate-800/50 border border-slate-600/50 rounded-xl p-3 text-white placeholder-slate-500 text-base focus:border-blue-500 focus:outline-none ${day.topPriorityDone?'line-through text-slate-400':''}`}/>
           </div>
         </div>
@@ -5168,6 +5193,7 @@ Never output the ${RITUAL_SENTINEL} block until you have their one priority. Ins
     const [anvilEntry, setAnvilEntry] = useState('');
     const [anvilDate, setAnvilDate] = useState('');
     const [milestone, setMilestone] = useState(null);
+    const [celebration, setCelebration] = useState(null); // generic momentum celebration {emoji,kicker,title,subtitle}
     const [showResetModal, setShowResetModal] = useState(false);
     // Dismiss state for the "final week of the cycle" heads-up banner, keyed per cycle
     // (stores the cycle's startDate so a new cycle re-shows it).
@@ -5804,6 +5830,22 @@ Never output the ${RITUAL_SENTINEL} block until you have their one priority. Ins
           </div>
         )}
 
+        {/* Generic momentum celebration (streak milestones, etc.) */}
+        {celebration && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center px-5 no-print" style={{backgroundColor:'rgba(0,0,0,0.85)',backdropFilter:'blur(6px)'}}>
+            <div className="bg-slate-900 rounded-3xl p-8 max-w-sm w-full text-center border border-orange-500/40 pop-in">
+              <Confetti active={true}/>
+              <div className="text-6xl mb-4">{celebration.emoji}</div>
+              <p className="text-xs font-bold text-orange-400 uppercase tracking-widest mb-2">{celebration.kicker}</p>
+              <h3 className="text-2xl font-black text-white mb-2">{celebration.title}</h3>
+              <p className="text-slate-400 text-sm mb-6">{celebration.subtitle}</p>
+              <button onClick={()=>setCelebration(null)} className="w-full py-3 rounded-2xl font-bold text-white" style={{background:'linear-gradient(135deg,#f59e0b,#f97316)'}}>
+                Keep it going! →
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Daily Brief Modal */}
         {showDailyBrief && (
           <DailyBriefModal
@@ -6002,7 +6044,7 @@ Never output the ${RITUAL_SENTINEL} block until you have their one priority. Ins
                 </div>
               );
             })()}
-            {activeTab==='today'&&<TodayView data={data} updateField={updateField} weekNum={weekNum} dayIdx={dayIdx} setDayIdx={setDayIdx} openCoach={openCoach} score={score} onPrint={printTab} setActiveTab={setActiveTab} authUser={authUser} autoOpenEvening={autoOpenEvening} clearAutoOpenEvening={()=>setAutoOpenEvening(false)} autoOpenMorning={autoOpenMorning} clearAutoOpenMorning={()=>setAutoOpenMorning(false)}/>}
+            {activeTab==='today'&&<TodayView data={data} updateField={updateField} weekNum={weekNum} dayIdx={dayIdx} setDayIdx={setDayIdx} openCoach={openCoach} score={score} onPrint={printTab} setActiveTab={setActiveTab} authUser={authUser} autoOpenEvening={autoOpenEvening} clearAutoOpenEvening={()=>setAutoOpenEvening(false)} autoOpenMorning={autoOpenMorning} clearAutoOpenMorning={()=>setAutoOpenMorning(false)} onCelebrate={setCelebration}/>}
             {activeTab==='anvil'&&<AnvilView data={data} updateField={updateField} openCoach={openCoach}/>}
             {activeTab==='score'&&<ScoreView data={data} updateField={updateField} weekNum={weekNum} setWeekNum={setWeekNum} setActiveTab={setActiveTab} openCoach={openCoach} onPrint={printTab} onMilestone={setMilestone} setShowResetModal={setShowResetModal}/>}
             {activeTab==='aicoach'&&<AICoachTab plannerData={data} authUserId={authUser?.id} personality={coachPersonality} conversations={conversations} onConversationsChange={setConversations}/>}
