@@ -3147,6 +3147,17 @@ Never output the ${RITUAL_SENTINEL} block until you have their one priority. Ins
       if (next) { setCelebrate(true); setTimeout(()=>setCelebrate(false), 2500); }
     };
 
+    // One-tap Anvil log for today — tap the hammer/streak card, no note or tab
+    // switch. Default note; the Anvil tab still offers a full note. Confetti burst;
+    // streak milestones are handled by the streak effect below.
+    const logAnvilToday = () => {
+      const a = data.anvilProject || { project:'', log:[] };
+      const isFirst = (a.log||[]).length === 0;
+      const note = isFirst ? `Started my ${(a.project||'Anvil').trim()} streak 🔥` : 'Done ✓';
+      updateField('anvilProject', { ...a, log:[{ date:new Date().toISOString(), note }, ...(a.log||[])] });
+      setCelebrate(true); setTimeout(()=>setCelebrate(false), 2500);
+    };
+
     // Write a confirmed Edge-led morning kickoff into today's Top 3 (#1 first).
     const saveMorningPlan = (plan) => {
       const p = JSON.parse(JSON.stringify(data.dailyPlans));
@@ -3419,21 +3430,26 @@ Never output the ${RITUAL_SENTINEL} block until you have their one priority. Ins
             <p className="text-2xl font-bold text-white mt-1">{score.total}</p>
             <p className="text-xs text-blue-400 mt-1 opacity-60">tap to view →</p>
           </button>
-          <button onClick={()=>setActiveTab&&setActiveTab('anvil')} className={`bg-slate-800/60 rounded-2xl p-4 border flex flex-col items-center hover:border-orange-500/50 transition-all active:scale-95 ${todayIsAnvilDay && !anvilLoggedToday ? 'border-orange-500/60 ring-1 ring-orange-500/30' : 'border-slate-700'}`} style={{cursor:'pointer'}}>
+          {(()=>{
+            const canLog = !!(data.anvilProject && data.anvilProject.project) && !anvilLoggedToday;
+            return (
+          <button onClick={()=>{ if(canLog){ logAnvilToday(); } else if(setActiveTab){ setActiveTab('anvil'); } }} className={`bg-slate-800/60 rounded-2xl p-4 border flex flex-col items-center hover:border-orange-500/50 transition-all active:scale-95 ${canLog ? 'border-orange-500/60 ring-1 ring-orange-500/30' : 'border-slate-700'}`} style={{cursor:'pointer'}}>
             <p className="text-xs text-slate-400 mb-1">Anvil Streak</p>
-            <div className="flex items-center gap-1"><span className="text-3xl">🔥</span></div>
+            <div className="flex items-center gap-1"><span className="text-3xl">{canLog ? '🔨' : '🔥'}</span></div>
             <p className="text-3xl font-bold text-white">{anvilStreak}</p>
             <p className="text-xs text-slate-500">days</p>
-            {todayIsAnvilDay && !anvilLoggedToday && (
-              <p className="text-xs text-orange-400 font-bold mt-1">📅 Anvil day!</p>
+            {canLog && (
+              <p className="text-xs text-orange-400 font-bold mt-1">🔨 Tap to log today</p>
             )}
-            {todayIsAnvilDay && anvilLoggedToday && (
+            {anvilLoggedToday && (
               <p className="text-xs text-green-400 font-bold mt-1">✅ Logged today</p>
             )}
-            {!todayIsAnvilDay && (
-              <p className="text-xs text-orange-400 mt-1 opacity-60">tap to view →</p>
+            {!data.anvilProject?.project && (
+              <p className="text-xs text-orange-400 mt-1 opacity-60">tap to set up →</p>
             )}
           </button>
+            );
+          })()}
         </div>
 
 
