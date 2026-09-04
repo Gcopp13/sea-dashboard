@@ -6911,23 +6911,9 @@ Never output the ${RITUAL_SENTINEL} block until you have their one priority. Ins
           setAuthLoading(false);
           return; // skip SIGNED_IN handling below so we don't re-enter any password flow
         }
-        // SIGNED_IN via magic link (invite) — new users must set a password before entering
-        // IMPORTANT: only trigger invite flow if we haven't just completed a password reset (USER_UPDATED)
-        if (_event === 'SIGNED_IN') {
-          const isInviteFlow = new URLSearchParams(window.location.search).get('invite') === '1'
-            || localStorage.getItem('sea_invite_flow') === '1';
-          // Never enter invite/set-password flow if we're in a recovery session
-          const isRecovery = window.location.hash.includes('type=recovery');
-          if (isInviteFlow && !isRecovery) {
-            localStorage.removeItem('sea_invite_flow');
-            setNeedsSetPassword(true);
-            setAuthUser(session?.user ?? null);
-            setAuthLoading(false);
-            return;
-          }
-          // Clear any stale invite flag that could cause loops
-          localStorage.removeItem('sea_invite_flow');
-        }
+        // Sign-up and sign-in both land here — take the user straight in.
+        // (The coach-invite / set-password detour was removed; password reset is
+        //  handled above via PASSWORD_RECOVERY / USER_UPDATED.)
         setAuthUser(session?.user ?? null);
         setAuthLoading(false);
         // Update last_seen on every login / session refresh
@@ -6958,51 +6944,28 @@ Never output the ${RITUAL_SENTINEL} block until you have their one priority. Ins
       } catch(e) {}
     }
 
-    // ?set_password=1 — new user clicked magic link from invite flow
-    // ?reset_password=1 — existing user clicked password reset email
-    // Both: preserve hash so AuthRouter sees the token, then show the right screen
-    const isSetPassword = urlParams.get('set_password') === '1';
+    // ?reset_password=1 — existing user clicked a password reset email.
     const isResetPassword = urlParams.get('reset_password') === '1';
-    if (isSetPassword || isResetPassword) {
-      if (isSetPassword) localStorage.setItem('sea_invite_flow', '1');
-      // Preserve hash, clear query string
+    if (isResetPassword) {
+      // Preserve hash so AuthRouter sees the recovery token; clear the query string.
       if (window.history && window.history.replaceState) {
         window.history.replaceState({}, '', window.location.pathname + window.location.hash);
       }
       if (!authUser) return React.createElement(AuthRouter, {
-        needsPasswordReset: isResetPassword, onResetDone: () => setNeedsPasswordReset(false),
-        needsSetPassword: false, onSetPasswordDone: () => setNeedsSetPassword(false),
-        startOnSignup: false,
+        needsPasswordReset: true, onResetDone: () => setNeedsPasswordReset(false),
       });
     }
 
-    // Check for coach dashboard param
+    // Coach association param (?coach=X): tag this client with their coach.
+    // (The old ?invite=1 magic-link sign-up flow was removed — everyone uses the
+    //  single email + password sign-up; the coach tag still carries through.)
     const coachParam = urlParams.get('coach');
-    const isInviteLink = urlParams.get('invite') === '1';
     if (coachParam) {
-      // Save coach ID immediately (always overwrite stale anonymous values)
       if (!coachParam.startsWith('adv_')) {
         localStorage.setItem('sea_coach_id', coachParam);
       }
-      // If it's a client invite link (not a coach viewing their own dashboard)
-      if (isInviteLink) {
-        // Flag for invite flow so set-password screen shows after sign-in
-        localStorage.setItem('sea_invite_flow', '1');
-        // Clear URL now — AuthRouter will use localStorage flags
-        if (window.history && window.history.replaceState) {
-          window.history.replaceState({}, '', window.location.pathname);
-        }
-        // Show AuthRouter in invite/signup mode
-        if (!authUser) return React.createElement(AuthRouter, {
-          needsPasswordReset: false, onResetDone: () => {},
-          needsSetPassword: false, onSetPasswordDone: () => setNeedsSetPassword(false),
-          startOnSignup: true,
-        });
-      } else {
-        // Non-invite coach param: if logged in show coach dashboard, else just save and clear
-        if (window.history && window.history.replaceState) {
-          window.history.replaceState({}, '', window.location.pathname);
-        }
+      if (window.history && window.history.replaceState) {
+        window.history.replaceState({}, '', window.location.pathname);
       }
     }
 
