@@ -196,7 +196,7 @@
   };
 
   // ── Login Screen — email + password ─────────────────────────────────────
-  const LoginScreen = ({ onShowForgot, onShowMagicLink }) => {
+  const LoginScreen = ({ onShowForgot, onShowSignup }) => {
     const [email, setEmail]       = useState('');
     const [password, setPassword] = useState('');
     const [errorMsg, setErrorMsg] = useState('');
@@ -245,11 +245,90 @@
             style={{ background: 'none', border: 'none', color: '#60a5fa', fontSize: '0.82rem', cursor: 'pointer', padding: 0 }}>
             Forgot password?
           </button>
-          <button onClick={onShowMagicLink}
+          <button onClick={onShowSignup}
             style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: '0.82rem', cursor: 'pointer', padding: 0 }}>
             New user? Sign up →
           </button>
         </div>
+      </AuthCard>
+    );
+  };
+
+  // ── Sign Up Screen — one step: email + password, instant entry ───────────
+  // The project auto-confirms email (mailer_autoconfirm), so signUp returns a
+  // live session immediately — no email round-trip, no separate password step.
+  const SignUpScreen = ({ onBack }) => {
+    const [email, setEmail]       = useState('');
+    const [password, setPassword] = useState('');
+    const [showPw, setShowPw]     = useState(false);
+    const [errorMsg, setErrorMsg] = useState('');
+    const [loading, setLoading]   = useState(false);
+    const [captchaToken, setCaptchaToken] = useState('');
+    const [captchaKey, setCaptchaKey]     = useState(0);
+
+    const handleSignUp = async (e) => {
+      e.preventDefault();
+      if (!email.trim() || !password) return;
+      if (password.length < 8) { setErrorMsg('Password must be at least 8 characters.'); return; }
+      setLoading(true); setErrorMsg('');
+      try {
+        const { data, error } = await _supabase.auth.signUp({
+          email: email.trim(), password,
+          options: { captchaToken, emailRedirectTo: window.location.origin }
+        });
+        if (error) {
+          setErrorMsg(/already registered|already exists|already been registered/i.test(error.message)
+            ? 'That email already has an account — try signing in instead.'
+            : error.message);
+          setCaptchaToken(''); setCaptchaKey(k => k + 1);
+          setLoading(false);
+          return;
+        }
+        // Welcome email (non-fatal).
+        try {
+          fetch('/.netlify/functions/welcome-email', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email: email.trim(), name: email.trim().split('@')[0] })
+          }).catch(() => {});
+        } catch(err) {}
+        // Auto-confirm gives a live session → onAuthStateChange (SIGNED_IN) takes them in.
+        // Belt-and-suspenders: if no session came back, sign in with the same captcha token.
+        if (!data?.session) {
+          const { error: siErr } = await _supabase.auth.signInWithPassword({ email: email.trim(), password, options: { captchaToken } });
+          if (siErr) { setErrorMsg('Account created — please sign in.'); setCaptchaToken(''); setCaptchaKey(k => k + 1); setLoading(false); }
+        }
+      } catch(err) {
+        setErrorMsg('Something went wrong. Please try again.');
+        setCaptchaToken(''); setCaptchaKey(k => k + 1);
+        setLoading(false);
+      }
+    };
+
+    return (
+      <AuthCard>
+        <button onClick={onBack}
+          style={{ background: 'none', border: 'none', color: '#60a5fa', fontSize: '0.85rem', cursor: 'pointer', padding: '0 0 16px', display: 'block' }}>
+          ← Back to sign in
+        </button>
+        <h2 style={{ color: '#fff', fontSize: '1.2rem', fontWeight: '700', margin: '0 0 6px' }}>Create your account</h2>
+        <p style={{ color: '#94a3b8', fontSize: '0.85rem', margin: '0 0 22px', lineHeight: 1.5 }}>Email and a password — that's it. You're in right away.</p>
+        <form onSubmit={handleSignUp}>
+          <input type="email" placeholder="Email address" value={email}
+            onChange={e => setEmail(e.target.value)} required style={authInputStyle}/>
+          <input type={showPw ? 'text' : 'password'} placeholder="Create a password (min 8 characters)" value={password}
+            onChange={e => setPassword(e.target.value)} required style={{ ...authInputStyle, marginBottom: '4px' }}/>
+          <div style={{ textAlign: 'right', margin: '0 0 12px' }}>
+            <button type="button" onClick={() => setShowPw(s => !s)}
+              style={{ background: 'none', border: 'none', color: '#64748b', fontSize: '0.78rem', cursor: 'pointer', padding: 0 }}>
+              {showPw ? 'Hide password' : 'Show password'}
+            </button>
+          </div>
+          {errorMsg && <p style={{ color: '#f87171', fontSize: '0.82rem', margin: '-4px 0 10px' }}>{errorMsg}</p>}
+          <TurnstileWidget key={captchaKey} onToken={setCaptchaToken} onExpire={() => setCaptchaToken('')} />
+          <button type="submit" disabled={loading} style={authBtnStyle(loading)}>
+            {loading ? 'Creating account…' : 'Create Account & Get Started'}
+          </button>
+        </form>
       </AuthCard>
     );
   };
@@ -469,11 +548,12 @@
       if (needsSetPassword)   { setScreen('set-password');   return; }
     }, [needsPasswordReset, needsSetPassword]);
 
+    if (screen === 'signup')         return <SignUpScreen onBack={() => setScreen('login')} />;
     if (screen === 'magic')          return <MagicLinkScreen onBack={() => setScreen('login')} />;
     if (screen === 'forgot')         return <ForgotPasswordScreen onBack={() => setScreen('login')} />;
     if (screen === 'set-password')   return <SetPasswordScreen isReset={false} onDone={() => { onSetPasswordDone(); setScreen('login'); }} />;
     if (screen === 'reset-password') return <SetPasswordScreen isReset={true}  onDone={() => { onResetDone(); setScreen('login'); }} />;
-    return <LoginScreen onShowForgot={() => setScreen('forgot')} onShowMagicLink={() => setScreen('magic')} />;
+    return <LoginScreen onShowForgot={() => setScreen('forgot')} onShowSignup={() => setScreen('signup')} />;
   };
 
   const getOrCreateAdvisorId = () => {
