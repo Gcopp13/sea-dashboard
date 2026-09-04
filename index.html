@@ -4642,6 +4642,7 @@ Label should clearly describe what is being coached (e.g. "Anvil Streak", "Medit
     const [ritualReminderDismissed, setRitualReminderDismissed] = useState(()=>localStorage.getItem('sea-ritual-reminder-dismissed'));
     const [showDailyBrief, setShowDailyBrief] = useState(false);
     const [firstLogCelebrate, setFirstLogCelebrate] = useState(false);
+    const [finishSetupDismissed, setFinishSetupDismissed] = useState(()=>localStorage.getItem('sea-finishsetup-dismissed'));
     const [resetStep, setResetStep] = useState(1); // 1=reflection, 2=confirm
     const [resetReflection, setResetReflection] = useState({wins:'',lessons:'',proud:'',nextTheme:'',nextVision:'',nextAnvil:''}); // {title, pct}
     const [showSundayModal, setShowSundayModal] = useState(()=>{
@@ -5434,6 +5435,28 @@ Label should clearly describe what is being coached (e.g. "Anvil Streak", "Medit
                       <p style={{margin:'2px 0 0',color:'#fcd34d',fontSize:'12px',lineHeight:1.4}}>Did you do your {project} today? Log it to light the fire. 🔥</p>
                     </div>
                     <button onClick={logFirstAnvil} style={{background:'linear-gradient(135deg,#f59e0b,#f97316)',border:'none',color:'#fff',fontSize:'12px',fontWeight:700,borderRadius:'10px',padding:'8px 12px',cursor:'pointer',whiteSpace:'nowrap'}}>✓ I did it</button>
+                  </div>
+                </div>
+              );
+            })()}
+            {/* Finish-your-setup card — progressive onboarding. After a QuickStart user has started their
+                streak, nudge them (once/day, dismissible) to add the deeper setup so Edge can coach personally.
+                Auto-hides once Slight Edge + vision are filled. */}
+            {activeTab==='today' && !firstLogCelebrate && (()=>{
+              const logs = data.anvilProject?.log || [];
+              const deepDone = data.slightEdge?.trim() && data.vision120Day?.trim();
+              const todayKey = new Date().toDateString();
+              if (logs.length === 0 || deepDone || finishSetupDismissed === todayKey) return null;
+              return (
+                <div className="px-4 pt-3">
+                  <div style={{background:'rgba(99,102,241,0.1)',border:'1px solid rgba(99,102,241,0.3)',borderRadius:'14px',padding:'12px 14px',display:'flex',alignItems:'center',gap:'10px'}}>
+                    <span style={{fontSize:'22px'}}>🧭</span>
+                    <div style={{flex:1}}>
+                      <p style={{margin:0,color:'#fff',fontSize:'13px',fontWeight:700}}>Finish your setup</p>
+                      <p style={{margin:'2px 0 0',color:'#c4b5fd',fontSize:'12px',lineHeight:1.4}}>Add your Slight Edge, 120-day vision, and coach — so Edge can coach you personally. ~2 min.</p>
+                    </div>
+                    <button onClick={onReopenOnboarding} style={{background:'linear-gradient(135deg,#6366f1,#8b5cf6)',border:'none',color:'#fff',fontSize:'12px',fontWeight:700,borderRadius:'10px',padding:'8px 12px',cursor:'pointer',whiteSpace:'nowrap'}}>Finish →</button>
+                    <button onClick={()=>{ localStorage.setItem('sea-finishsetup-dismissed', todayKey); setFinishSetupDismissed(todayKey); }} aria-label="Dismiss" style={{background:'none',border:'none',color:'#94a3b8',fontSize:'18px',cursor:'pointer',padding:'0 4px',lineHeight:1}}>×</button>
                   </div>
                 </div>
               );
