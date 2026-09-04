@@ -57,7 +57,7 @@ exports.handler = async () => {
       title: 'S.E.A. Evening Review',
       body: msg,
       tag: 'evening-review',
-      url: APP_URL + '/'
+      url: APP_URL + '/?tab=today&section=evening'   // opens the Edge evening review directly
     });
 
     if (result.ok) {

@@ -2873,13 +2873,16 @@ Never output the ${RITUAL_SENTINEL} block until you have at least tomorrow's top
   };
 
 
-  const TodayView = ({ data, updateField, weekNum, dayIdx, setDayIdx, openCoach, score, onPrint, setActiveTab, authUser }) => {
+  const TodayView = ({ data, updateField, weekNum, dayIdx, setDayIdx, openCoach, score, onPrint, setActiveTab, authUser, autoOpenEvening, clearAutoOpenEvening }) => {
     const dayNames = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
     const dayFull  = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
     const day = data.dailyPlans[weekNum-1][dayIdx];
     const updateDay = (f,v) => { const p=JSON.parse(JSON.stringify(data.dailyPlans)); p[weekNum-1][dayIdx][f]=v; updateField('dailyPlans',p); };
     const [showCarryOver, setShowCarryOver] = useState(false);
     const [showEveningCoach, setShowEveningCoach] = useState(false);
+
+    // Open the Edge evening review straight from the 7 PM push (?tab=today&section=evening).
+    useEffect(()=>{ if(autoOpenEvening){ setShowEveningCoach(true); clearAutoOpenEvening && clearAutoOpenEvening(); } },[autoOpenEvening]);
 
     // Write a confirmed Edge-led evening recap into today's plan. Tomorrow's
     // priorities feed the existing carry-over engine → tomorrow's Top 3.
@@ -5002,6 +5005,7 @@ Never output the ${RITUAL_SENTINEL} block until you have at least tomorrow's top
     const [activeTab, setActiveTab] = useState('today');
     const [autoOpenMessages, setAutoOpenMessages] = useState(false);
     const [autoOpenRitual, setAutoOpenRitual] = useState(false);
+    const [autoOpenEvening, setAutoOpenEvening] = useState(false);
     const [weekNum, setWeekNum]     = useState(1);
     const [dayIdx, setDayIdx]       = useState(()=>{ const d=new Date().getDay(); return d===0?6:d-1; });
     const [loading, setLoading]     = useState(true);
@@ -5110,6 +5114,9 @@ Never output the ${RITUAL_SENTINEL} block until you have at least tomorrow's top
           setPlanningNextWeek(true);   // ritual targets the week ahead, same as the Sunday flow
           setAutoOpenRitual(true);
         }
+        if (tabParam === 'today' && sectionParam === 'evening') {
+          setAutoOpenEvening(true);    // 7 PM push opens the Edge evening review directly
+        }
       }
       if (tabParam || sectionParam) {
         window.history.replaceState({}, '', window.location.pathname);
@@ -5125,6 +5132,7 @@ Never output the ${RITUAL_SENTINEL} block until you have at least tomorrow's top
           setActiveTab(tab);
           if (tab === 'more' && section === 'messages') setAutoOpenMessages(true);
           if (tab === 'more' && section === 'weekly') { setPlanningNextWeek(true); setAutoOpenRitual(true); }
+          if (tab === 'today' && section === 'evening') setAutoOpenEvening(true);
         }
       };
       navigator.serviceWorker?.addEventListener('message', handleSWMessage);
@@ -5845,7 +5853,7 @@ Never output the ${RITUAL_SENTINEL} block until you have at least tomorrow's top
                 </div>
               );
             })()}
-            {activeTab==='today'&&<TodayView data={data} updateField={updateField} weekNum={weekNum} dayIdx={dayIdx} setDayIdx={setDayIdx} openCoach={openCoach} score={score} onPrint={printTab} setActiveTab={setActiveTab} authUser={authUser}/>}
+            {activeTab==='today'&&<TodayView data={data} updateField={updateField} weekNum={weekNum} dayIdx={dayIdx} setDayIdx={setDayIdx} openCoach={openCoach} score={score} onPrint={printTab} setActiveTab={setActiveTab} authUser={authUser} autoOpenEvening={autoOpenEvening} clearAutoOpenEvening={()=>setAutoOpenEvening(false)}/>}
             {activeTab==='anvil'&&<AnvilView data={data} updateField={updateField} openCoach={openCoach}/>}
             {activeTab==='score'&&<ScoreView data={data} updateField={updateField} weekNum={weekNum} setWeekNum={setWeekNum} setActiveTab={setActiveTab} openCoach={openCoach} onPrint={printTab} onMilestone={setMilestone} setShowResetModal={setShowResetModal}/>}
             {activeTab==='aicoach'&&<AICoachTab plannerData={data} authUserId={authUser?.id} personality={coachPersonality} conversations={conversations} onConversationsChange={setConversations}/>}
