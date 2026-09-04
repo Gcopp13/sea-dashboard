@@ -4,7 +4,7 @@
 // users pick up the new HTML on their next visit. Format: YYYY-MM-DD-N.
 // Any change to this file (including this string) triggers a byte-diff on
 // /sw.js, which the browser detects and installs as a new worker.
-const SW_VERSION = '2026-09-04-14';
+const SW_VERSION = '2026-09-04-15';
 const CACHE_NAME = `sea-dashboard-${SW_VERSION}`;
 
 // Precache the app shell so we have something to fall back to offline,
