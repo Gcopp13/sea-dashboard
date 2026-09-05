@@ -2284,7 +2284,7 @@ Never output the ${RITUAL_SENTINEL} block until you have their one priority. Ins
       const today = new Date().toISOString().split('T')[0];
       onComplete({
         anvil: { project: anvil.trim(), cadence: 'Daily', why: anvilWhy.trim(), freqCount: 7 },
-        goals: [{ title: goal.trim(), impact: '', measurement: goalMeasure.trim() }, {title:'',impact:'',measurement:''}, {title:'',impact:'',measurement:''}, {title:'',impact:'',measurement:''}],
+        goals: [{ title: goal.trim(), impact: '', measurement: goalMeasure.trim() }, {title:'',impact:'',measurement:''}, {title:'',impact:'',measurement:''}],
         startDate: today,
       });
     };
@@ -2365,7 +2365,7 @@ Never output the ${RITUAL_SENTINEL} block until you have their one priority. Ins
       slightEdge: initialData.slightEdge||'', yearTheme: initialData.yearTheme||'',
       wheelOfJohn: initialData.wheelOfJohn||{family:5,fun:5,fitness:5,finance:5,faith:5},
       vision120Day: initialData.vision120Day||'',
-      goals: initialData.goals||[{title:'',impact:'',measurement:''},{title:'',impact:'',measurement:''},{title:'',impact:'',measurement:''},{title:'',impact:'',measurement:''}],
+      goals: initialData.goals||[{title:'',impact:'',measurement:''},{title:'',impact:'',measurement:''},{title:'',impact:'',measurement:''}],
       anvil: initialData.anvil||{project:'',cadence:'',why:''},
       personality: initialData.personality||{style:2,tone:2,approach:2,energy:2},
       startDate: initialData.startDate||'',
@@ -2377,7 +2377,7 @@ Never output the ${RITUAL_SENTINEL} block until you have their one priority. Ins
       {id:'yearTheme',title:'Year Theme',subtitle:'One word or phrase for this year',desc:"Your compass. Every decision this year points back to it. Not a goal — an identity.",prompt:'My year theme is...',placeholder:'e.g. The Year of Execution, Discipline, Breakthrough...',field:'yearTheme',type:'input'},
       {id:'wheel',title:'Wheel of John',subtitle:'Where are you right now?',desc:'Score each life category honestly — not where you want to be, where you ARE. This baseline shapes your vision and goals.',type:'wheel'},
       {id:'vision',title:'120-Day Vision',subtitle:'Who will you BE in 120 days?',desc:"Not what you'll do — who you'll become. Describe that version of yourself.",prompt:'In 120 days, I am someone who...',placeholder:'e.g. I am someone who has built systems that run without me, who shows up fully present for my family...',field:'vision120Day',type:'textarea'},
-      {id:'goals',title:'Your Four Goals',subtitle:'Up to 4 goals for this 120-day period',desc:'Set up to 4 goals — specific enough that someone else could tell if you hit them. Quality over quantity.',type:'goals'},
+      {id:'goals',title:'Your Goals',subtitle:'Up to 3 goals for this 120-day period',desc:'Set up to 3 goals — specific enough that someone else could tell if you hit them. Quality over quantity.',type:'goals'},
       {id:'anvil',title:'Your Anvil',subtitle:'The one activity that changes everything',type:'anvil'},
       {id:'personality',title:'Your Coach',subtitle:'Set up your coaching style',type:'personality'},
       {id:'startDate',title:'Your 120-Day Start Date',subtitle:'When does your journey begin?',type:'startDate',hasInfo:true},
@@ -4171,7 +4171,7 @@ Never output the ${RITUAL_SENTINEL} block until you have their one priority. Ins
         <div className="bg-slate-800/60 rounded-2xl p-5 border border-slate-700">
           <h3 className="text-sm font-bold text-orange-400 uppercase tracking-wide mb-4">Goal Progress</h3>
           <div className="space-y-4">
-            {data.goals.map((g,i)=>{
+            {data.goals.slice(0,3).map((g,i)=>{
               if(!g.title?.trim()) return null;
               const pct=g.completion||0;
               const colors=['#f97316','#3b82f6','#10b981','#a855f7'];
@@ -4484,7 +4484,7 @@ Never output the ${RITUAL_SENTINEL} block until you have their one priority. Ins
             <span className="text-3xl">🎯</span>
             <div className="flex-1">
               <p className="font-semibold text-white">Vision & Goals</p>
-              <p className="text-xs text-slate-400 mt-0.5">3-year, 1-year, 120-day vision + 4 goals</p>
+              <p className="text-xs text-slate-400 mt-0.5">Your 120-day vision + up to 3 goals</p>
             </div>
             <ChevRight/>
           </button>
@@ -4562,7 +4562,7 @@ Never output the ${RITUAL_SENTINEL} block until you have their one priority. Ins
         {section==='vision' && (
           <div className="space-y-5">
             <h2 className="text-xl font-bold text-white">Vision & Goals</h2>
-            {[{k:'vision3Year',label:'3-Year Vision',color:'blue',ph:'Where are you in 3 years?'},{k:'vision1Year',label:'1-Year Vision',color:'purple',ph:'What happens this year?'},{k:'vision120Day',label:'120-Day Vision',color:'green',ph:'Who will you be in 120 days?'}].map(({k,label,color,ph})=>(
+            {[{k:'vision120Day',label:'120-Day Vision',color:'green',ph:'Who will you be in 120 days?'}].map(({k,label,color,ph})=>(
               <div key={k} className="bg-slate-800/60 rounded-2xl p-5 border border-slate-700">
                 <div className="flex items-center justify-between mb-3">
                   <h3 className={`text-sm font-bold text-${color}-400 uppercase tracking-wide`}>{label}</h3>
@@ -4572,8 +4572,8 @@ Never output the ${RITUAL_SENTINEL} block until you have their one priority. Ins
               </div>
             ))}
             <div className="space-y-3">
-              <h3 className="text-sm font-bold text-orange-400 uppercase tracking-wide">Four Goals</h3>
-              {data.goals.map((g,i)=>(
+              <h3 className="text-sm font-bold text-orange-400 uppercase tracking-wide">Your Goals</h3>
+              {data.goals.slice(0,3).map((g,i)=>(
                 <div key={i} className="bg-slate-800/60 rounded-2xl p-4 border border-slate-700">
                   <label className="text-xs text-slate-500 font-bold block mb-2">GOAL {i+1}</label>
                   <input value={g.title||''} onChange={e=>{const gs=JSON.parse(JSON.stringify(data.goals));gs[i]={...gs[i],title:e.target.value};updateField('goals',gs);}} placeholder="Goal title" className="w-full bg-slate-700/50 border border-slate-600/50 rounded-xl p-3 text-white placeholder-slate-500 text-sm focus:outline-none mb-2"/>
@@ -5256,7 +5256,7 @@ Never output the ${RITUAL_SENTINEL} block until you have their one priority. Ins
 
     const [data, setData] = useState({
       slightEdge:'',yearTheme:'',vision3Year:'',vision1Year:'',vision120Day:'',
-      goals:[{title:'',impact:'',measurement:''},{title:'',impact:'',measurement:''},{title:'',impact:'',measurement:''},{title:'',impact:'',measurement:''}],
+      goals:[{title:'',impact:'',measurement:''},{title:'',impact:'',measurement:''},{title:'',impact:'',measurement:''}],
       weekByDesign:{monday:{theme:''},tuesday:{theme:''},wednesday:{theme:''},thursday:{theme:''},friday:{theme:''}},
       weeks:Array(17).fill(null).map(()=>createWeek()),
       dailyPlans:Array(17).fill(null).map(()=>Array(7).fill(null).map(()=>createDay())),
@@ -5694,7 +5694,7 @@ Never output the ${RITUAL_SENTINEL} block until you have their one priority. Ins
         vision3Year: data.vision3Year,
         vision1Year: '',
         vision120Day: reflection.nextVision || '',
-        goals: [{title:'',impact:'',measurement:''},{title:'',impact:'',measurement:''},{title:'',impact:'',measurement:''},{title:'',impact:'',measurement:''}],
+        goals: [{title:'',impact:'',measurement:''},{title:'',impact:'',measurement:''},{title:'',impact:'',measurement:''}],
         weekByDesign: data.weekByDesign,
         weeks: Array(17).fill(null).map(()=>createWeek()),
         dailyPlans: Array(17).fill(null).map(()=>Array(7).fill(null).map(()=>createDay())),
@@ -6690,13 +6690,13 @@ Never output the ${RITUAL_SENTINEL} block until you have their one priority. Ins
         return {
           slightEdge: p.slightEdge||'', yearTheme: p.yearTheme||'',
           vision120Day: p.vision120Day||'', startDate: p.startDate||'',
-          goals: p.goals||[{title:'',impact:'',measurement:''},{title:'',impact:'',measurement:''},{title:'',impact:'',measurement:''},{title:'',impact:'',measurement:''}],
+          goals: p.goals||[{title:'',impact:'',measurement:''},{title:'',impact:'',measurement:''},{title:'',impact:'',measurement:''}],
           wheelOfJohn: p.weeks?.[0]?.wheelOfJohn||{family:5,fun:5,fitness:5,finance:5,faith:5},
           anvil: p.anvilProject ? {project:p.anvilProject.project||'',cadence:p.anvilProject.cadence||'',why:p.anvilProject.why||''} : {project:'',cadence:'',why:''},
           personality: pers ? JSON.parse(pers) : {style:2,tone:2,approach:2,energy:2},
           coachProfile: (() => { try { const s=localStorage.getItem('coach-profile'); return s?JSON.parse(s):{years:'',production:'',need:'',obstacle:'',style:'',why:'',drift:'',family:'',niche:'',fear:'',successDef:'',avoiding:'',proud:'',fiveYear:'',holdingBack:''}; } catch(e) { return {years:'',production:'',need:'',obstacle:'',style:'',why:'',drift:'',family:'',niche:'',fear:'',successDef:'',avoiding:'',proud:'',fiveYear:'',holdingBack:''}; } })()
         };
-      } catch(e) { return {slightEdge:'',yearTheme:'',vision120Day:'',startDate:'',goals:[{title:'',impact:'',measurement:''},{title:'',impact:'',measurement:''},{title:'',impact:'',measurement:''},{title:'',impact:'',measurement:''}],anvil:{project:'',cadence:'',why:''},personality:{style:2,tone:2,approach:2,energy:2}}; }
+      } catch(e) { return {slightEdge:'',yearTheme:'',vision120Day:'',startDate:'',goals:[{title:'',impact:'',measurement:''},{title:'',impact:'',measurement:''},{title:'',impact:'',measurement:''}],anvil:{project:'',cadence:'',why:''},personality:{style:2,tone:2,approach:2,energy:2}}; }
     };
     const handleOnboardingComplete = (d) => { setOnboardingData(d); setOnboardingDone(true); setShowingOnboarding(false); };
     const handleReopenOnboarding = () => setShowingOnboarding(true);
