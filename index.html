@@ -841,7 +841,11 @@
       anvilScore = currentPct * 25;
     }
     // 3. Wheel avg (20pts)
-    const w = week.wheelOfJohn||{family:5,fun:5,fitness:5,finance:5,faith:5};
+    // Wheel is updated ~monthly now, so score against the most recent non-default
+    // Wheel across all weeks (falling back to this week / default), not just this week's,
+    // so the score doesn't collapse to default in the weeks between check-ins.
+    const _latestWheelWk = [...(data.weeks||[])].reverse().find(wk=>wk&&wk.wheelOfJohn&&Object.values(wk.wheelOfJohn).some(v=>v!==5));
+    const w = (_latestWheelWk&&_latestWheelWk.wheelOfJohn)||week.wheelOfJohn||{family:5,fun:5,fitness:5,finance:5,faith:5};
     const wheelAvg = Object.values(w).reduce((a,b)=>a+(b||5),0)/5;
     const wheelScore = (wheelAvg/10)*20;
     // 4. Weekly ritual (15pts)
@@ -2051,6 +2055,47 @@ Never output the ${RITUAL_SENTINEL} block until you have their one priority. Ins
     , document.body);
   };
 
+  // ── WHEEL OF LIFE — monthly check-in editor ─────────────────────────────
+  // The Wheel moved out of the weekly ritual to a ~monthly cadence. This modal is
+  // opened from the Today "monthly life check-in" card; on save it writes the wheel
+  // to the current week and stamps data.wheelUpdatedAt (drives the cadence + score).
+  const WHEEL_CATS = [{key:'family',label:'Family',color:'#f43f5e'},{key:'fun',label:'Fun',color:'#f59e0b'},{key:'fitness',label:'Fitness',color:'#10b981'},{key:'finance',label:'Finance',color:'#3b82f6'},{key:'faith',label:'Faith',color:'#a855f7'}];
+  const WheelModal = ({ isOpen, onClose, initialWheel, onSave }) => {
+    const [wheel, setWheel] = useState(initialWheel || {family:5,fun:5,fitness:5,finance:5,faith:5});
+    useEffect(()=>{ if(isOpen) setWheel(initialWheel || {family:5,fun:5,fitness:5,finance:5,faith:5}); }, [isOpen]);
+    if (!isOpen) return null;
+    return ReactDOM.createPortal(
+      <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center px-0 md:px-5" style={{backgroundColor:'rgba(0,0,0,0.7)',backdropFilter:'blur(4px)'}} onClick={onClose}>
+        <div onClick={e=>e.stopPropagation()} className="w-full md:max-w-md bg-slate-900 border border-slate-700 shadow-2xl" style={{borderRadius:'1.5rem 1.5rem 0 0',maxHeight:'90vh',overflowY:'auto'}}>
+          <div className="p-5 border-b border-slate-800 flex items-center justify-between">
+            <div><h3 className="text-white font-bold text-base">⚖️ Wheel of Life</h3><p className="text-xs text-slate-400 mt-0.5">Score each area 1–10 — where you ARE, not where you want to be.</p></div>
+            <button onClick={onClose} className="p-1.5 hover:bg-white/10 rounded-lg text-slate-400"><XIcon/></button>
+          </div>
+          <div className="p-5">
+            <div className="flex justify-center mb-4"><MiniRadar scores={wheel} size={180}/></div>
+            <div className="space-y-3">
+              {WHEEL_CATS.map(cat=>{
+                const val=wheel[cat.key]||5;
+                const sc=val<=4?'#f87171':val<=6?'#fbbf24':'#34d399';
+                return (
+                  <div key={cat.key}>
+                    <div className="flex justify-between mb-1">
+                      <span className="text-sm font-semibold" style={{color:cat.color}}>{cat.label}</span>
+                      <span className="text-base font-bold" style={{color:sc}}>{val}</span>
+                    </div>
+                    <input type="range" min="1" max="10" value={val} onChange={e=>setWheel(w=>({...w,[cat.key]:parseInt(e.target.value)}))} className="w-full h-2 rounded-lg appearance-none cursor-pointer" style={{accentColor:cat.color}}/>
+                  </div>
+                );
+              })}
+            </div>
+            <button onClick={()=>onSave(wheel)} className="w-full mt-5 py-3 rounded-xl font-bold text-white text-sm" style={{background:'linear-gradient(135deg,#6366f1,#8b5cf6)'}}>Save my Wheel ✓</button>
+          </div>
+        </div>
+      </div>,
+      document.body
+    );
+  };
+
   // ── AI COACH TAB (history hub + inline chat) ────────────────────────────
   const AICoachTab = ({ plannerData, authUserId, personality, conversations, onConversationsChange }) => {
     const [view, setView] = useState('list'); // 'list' | 'chat'
@@ -3139,6 +3184,19 @@ Never output the ${RITUAL_SENTINEL} block until you have their one priority. Ins
     const [morningDoneToday, setMorningDoneToday] = useState(()=>{ try { return localStorage.getItem('sea-morning-done') === new Date().toDateString(); } catch(e){ return false; } });
     const [celebrate, setCelebrate] = useState(false); // quick confetti burst on #1 done
     const [notifPromptDismissed, setNotifPromptDismissed] = useState(()=>{ try { return localStorage.getItem('sea-notif-prompt-dismissed')==='1'; } catch(e){ return false; } });
+    const [showWheelModal, setShowWheelModal] = useState(false);
+    const [wheelSnoozed, setWheelSnoozed] = useState(()=>{ try { return localStorage.getItem('sea-wheel-snooze')===new Date().toDateString(); } catch(e){ return false; } });
+    // The Wheel is a ~monthly check-in now. Due if never done or 28+ days since last.
+    const currentWheel = (()=>{ const wk=[...(data.weeks||[])].reverse().find(w=>w&&w.wheelOfJohn&&Object.values(w.wheelOfJohn).some(v=>v!==5)); return (wk&&wk.wheelOfJohn) || (data.weeks[weekNum-1]&&data.weeks[weekNum-1].wheelOfJohn) || {family:5,fun:5,fitness:5,finance:5,faith:5}; })();
+    const wheelDue = (()=>{ const ts=data.wheelUpdatedAt; if(!ts) return true; return (Date.now()-Date.parse(ts)) >= 28*864e5; })();
+    const saveWheel = (wheel) => {
+      const ws = JSON.parse(JSON.stringify(data.weeks));
+      if(!ws[weekNum-1]) ws[weekNum-1] = {wins:['','',''],improvements:'',focus:'',goalPriorities:['','','',''],aActivities:[],messes:[],wheelOfJohn:{family:5,fun:5,fitness:5,finance:5,faith:5}};
+      ws[weekNum-1].wheelOfJohn = wheel;
+      updateField('weeks', ws);
+      updateField('wheelUpdatedAt', new Date().toISOString());
+      setShowWheelModal(false);
+    };
 
     // Toggle today's #1 done; celebrate with a confetti burst when newly checked.
     const toggleTopPriority = () => {
@@ -3285,6 +3343,7 @@ Never output the ${RITUAL_SENTINEL} block until you have their one priority. Ins
     return (
       <div className="page-content px-4 py-5 space-y-5">
         <Confetti active={celebrate}/>
+        <WheelModal isOpen={showWheelModal} onClose={()=>setShowWheelModal(false)} initialWheel={currentWheel} onSave={saveWheel}/>
         {/* Header */}
         <div className="flex items-start justify-between">
           <div>
@@ -3363,6 +3422,19 @@ Never output the ${RITUAL_SENTINEL} block until you have their one priority. Ins
             </div>
           );
         })()}
+
+        {/* Monthly Wheel of Life check-in — appears when it's been ~28 days (or never done). */}
+        {dayIdx===todayDayIdx2 && wheelDue && !wheelSnoozed && !!(data.anvilProject && data.anvilProject.project) && (
+          <div className="rounded-2xl p-4 border border-indigo-500/30 flex items-center gap-3" style={{background:'linear-gradient(135deg,rgba(99,102,241,0.12),rgba(139,92,246,0.10))'}}>
+            <span className="text-2xl flex-shrink-0">⚖️</span>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-bold text-white">Monthly life check-in</p>
+              <p className="text-xs text-slate-400">Score your Wheel of Life — 30 seconds, once a month.</p>
+            </div>
+            <button onClick={()=>setShowWheelModal(true)} className="px-3 py-2 rounded-xl text-xs font-bold text-white flex-shrink-0" style={{background:'linear-gradient(135deg,#6366f1,#8b5cf6)'}}>Update</button>
+            <button onClick={()=>{ try{localStorage.setItem('sea-wheel-snooze',new Date().toDateString());}catch(e){} setWheelSnoozed(true); }} aria-label="Snooze" className="text-slate-500 hover:text-slate-300 text-lg flex-shrink-0 px-1">×</button>
+          </div>
+        )}
 
         {/* Agreement of the Day */}
         {(()=>{
@@ -3586,7 +3658,7 @@ Never output the ${RITUAL_SENTINEL} block until you have their one priority. Ins
       return `${s.toLocaleDateString('en-US',{month:'short',day:'numeric'})} – ${e.toLocaleDateString('en-US',{month:'short',day:'numeric'})}`;
     };
 
-    const RITUAL_STEPS = ['Wins','Focus + Wheel','Habits','Priorities'];
+    const RITUAL_STEPS = ['Wins','Focus','Habits','Priorities'];
     const isRitualComplete = week.wins.some(x=>x.trim()) && week.focus?.trim() && week.goalPriorities.some(x=>x.trim());
 
     const completeRitual = () => {
@@ -3697,38 +3769,12 @@ Never output the ${RITUAL_SENTINEL} block until you have their one priority. Ins
           </div>
         )}
 
-        {/* Step 1: Focus + Wheel */}
+        {/* Step 1: Focus */}
         {ritualStep===1 && (
           <div className="space-y-4 slide-up">
             <div className="bg-slate-800/60 rounded-2xl p-5 border border-slate-700">
               <h3 className="text-sm font-bold text-purple-400 uppercase tracking-wide mb-3">Weekly Focus</h3>
               <input value={week.focus||''} onChange={e=>updateWeek('focus',e.target.value)} placeholder="Main theme or focus for this week" className="w-full bg-slate-700/50 border border-slate-600/50 rounded-xl p-3 text-white placeholder-slate-500 text-sm focus:border-purple-500 focus:outline-none"/>
-            </div>
-            <div className="bg-slate-800/60 rounded-2xl p-5 border border-slate-700">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-sm font-bold text-indigo-400 uppercase tracking-wide">Wheel of John</h3>
-                <span className="text-xs text-slate-400">Rate each 1–10</span>
-              </div>
-              <div className="flex justify-center mb-4"><MiniRadar scores={wheel} size={180}/></div>
-              <div className="space-y-3">
-                {CATS.map(cat=>{
-                  const val=wheel[cat.key]||5;
-                  const trend=prevWheel?val-(prevWheel[cat.key]||5):null;
-                  const sc=val<=4?'#f87171':val<=6?'#fbbf24':'#34d399';
-                  return(
-                    <div key={cat.key}>
-                      <div className="flex justify-between mb-1">
-                        <span className="text-sm font-semibold" style={{color:cat.color}}>{cat.label}</span>
-                        <div className="flex items-center gap-2">
-                          {trend!==null&&trend!==0&&<span className={`text-xs ${trend>0?'text-green-400':'text-red-400'}`}>{trend>0?`+${trend}`:trend}</span>}
-                          <span className="text-base font-bold" style={{color:sc}}>{val}</span>
-                        </div>
-                      </div>
-                      <input type="range" min="1" max="10" value={val} onChange={e=>updateWeek('wheelOfJohn',{...wheel,[cat.key]:parseInt(e.target.value)})} className="w-full h-2 rounded-lg appearance-none cursor-pointer" style={{accentColor:cat.color}}/>
-                    </div>
-                  );
-                })}
-              </div>
             </div>
             <div className="flex gap-3">
               <button onClick={()=>setRitualStep(0)} className="px-4 py-3 bg-slate-700 rounded-xl text-white text-sm">← Back</button>
@@ -3772,7 +3818,7 @@ Never output the ${RITUAL_SENTINEL} block until you have their one priority. Ins
             ))}
             <div className="flex gap-3 mt-4">
               <button onClick={()=>setRitualStep(2)} className="px-4 py-3 bg-slate-700 rounded-xl text-white text-sm">← Back</button>
-              <button onClick={()=>{if(!isRitualComplete){const missing=[];if(!(week.wins||[]).some(x=>x&&x.trim()))missing.push('a Win (Wins step)');if(!week.focus?.trim())missing.push('your Focus (Focus + Wheel step)');if(!(week.goalPriorities||[]).some(x=>x&&x.trim()))missing.push('at least one Priority (Priorities step)');alert('Almost there — still need: '+missing.join('; ')+'.');}else{completeRitual();}}} className="flex-1 py-3 rounded-xl font-bold text-white text-sm" style={{background:'linear-gradient(135deg,#10b981,#059669)'}}>
+              <button onClick={()=>{if(!isRitualComplete){const missing=[];if(!(week.wins||[]).some(x=>x&&x.trim()))missing.push('a Win (Wins step)');if(!week.focus?.trim())missing.push('your Focus (Focus step)');if(!(week.goalPriorities||[]).some(x=>x&&x.trim()))missing.push('at least one Priority (Priorities step)');alert('Almost there — still need: '+missing.join('; ')+'.');}else{completeRitual();}}} className="flex-1 py-3 rounded-xl font-bold text-white text-sm" style={{background:'linear-gradient(135deg,#10b981,#059669)'}}>
                 {isRitualComplete?'Week Planned ✓':'Complete Ritual'}
               </button>
             </div>
