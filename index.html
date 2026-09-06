@@ -3687,9 +3687,6 @@ Never output the ${RITUAL_SENTINEL} block until you have their one priority. Ins
       completeRitual();
     };
 
-    const CATS = [{key:'family',label:'Family',color:'#f43f5e'},{key:'fun',label:'Fun',color:'#f59e0b'},{key:'fitness',label:'Fitness',color:'#10b981'},{key:'finance',label:'Finance',color:'#3b82f6'},{key:'faith',label:'Faith',color:'#a855f7'}];
-    const wheel = week.wheelOfJohn||{family:5,fun:5,fitness:5,finance:5,faith:5};
-    const prevWheel = weekNum>1?(data.weeks[weekNum-2].wheelOfJohn||null):null;
 
     // 120-day completion: on the Sunday that closes week 17 (and until they choose),
     // the ritual opens with the Reset/Continue screen instead of the normal steps.
