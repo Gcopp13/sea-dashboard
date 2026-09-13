@@ -5257,10 +5257,6 @@ Never output the ${RITUAL_SENTINEL} block until you have their one priority. Ins
     });
     // On Sunday, planning ritual should target next week's slot (week starts Monday)
     const [planningNextWeek, setPlanningNextWeek] = useState(false);
-    // Clamp the planned week to the weeks that actually exist, so the ritual can never target a
-    // week slot that isn't in the array yet (which crashed WeekView). The grow effect below keeps
-    // a slot ahead available, so in the normal case this still resolves to weekNum+1.
-    const plannerWeekNum = planningNextWeek ? Math.min(data.cycleContinued ? 520 : 17, weekNum + 1) : weekNum;
     const [coachPersonality, setCoachPersonality] = useState(()=>{try{const s=localStorage.getItem('coach-personality');return s?JSON.parse(s):{style:2,tone:2,approach:2,energy:2};}catch(e){return{style:2,tone:2,approach:2,energy:2};}});
     const saveTimer = useRef(null);
     // Cross-device sync conflict resolution. cloudBaseRef = the planner_data.updated_at
@@ -5308,6 +5304,14 @@ Never output the ${RITUAL_SENTINEL} block until you have their one priority. Ins
       // 120-day cycle tracking (added for the completion experience)
       cycleNumber:1, cycleContinued:false, cycleArchives:[]
     });
+
+    // MUST come AFTER `data` is declared — it reads data.cycleContinued on the
+    // planning-next-week path. When this lived above the useState, Babel hoisted
+    // `data` as an undefined var, so tapping the Sunday ritual banner (which sets
+    // planningNextWeek=true) crashed with "Cannot read properties of undefined
+    // (reading 'cycleContinued')". Keeping it here fixes that. The grow effect below
+    // keeps a slot ahead available, so this normally resolves to weekNum+1.
+    const plannerWeekNum = planningNextWeek ? Math.min(data.cycleContinued ? 520 : 17, weekNum + 1) : weekNum;
 
     useEffect(()=>{
       try{const s=localStorage.getItem('sea-planner-data');if(s)setData(JSON.parse(s));}
