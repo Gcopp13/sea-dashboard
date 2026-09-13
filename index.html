@@ -765,7 +765,7 @@
 
   // ── SCORING ENGINE ─────────────────────────────────────────────────────────
   const calcSEAScore = (data, weekIdx) => {
-    const week = data.weeks[weekIdx];
+    const week = (data.weeks && data.weeks[weekIdx]) || {wins:['','',''],improvements:'',focus:'',goalPriorities:['','','',''],aActivities:[],messes:[],wheelOfJohn:{family:5,fun:5,fitness:5,finance:5,faith:5}};
     // 1. Habit completion (30pts) — respects each habit's targetDays
     const acts = (week.aActivities||[]).filter(a=>a.name&&a.name.trim());
     const habitPct = acts.length > 0
@@ -3529,18 +3529,18 @@ Never output the ${RITUAL_SENTINEL} block until you have their one priority. Ins
         <div className="bg-slate-800/60 rounded-2xl p-5 border border-slate-700">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-sm font-bold text-yellow-400 uppercase tracking-wide">Habit Tracker</h3>
-            <button onClick={()=>{const a=JSON.parse(JSON.stringify(data.weeks[weekNum-1].aActivities||[]));a.push({name:'',days:[false,false,false,false,false,false,false]});const ws=JSON.parse(JSON.stringify(data.weeks));ws[weekNum-1].aActivities=a;updateField('weeks',ws);}} className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-yellow-400 border border-yellow-500/30 hover:bg-yellow-500/10 transition-all">
+            <button onClick={()=>{const a=JSON.parse(JSON.stringify((data.weeks[weekNum-1]||{}).aActivities||[]));a.push({name:'',days:[false,false,false,false,false,false,false]});const ws=JSON.parse(JSON.stringify(data.weeks));ws[weekNum-1].aActivities=a;updateField('weeks',ws);}} className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-yellow-400 border border-yellow-500/30 hover:bg-yellow-500/10 transition-all">
               + Add Habit
             </button>
           </div>
           <div className="space-y-5">
-            {(data.weeks[weekNum-1].aActivities||[]).map((act,ai)=>(
+            {((data.weeks[weekNum-1]||{}).aActivities||[]).map((act,ai)=>(
               <HabitRow key={ai} act={act} ai={ai}
                 onUpdate={updated=>{ const ws=JSON.parse(JSON.stringify(data.weeks)); ws[weekNum-1].aActivities[ai]=updated; updateField('weeks',ws); }}
                 onRemove={()=>{ const ws=JSON.parse(JSON.stringify(data.weeks)); ws[weekNum-1].aActivities.splice(ai,1); updateField('weeks',ws); }}
               />
             ))}
-            {(data.weeks[weekNum-1].aActivities||[]).length === 0 && (
+            {((data.weeks[weekNum-1]||{}).aActivities||[]).length === 0 && (
               <p className="text-center text-slate-500 text-sm py-2">No habits yet — tap Add Habit to get started</p>
             )}
           </div>
@@ -3659,7 +3659,7 @@ Never output the ${RITUAL_SENTINEL} block until you have their one priority. Ins
     };
 
     const RITUAL_STEPS = ['Wins','Focus','Habits','Priorities'];
-    const isRitualComplete = week.wins.some(x=>x.trim()) && week.focus?.trim() && week.goalPriorities.some(x=>x.trim());
+    const isRitualComplete = (week.wins||[]).some(x=>x&&x.trim()) && week.focus?.trim() && (week.goalPriorities||[]).some(x=>x&&x.trim());
 
     const completeRitual = () => {
       setShowConfetti(true);
@@ -4019,8 +4019,8 @@ Never output the ${RITUAL_SENTINEL} block until you have their one priority. Ins
   const ScoreView = ({ data, updateField, weekNum, setWeekNum, setActiveTab, openCoach, onPrint, onMilestone, setShowResetModal }) => {
     const [showScoreInfo, setShowScoreInfo] = useState(false);
     const score = calcSEAScore(data, weekNum-1);
-    const wheel = data.weeks[weekNum-1].wheelOfJohn||{family:5,fun:5,fitness:5,finance:5,faith:5};
-    const prevWheel = weekNum > 1 ? (data.weeks[weekNum-2].wheelOfJohn||null) : null;
+    const wheel = (data.weeks[weekNum-1]||{}).wheelOfJohn||{family:5,fun:5,fitness:5,finance:5,faith:5};
+    const prevWheel = (weekNum > 1 && data.weeks[weekNum-2]) ? (data.weeks[weekNum-2].wheelOfJohn||null) : null;
 
     const TROPHIES = [
       // Foundation
@@ -6810,9 +6810,12 @@ Never output the ${RITUAL_SENTINEL} block until you have their one priority. Ins
         },
           React.createElement('div', { style: { fontSize: '3rem', marginBottom: '1rem' } }, '⚠️'),
           React.createElement('h2', { style: { fontSize: '1.4rem', marginBottom: '0.5rem', color: '#f87171' } }, 'Something went wrong'),
-          React.createElement('p', { style: { color: '#94a3b8', marginBottom: '2rem', maxWidth: '320px' } },
+          React.createElement('p', { style: { color: '#94a3b8', marginBottom: '1rem', maxWidth: '320px' } },
             'An unexpected error occurred. Your data is safe — tap below to reload.'
           ),
+          this.state.error && React.createElement('p', {
+            style: { color: '#64748b', marginBottom: '2rem', maxWidth: '340px', fontSize: '0.72rem', fontFamily: 'monospace', wordBreak: 'break-word' }
+          }, String((this.state.error && this.state.error.message) || this.state.error).slice(0, 240)),
           React.createElement('button', {
             onClick: () => window.location.reload(),
             style: {
