@@ -5216,6 +5216,17 @@ Never output the ${RITUAL_SENTINEL} block until you have their one priority. Ins
     // authUser and setAuthUser are passed from AppRoot
 
     const [activeTab, setActiveTab] = useState('today');
+    // True while a text field has focus (mobile keyboard up) — hides floating buttons so they don't cover inputs
+    const [isTyping, setIsTyping] = useState(false);
+    useEffect(()=>{
+      const isField = el => el && (el.tagName==='TEXTAREA' || el.isContentEditable || (el.tagName==='INPUT' && !['checkbox','radio','button','submit','range','color','file'].includes((el.type||'').toLowerCase())));
+      const onIn = e => { if(isField(e.target)) setIsTyping(true); };
+      const onOut = () => setTimeout(()=>setIsTyping(isField(document.activeElement)), 0);
+      document.addEventListener('focusin', onIn);
+      document.addEventListener('focusout', onOut);
+      return ()=>{ document.removeEventListener('focusin', onIn); document.removeEventListener('focusout', onOut); };
+    },[]);
+    const hideFloats = activeTab==='aicoach' || activeTab==='journal' || isTyping;
     const [autoOpenMessages, setAutoOpenMessages] = useState(false);
     const [autoOpenRitual, setAutoOpenRitual] = useState(false);
     const [autoOpenEvening, setAutoOpenEvening] = useState(false);
@@ -6104,7 +6115,7 @@ Never output the ${RITUAL_SENTINEL} block until you have their one priority. Ins
         </div>
 
         {/* AI Coach Chat Bubble (bottom-left) */}
-        {chatBubbleMsg && !chatBubbleExpanded && activeTab!=='aicoach' && (
+        {chatBubbleMsg && !chatBubbleExpanded && !hideFloats && (
           <div className="fixed z-50 no-print" style={{bottom:'90px',left:'16px',maxWidth:'260px'}}>
             <div className="bg-slate-900 border border-blue-500/40 rounded-2xl shadow-2xl overflow-hidden pop-in" style={{animation:'popIn 0.4s cubic-bezier(0.34,1.56,0.64,1)'}}>
               <div className="bg-gradient-to-r from-blue-600 to-purple-600 px-3 py-2 flex items-center justify-between">
@@ -6128,8 +6139,8 @@ Never output the ${RITUAL_SENTINEL} block until you have their one priority. Ins
             </div>
           </div>
         )}
-        {/* Floating coach button (bottom-left) — shown when no bubble message; hidden on Edge tab so it doesn't cover the chat input */}
-        {!chatBubbleMsg && activeTab!=='aicoach' && (
+        {/* Floating coach button (bottom-left) — shown when no bubble message; hidden on Edge/Journal tabs and while typing so it doesn't cover inputs */}
+        {!chatBubbleMsg && !hideFloats && (
           <div className="fixed z-40 no-print" style={{bottom:'90px',left:'16px'}}>
             <button
               onClick={()=>{setActiveConvId(null);setCoachOpen(true);}}
@@ -6141,8 +6152,8 @@ Never output the ${RITUAL_SENTINEL} block until you have their one priority. Ins
           </div>
         )}
 
-        {/* Anvil FAB — hidden on Edge tab so it doesn't cover the chat input */}
-        {activeTab!=='aicoach'&&(
+        {/* Anvil FAB — hidden on Edge/Journal tabs and while typing so it doesn't cover inputs */}
+        {!hideFloats&&(
         <div className="fixed z-40 no-print" style={{bottom:'90px',right:'20px'}}>
           <button onClick={()=>setAnvilModal(true)}
             className="w-14 h-14 rounded-full shadow-2xl flex items-center justify-center transition-all active:scale-95 relative"
