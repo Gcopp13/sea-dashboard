@@ -65,6 +65,10 @@
     @keyframes popIn { 0% { transform: scale(0.8); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
     @keyframes slideUp { 0% { transform: translateY(20px); opacity: 0; } 100% { transform: translateY(0); opacity: 1; } }
     @keyframes pulse-ring { 0% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.05); opacity: 0.8; } 100% { transform: scale(1); opacity: 1; } }
+    @keyframes floatUp { 0% { transform: translateY(0) scale(0.8); opacity: 0; } 25% { transform: translateY(-8px) scale(1.1); opacity: 1; } 100% { transform: translateY(-46px) scale(1); opacity: 0; } }
+    .pts-float { animation: floatUp 1.1s ease-out forwards; pointer-events: none; }
+    @keyframes ringPop { 0% { transform: scale(1); } 40% { transform: scale(1.06); } 100% { transform: scale(1); } }
+    .ring-pop { animation: ringPop 0.5s ease-out; }
     @keyframes confetti-fall { 0% { transform: translateY(-10px) rotate(0deg); opacity: 1; } 100% { transform: translateY(100vh) rotate(720deg); opacity: 0; } }
     .pop-in { animation: popIn 0.3s ease-out; }
     .slide-up { animation: slideUp 0.3s ease-out; }
@@ -680,6 +684,79 @@
     );
   };
 
+  // ── Score Ring ─────────────────────────────────────────────────────────────
+  // The live "how am I doing right now" dial. Animates up to the new value so a
+  // tap on Today visibly moves it (that's the whole point of the daily score).
+  const ScoreRing = ({ value = 0, size = 132, stroke = 11, label = 'TODAY', rank = null, sublabel = null }) => {
+    const [shown, setShown] = useState(value);
+    const [popped, setPopped] = useState(false);
+    const prev = useRef(value);
+    useEffect(() => {
+      const from = prev.current, to = value;
+      prev.current = value;
+      if (from === to) { setShown(to); return; }
+      setPopped(true);
+      const t0 = Date.now(), dur = 600;
+      let raf;
+      const step = () => {
+        const k = Math.min(1, (Date.now() - t0) / dur);
+        const eased = 1 - Math.pow(1 - k, 3);
+        setShown(Math.round(from + (to - from) * eased));
+        if (k < 1) raf = requestAnimationFrame(step); else setTimeout(()=>setPopped(false), 200);
+      };
+      raf = requestAnimationFrame(step);
+      return () => cancelAnimationFrame(raf);
+    }, [value]);
+    const r = (size - stroke) / 2;
+    const circ = 2 * Math.PI * r;
+    const pct = Math.max(0, Math.min(100, shown)) / 100;
+    const color = (rank && rank.color) || '#3b82f6';
+    return (
+      <div className={`relative inline-flex items-center justify-center ${popped ? 'ring-pop' : ''}`} style={{width:size,height:size}}>
+        <svg width={size} height={size} style={{transform:'rotate(-90deg)'}}>
+          <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="rgba(148,163,184,0.18)" strokeWidth={stroke}/>
+          <circle cx={size/2} cy={size/2} r={r} fill="none" stroke={color} strokeWidth={stroke} strokeLinecap="round"
+            strokeDasharray={circ} strokeDashoffset={circ * (1 - pct)} style={{transition:'stroke-dashoffset 0.25s linear, stroke 0.4s ease'}}/>
+        </svg>
+        <div className="absolute inset-0 flex flex-col items-center justify-center">
+          <div className="font-black text-white leading-none" style={{fontSize: size*0.31}}>{shown}</div>
+          <div className="text-[10px] font-bold tracking-widest mt-1" style={{color:'#94a3b8'}}>{label}</div>
+          {sublabel && <div className="text-[10px] mt-0.5" style={{color:'#64748b'}}>{sublabel}</div>}
+        </div>
+      </div>
+    );
+  };
+
+  // Floating "+40" that pops out of a tap. Cleared by the parent after it plays.
+  const PointsFloat = ({ pts }) => pts == null ? null : (
+    <div className="pts-float absolute left-1/2 -translate-x-1/2 -top-1 z-20 text-2xl font-black" style={{color:'#34d399',textShadow:'0 2px 8px rgba(0,0,0,0.5)'}}>+{pts}</div>
+  );
+
+  // The three daily slices as chips: what's done, what's still owed, what's resting.
+  const DayPartChips = ({ dayScore, onPart }) => {
+    if (!dayScore) return null;
+    return (
+      <div className="flex items-center justify-center gap-2 flex-wrap">
+        {dayScore.parts.map(p => {
+          const resting = !p.owed;
+          const bg = p.done ? 'rgba(16,185,129,0.18)' : resting ? 'rgba(100,116,139,0.12)' : 'rgba(59,130,246,0.12)';
+          const bd = p.done ? 'rgba(16,185,129,0.45)' : resting ? 'rgba(100,116,139,0.25)' : 'rgba(59,130,246,0.35)';
+          const fg = p.done ? '#34d399' : resting ? '#64748b' : '#bfdbfe';
+          const detail = p.key === 'habits' && p.owed ? ` ${p.doneCount}/${p.owedCount}` : '';
+          return (
+            <button key={p.key} onClick={()=>onPart&&onPart(p)} disabled={!onPart}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-bold border transition-all active:scale-95"
+              style={{background:bg,borderColor:bd,color:fg,cursor:onPart?'pointer':'default'}}>
+              <span>{p.icon}</span>
+              <span>{p.label}{detail}</span>
+              <span style={{opacity:0.75}}>{p.done ? '✓' : resting ? '—' : '+' + p.pts}</span>
+            </button>
+          );
+        })}
+      </div>
+    );
+  };
+
   // ── Wheel Radar (mini) ─────────────────────────────────────────────────────
   const MiniRadar = ({ scores, prevScores = null, size = 180 }) => {
     const cx = size/2, cy = size/2, maxR = size*0.36;
@@ -792,100 +869,187 @@
   };
 
   // ── SCORING ENGINE ─────────────────────────────────────────────────────────
+  // Rebuilt 2026-09-27. The score is now a DAILY number you can move right now:
+  //   Your #1 = 40 pts | Anvil = 30 pts | Habits = 30 pts
+  // A slice only counts on the days it's actually owed — an Anvil target already
+  // hit for the week, or a habit already at its weekly target, drops out and the
+  // day is scored out of whatever is left — so rest days never cost points.
+  // The week is the AVERAGE of the days that have happened (+5 for closing the
+  // weekly ritual), so one rough Monday no longer sinks the week.
+  // The Wheel and goal progress are deliberately NOT scored: they're reflection
+  // and outcomes, not actions you can take today.
+  const SCORE_WEIGHTS = { hero: 40, anvil: 30, habits: 30 };
+  const RITUAL_BONUS = 5;
+  const RANKS = [
+    { min: 90, name: 'Admiral',   icon: '🎖️', color: '#f59e0b' },
+    { min: 70, name: 'Captain',   icon: '⚓',  color: '#10b981' },
+    { min: 40, name: 'Navigator', icon: '🧭',  color: '#3b82f6' },
+    { min: 0,  name: 'Sailor',    icon: '⛵',  color: '#64748b' },
+  ];
+  const rankFor = total => RANKS.find(r => total >= r.min) || RANKS[RANKS.length - 1];
+
+  const sameCalDay = (a, b) => !!a && !!b && a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+
+  // Local-midnight Monday that starts week `weekIdx` (0-based) of the cycle.
+  // Mirrors getTimeContext/getCycleContext: weeks are anchored to the first
+  // Monday on/after startDate.
+  const weekMondayDate = (data, weekIdx) => {
+    if (!data || !data.startDate) return null;
+    const [y, m, d] = data.startDate.split('-').map(Number);
+    if (!y || !m || !d) return null;
+    const start = new Date(y, m - 1, d);
+    const sd = start.getDay();
+    if (sd !== 1) { const adj = sd === 0 ? 1 : 8 - sd; start.setDate(start.getDate() + adj); }
+    start.setHours(0, 0, 0, 0);
+    start.setDate(start.getDate() + weekIdx * 7);
+    return start;
+  };
+
+  const todayDayIndex = () => (new Date().getDay() + 6) % 7; // 0=Mon…6=Sun
+
+  // Score a single day, 0–100. Returns the parts so the UI can show what's left.
+  const calcDayScore = (data, weekIdx, dayIdx) => {
+    const week = (data && data.weeks && data.weeks[weekIdx]) || null;
+    const day = (data && data.dailyPlans && data.dailyPlans[weekIdx] && data.dailyPlans[weekIdx][dayIdx]) || null;
+    const monday = weekMondayDate(data, weekIdx);
+    const dayDate = monday ? new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + dayIdx) : null;
+
+    // 1. Your #1 (40) — always owed. It's the point of the day.
+    const heroText = ((day && day.aActivities && day.aActivities[0]) || '').trim();
+    const heroDone = !!(day && day.topPriorityDone);
+    const heroPart = { key: 'hero', label: 'Your #1', icon: '⭐', pts: SCORE_WEIGHTS.hero,
+                       earned: heroDone ? SCORE_WEIGHTS.hero : 0, owed: true, done: heroDone, text: heroText };
+
+    // 2. Anvil (30) — owed on scheduled days, or until the period target is met.
+    const anvil = (data && data.anvilProject) || {};
+    const log = anvil.log || [];
+    const loggedOn = dt => !!dt && log.some(e => { const d = new Date(e.date); return sameCalDay(d, dt); });
+    const useSpecific = !!(anvil.useSpecificDays && (anvil.specificDays || []).length > 0);
+    const freqCount = Math.max(1, parseInt(anvil.freqCount) || 1);
+    const anvilDone = loggedOn(dayDate);
+    let anvilOwed;
+    if (!anvil.project) {
+      anvilOwed = false;                                   // no Anvil project set up yet
+    } else if (useSpecific) {
+      anvilOwed = anvil.specificDays.indexOf(dayIdx) !== -1;
+    } else {
+      let before = 0;
+      if (monday) for (let i = 0; i < dayIdx; i++) {
+        const d = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + i);
+        if (loggedOn(d)) before++;
+      }
+      anvilOwed = before < freqCount;                      // already hit the target = rest day
+    }
+    const anvilPart = { key: 'anvil', label: 'Anvil', icon: '🔨', pts: SCORE_WEIGHTS.anvil,
+                        earned: anvilDone ? SCORE_WEIGHTS.anvil : 0, owed: anvilOwed || anvilDone, done: anvilDone };
+
+    // 3. Habits (30) — only habits that still owe days this week.
+    const acts = ((week && week.aActivities) || []).filter(a => a && a.name && a.name.trim());
+    let owedCount = 0, doneCount = 0;
+    acts.forEach(a => {
+      const target = habitTarget(a);
+      const days = a.days || [];
+      let before = 0;
+      for (let i = 0; i < dayIdx; i++) if (days[i]) before++;
+      if (before >= target) return;                        // hit its weekly target already
+      owedCount++;
+      if (days[dayIdx]) doneCount++;
+    });
+    const habitsPart = { key: 'habits', label: 'Habits', icon: '💪', pts: SCORE_WEIGHTS.habits,
+                         earned: owedCount > 0 ? (doneCount / owedCount) * SCORE_WEIGHTS.habits : 0,
+                         owed: owedCount > 0, done: owedCount > 0 && doneCount === owedCount,
+                         doneCount, owedCount };
+
+    const parts = [heroPart, anvilPart, habitsPart];
+    const live = parts.filter(p => p.owed);
+    const maxPts = live.reduce((s, p) => s + p.pts, 0);
+    const earned = live.reduce((s, p) => s + p.earned, 0);
+    const total = maxPts > 0 ? Math.round((earned / maxPts) * 100) : 0;
+    return { total, parts, live, maxPts, earned: Math.round(earned), perfect: maxPts > 0 && earned >= maxPts - 0.01 };
+  };
+
+  // How many days of a given week have actually happened (1–7; 0 for future weeks).
+  const daysElapsedInWeek = (data, weekIdx) => {
+    const monday = weekMondayDate(data, weekIdx);
+    if (!monday) return todayDayIndex() + 1;
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const diff = Math.floor((today - monday) / 86400000);
+    return Math.max(0, Math.min(7, diff + 1));
+  };
+
   const calcSEAScore = (data, weekIdx) => {
     const week = (data.weeks && data.weeks[weekIdx]) || {wins:['','',''],improvements:'',focus:'',goalPriorities:['','','',''],aActivities:[],messes:[],wheelOfJohn:{family:5,fun:5,fitness:5,finance:5,faith:5}};
-    // 1. Habit completion (30pts) — respects each habit's targetDays
+
+    // ── The score itself: average of the days that have happened ──────────────
+    const elapsed = daysElapsedInWeek(data, weekIdx);
+    const dayScores = [];
+    for (let i = 0; i < elapsed; i++) dayScores.push(calcDayScore(data, weekIdx, i));
+    const avg = dayScores.length ? dayScores.reduce((s, d) => s + d.total, 0) / dayScores.length : 0;
+    const ritualDone = !!(week.wins && week.wins.some(x => (x||'').trim()) && week.focus && week.focus.trim() && week.goalPriorities && week.goalPriorities.some(x => (x||'').trim()));
+    const total = Math.min(100, Math.round(avg + (ritualDone ? RITUAL_BONUS : 0)));
+    const _monday = weekMondayDate(data, weekIdx);
+    const _today = new Date(); _today.setHours(0, 0, 0, 0);
+    const isCurrentWeek = !_monday || (_today >= _monday && (_today - _monday) < 7 * 86400000);
+    const todayIdx = todayDayIndex();
+    const today = isCurrentWeek ? calcDayScore(data, weekIdx, todayIdx) : null;
+    const perfectDays = dayScores.filter(d => d.perfect).length;
+
+    // ── Context numbers the rest of the app still displays (not scored) ───────
     const acts = (week.aActivities||[]).filter(a=>a.name&&a.name.trim());
     const habitPct = acts.length > 0
       ? acts.reduce((s,a) => {
-          const target = Math.min(Math.max(parseInt(a.targetDays)||7, 1), 7);
+          const target = habitTarget(a);
           const done = (a.days||[]).filter(Boolean).length;
-          return s + Math.min(done / target, 1); // cap at 100% per habit
+          return s + Math.min(done / target, 1);
         }, 0) / acts.length
       : 0;
-    const habitScore = habitPct * 30;
-    // 2. Anvil streak (25pts) — based on hitting frequency target per period
-    const log = data.anvilProject?.log || [];
-    const freqCount  = Math.max(1, parseInt(data.anvilProject?.freqCount)  || 1);
-    const freqPeriod = data.anvilProject?.freqPeriod || 'week'; // 'week' | 'biweekly' | 'month'
-    // Helper: get start of period N steps back from today
+
+    // Anvil streak (consecutive periods hit) — still shown on Today and the Anvil tab.
+    const log = (data.anvilProject && data.anvilProject.log) || [];
+    const freqCount  = Math.max(1, parseInt(data.anvilProject && data.anvilProject.freqCount) || 1);
+    const freqPeriod = (data.anvilProject && data.anvilProject.freqPeriod) || 'week';
     const getPeriodStart = (stepsBack) => {
       const d = new Date(); d.setHours(0,0,0,0);
       if (freqPeriod === 'week') {
         const day = d.getDay(); const monday = new Date(d); monday.setDate(d.getDate() - ((day+6)%7) - (stepsBack*7)); return monday;
       } else if (freqPeriod === 'biweekly') {
         const day = d.getDay(); const monday = new Date(d); monday.setDate(d.getDate() - ((day+6)%7) - (stepsBack*14)); return monday;
-      } else { // month
-        const m = new Date(d.getFullYear(), d.getMonth() - stepsBack, 1); return m;
+      } else {
+        return new Date(d.getFullYear(), d.getMonth() - stepsBack, 1);
       }
     };
     const getPeriodEnd = (stepsBack) => {
       const start = getPeriodStart(stepsBack - 1);
       const end = new Date(start); end.setDate(end.getDate() - 1); return end;
     };
-    // Count log entries in a given period
     const logsInPeriod = (start, end) => log.filter(e => { const d = new Date(e.date); d.setHours(0,0,0,0); return d >= start && d <= end; }).length;
-    // Current period: did they hit it?
     const curStart = getPeriodStart(0);
-    const today2 = new Date(); today2.setHours(23,59,59,999);
-    const currentLogs = logsInPeriod(curStart, today2);
-    const hitCurrent = currentLogs >= freqCount;
-    // Partial credit: logs done vs target (regardless of day of week)
-    const currentPct = Math.min(currentLogs / freqCount, 1);
-    // Count consecutive periods hit (streak)
-    let streak = hitCurrent ? 1 : 0;
-    if (hitCurrent) {
+    const endOfToday = new Date(); endOfToday.setHours(23,59,59,999);
+    const currentLogs = logsInPeriod(curStart, endOfToday);
+    let streak = currentLogs >= freqCount ? 1 : 0;
+    if (streak) {
       for (let i = 1; i <= 52; i++) {
-        const s = getPeriodStart(i);
-        const e = getPeriodEnd(i);
-        if (logsInPeriod(s, e) >= freqCount) streak++; else break;
+        if (logsInPeriod(getPeriodStart(i), getPeriodEnd(i)) >= freqCount) streak++; else break;
       }
     }
-    // Score: specific days mode OR partial credit
-    let anvilScore;
-    if (data.anvilProject?.useSpecificDays && (data.anvilProject?.specificDays||[]).length > 0) {
-      // Specific days mode: each scheduled day worth 25/numDays pts; miss = 0
-      const specificDays = data.anvilProject.specificDays; // 0=Mon…6=Sun
-      const numDays = specificDays.length;
-      const ptsPerDay = 25 / numDays;
-      // Get Monday of current week
-      const weekStart = getPeriodStart(0); // already returns this week's Monday
-      let earned = 0;
-      specificDays.forEach(di => {
-        const dayDate = new Date(weekStart);
-        dayDate.setDate(weekStart.getDate() + di);
-        dayDate.setHours(0,0,0,0);
-        const dayEnd = new Date(dayDate); dayEnd.setHours(23,59,59,999);
-        const today2check = new Date(); today2check.setHours(0,0,0,0);
-        // Only score days that have already occurred (not future days)
-        if (dayDate <= today2check) {
-          const hasLog = log.some(e => { const d = new Date(e.date); d.setHours(0,0,0,0); return d.getTime() === dayDate.getTime(); });
-          if (hasLog) earned += ptsPerDay;
-        }
-      });
-      anvilScore = earned;
-    } else {
-      // Default: partial credit = logs / target x 25 pts
-      anvilScore = currentPct * 25;
-    }
-    // 3. Wheel avg (20pts)
-    // Wheel is updated ~monthly now, so score against the most recent non-default
-    // Wheel across all weeks (falling back to this week / default), not just this week's,
-    // so the score doesn't collapse to default in the weeks between check-ins.
+    const anvilTarget = (data.anvilProject && data.anvilProject.useSpecificDays && (data.anvilProject.specificDays||[]).length > 0) ? data.anvilProject.specificDays.length : freqCount;
+
+    // Wheel + goals: shown for reflection, no longer part of the score.
     const _latestWheelWk = [...(data.weeks||[])].reverse().find(wk=>wk&&wk.wheelOfJohn&&Object.values(wk.wheelOfJohn).some(v=>v!==5));
     const w = (_latestWheelWk&&_latestWheelWk.wheelOfJohn)||week.wheelOfJohn||{family:5,fun:5,fitness:5,finance:5,faith:5};
     const wheelAvg = Object.values(w).reduce((a,b)=>a+(b||5),0)/5;
-    const wheelScore = (wheelAvg/10)*20;
-    // 4. Weekly ritual (15pts)
-    const ritualDone = week.wins.some(x=>x.trim()) && week.focus && week.focus.trim() && week.goalPriorities.some(x=>x.trim());
-    const ritualScore = ritualDone ? 15 : 0;
-    // 5. Goal progress (10pts)
-    const goals = data.goals.filter(g=>g.title&&g.title.trim());
+    const goals = (data.goals||[]).filter(g=>g.title&&g.title.trim());
     const goalAvg = goals.length > 0 ? goals.reduce((s,g)=>s+(g.completion||0),0)/goals.length : 0;
-    const goalScore = (goalAvg/100)*10;
-    const total = Math.round(habitScore+anvilScore+wheelScore+ritualScore+goalScore);
-    const anvilTarget = (data.anvilProject?.useSpecificDays && (data.anvilProject?.specificDays||[]).length > 0) ? data.anvilProject.specificDays.length : freqCount;
-    return { total, stars: total>=80?5:total>=60?4:total>=40?3:total>=20?2:1, habitPct:Math.round(habitPct*100), anvilStreak:streak, anvilScore:Math.round(anvilScore), anvilLogs:currentLogs, anvilTarget, wheelAvg:wheelAvg.toFixed(1), ritualDone, goalAvg:Math.round(goalAvg) };
+
+    return {
+      total,
+      rank: rankFor(total),
+      stars: total>=90?5:total>=70?4:total>=40?3:total>=20?2:1,
+      dayScores, daysElapsed: elapsed, today, perfectDays, ritualBonus: ritualDone ? RITUAL_BONUS : 0,
+      habitPct: Math.round(habitPct*100), anvilStreak: streak, anvilLogs: currentLogs, anvilTarget,
+      anvilScore: Math.round((today && today.parts.find(p=>p.key==='anvil').earned) || 0),
+      wheelAvg: wheelAvg.toFixed(1), ritualDone, goalAvg: Math.round(goalAvg),
+    };
   };
 
   // ── AI COACH ──────────────────────────────────────────────────────────────
@@ -3226,11 +3390,30 @@ Never output the ${RITUAL_SENTINEL} block until you have their one priority. Ins
       setShowWheelModal(false);
     };
 
+    // ── Live daily score ─────────────────────────────────────────────────────
+    // The score for the day being viewed, recomputed on every render so a tap
+    // moves it immediately. simDayTotal previews what an action is worth so the
+    // "+N" that floats up is the real gain, not a guess.
+    const dayScore = calcDayScore(data, weekNum-1, dayIdx);
+    const [ptsFloat, setPtsFloat] = useState(null);
+    const flashPts = n => { if (!n || n <= 0) return; setPtsFloat(n); setTimeout(()=>setPtsFloat(null), 1100); };
+    const simDayTotal = mutate => {
+      const d = { ...data,
+        dailyPlans: JSON.parse(JSON.stringify(data.dailyPlans||[])),
+        weeks: JSON.parse(JSON.stringify(data.weeks||[])),
+        anvilProject: JSON.parse(JSON.stringify(data.anvilProject||{})) };
+      mutate(d);
+      return calcDayScore(d, weekNum-1, dayIdx).total;
+    };
+
     // Toggle today's #1 done; celebrate with a confetti burst when newly checked.
     const toggleTopPriority = () => {
       const next = !day.topPriorityDone;
       updateDay('topPriorityDone', next);
-      if (next) { setCelebrate(true); setTimeout(()=>setCelebrate(false), 2500); }
+      if (next) {
+        flashPts(simDayTotal(d => { d.dailyPlans[weekNum-1][dayIdx].topPriorityDone = true; }) - dayScore.total);
+        setCelebrate(true); setTimeout(()=>setCelebrate(false), 2500);
+      }
     };
 
     // One-tap Anvil log for today — tap the hammer/streak card, no note or tab
@@ -3241,6 +3424,7 @@ Never output the ${RITUAL_SENTINEL} block until you have their one priority. Ins
       const isFirst = (a.log||[]).length === 0;
       const note = isFirst ? `Started my ${(a.project||'Anvil').trim()} streak 🔥` : 'Done ✓';
       updateField('anvilProject', { ...a, log:[{ date:new Date().toISOString(), note }, ...(a.log||[])] });
+      flashPts(simDayTotal(d => { d.anvilProject = { ...(d.anvilProject||{}), log:[{ date:new Date().toISOString(), note }, ...((d.anvilProject||{}).log||[])] }; }) - dayScore.total);
       setCelebrate(true); setTimeout(()=>setCelebrate(false), 2500);
     };
 
@@ -3524,11 +3708,11 @@ Never output the ${RITUAL_SENTINEL} block until you have their one priority. Ins
 
         {/* Score + Anvil streak */}
         <div className="grid grid-cols-2 gap-3">
-          <button onClick={()=>setActiveTab&&setActiveTab('score')} className="bg-slate-800/60 rounded-2xl p-4 border border-slate-700 flex flex-col items-center hover:border-blue-500/50 transition-all active:scale-95" style={{cursor:'pointer'}}>
-            <p className="text-xs text-slate-400 mb-2">S.E.A. Score</p>
-            <StarRating score={score.total} size={24}/>
-            <p className="text-2xl font-bold text-white mt-1">{score.total}</p>
-            <p className="text-xs text-blue-400 mt-1 opacity-60">tap to view →</p>
+          <button onClick={()=>setActiveTab&&setActiveTab('score')} className="relative bg-slate-800/60 rounded-2xl p-4 border border-slate-700 flex flex-col items-center hover:border-blue-500/50 transition-all active:scale-95" style={{cursor:'pointer'}}>
+            <PointsFloat pts={ptsFloat}/>
+            <p className="text-xs text-slate-400 mb-1">{dayIdx===todayDayIdx2 ? "Today's Score" : dayFull[dayIdx]+"'s Score"}</p>
+            <ScoreRing value={dayScore.total} size={96} stroke={9} label={rankFor(dayScore.total).name.toUpperCase()} rank={rankFor(dayScore.total)}/>
+            <p className="text-xs text-blue-400 mt-1 opacity-60">week {score.total} · tap →</p>
           </button>
           {(()=>{
             const canLog = !!(data.anvilProject && data.anvilProject.project) && !anvilLoggedToday;
@@ -3552,6 +3736,9 @@ Never output the ${RITUAL_SENTINEL} block until you have their one priority. Ins
           })()}
         </div>
 
+        {/* What today is scored on — done, still owed, or resting */}
+        <DayPartChips dayScore={dayScore}/>
+
 
         {/* Habit Tracker — full week grid */}
         <div className="bg-slate-800/60 rounded-2xl p-5 border border-slate-700">
@@ -3564,7 +3751,9 @@ Never output the ${RITUAL_SENTINEL} block until you have their one priority. Ins
           <div className="space-y-5">
             {((data.weeks[weekNum-1]||{}).aActivities||[]).map((act,ai)=>(
               <HabitRow key={ai} act={act} ai={ai}
-                onUpdate={updated=>{ const ws=JSON.parse(JSON.stringify(data.weeks)); ws[weekNum-1].aActivities[ai]=updated; updateField('weeks',ws); }}
+                onUpdate={updated=>{ const ws=JSON.parse(JSON.stringify(data.weeks)); ws[weekNum-1].aActivities[ai]=updated; updateField('weeks',ws);
+                  const before=(act.days||[]).filter(Boolean).length, after=(updated.days||[]).filter(Boolean).length;
+                  if (after>before) flashPts(simDayTotal(d=>{ d.weeks[weekNum-1].aActivities[ai]=updated; }) - dayScore.total); }}
                 onRemove={()=>{ const ws=JSON.parse(JSON.stringify(data.weeks)); ws[weekNum-1].aActivities.splice(ai,1); updateField('weeks',ws); }}
               />
             ))}
@@ -4018,15 +4207,14 @@ Never output the ${RITUAL_SENTINEL} block until you have their one priority. Ins
     <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.7)',zIndex:9999,display:'flex',alignItems:'center',justifyContent:'center',padding:'20px'}} onClick={onClose}>
       <div style={{background:'#1e293b',borderRadius:'20px',padding:'28px',maxWidth:'420px',width:'100%',border:'1px solid #334155'}} onClick={e=>e.stopPropagation()}>
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'20px'}}>
-          <h2 style={{color:'#f8fafc',fontSize:'1.1rem',fontWeight:'800',margin:0}}>How Your Score is Calculated</h2>
+          <h2 style={{color:'#f8fafc',fontSize:'1.1rem',fontWeight:'800',margin:0}}>How Your Score Works</h2>
           <button onClick={onClose} style={{background:'none',border:'none',color:'#64748b',fontSize:'1.4rem',cursor:'pointer',lineHeight:1}}>✕</button>
         </div>
         <div style={{display:'flex',flexDirection:'column',gap:'14px'}}>
-          {[{color:'#f59e0b',pts:'30 pts',title:'Habit Completion',desc:'Based on how consistently you hit your weekly habits. Each habit is scored against its own target (e.g. 3x/week). Hit your target = 100% for that habit. All habits are averaged together.'},
-            {color:'#f97316',pts:'25 pts',title:'Anvil Streak',desc:'Did you hit your Anvil frequency target this period? Hit it = full 25 pts. Miss it = 0. Your streak counts consecutive periods where you hit the target.'},
-            {color:'#8b5cf6',pts:'20 pts',title:'Wheel of John',desc:'The average of your 5 Wheel of John scores (Family, Fun, Fitness, Finance, Faith), scaled from 1–10. A perfect 10 across all = full points.'},
-            {color:'#3b82f6',pts:'15 pts',title:'Weekly Ritual',desc:'Did you complete your weekly planning ritual? This means filling in your wins, setting your weekly focus, and listing your goal priorities.'},
-            {color:'#10b981',pts:'10 pts',title:'Goal Progress',desc:'The average completion % across all your active goals. 100% average = full points.'},
+          {[{color:'#8b5cf6',pts:'40 pts',title:'⭐ Your #1',desc:'Did the one thing that had to happen today actually happen? The single biggest lever in the day — tap it done on Today.'},
+            {color:'#f97316',pts:'30 pts',title:'🔨 Anvil',desc:'Log an Anvil session today. On days your Anvil isn\'t scheduled — or once you\'ve already hit your target for the week — it drops out of the day and the other slices carry the full 100. Rest days never cost you points.'},
+            {color:'#f59e0b',pts:'30 pts',title:'💪 Habits',desc:'Of the habits that still owe days this week, how many did you tick today? A habit that has already hit its weekly target stops counting until next week.'},
+            {color:'#10b981',pts:'+5 bonus',title:'📋 Weekly Ritual',desc:'Close the week out — wins, focus, and goal priorities — and the whole week gets a 5-point bonus.'},
           ].map(({color,pts,title,desc})=>(
             <div key={title} style={{display:'flex',gap:'12px',alignItems:'flex-start'}}>
               <div style={{background:color,borderRadius:'8px',padding:'4px 8px',fontSize:'11px',fontWeight:'800',color:'white',whiteSpace:'nowrap',flexShrink:0}}>{pts}</div>
@@ -4038,7 +4226,7 @@ Never output the ${RITUAL_SENTINEL} block until you have their one priority. Ins
           ))}
         </div>
         <div style={{marginTop:'20px',padding:'12px',background:'rgba(99,102,241,0.1)',borderRadius:'12px',border:'1px solid rgba(99,102,241,0.2)'}}>
-          <p style={{color:'#a5b4fc',fontSize:'12px',margin:0,textAlign:'center'}}>Maximum score: <strong>100 pts</strong> — scores reset each week. Focus on consistent execution, not perfection.</p>
+          <p style={{color:'#a5b4fc',fontSize:'12px',margin:0,textAlign:'center'}}>Each <strong>day</strong> is scored out of 100 and resets every morning. Your <strong>week</strong> is the average of the days so far, so one rough day can't sink it.<br/><br/>Your Wheel and your goals are <strong>not</strong> scored — they're reflection and outcomes. The score only measures what you can act on today.</p>
         </div>
       </div>
     </div>
@@ -4101,12 +4289,16 @@ Never output the ${RITUAL_SENTINEL} block until you have their one priority. Ins
       {id:'cycle-2',icon:'🔁',title:'Second Wind',desc:'Completed a full 120-day cycle and started fresh',check:()=>parseInt(localStorage.getItem('sea-cycle-number')||'1')>=2},
     ];
 
+    // Today's three slices, plus the ritual bonus. The Wheel and goals are shown
+    // elsewhere for reflection but are deliberately not scored any more.
+    const _t = score.today;
+    const _part = k => (_t && _t.parts.find(p=>p.key===k)) || null;
+    const _pHero = _part('hero'), _pAnvil = _part('anvil'), _pHabits = _part('habits');
     const COMPONENTS = [
-      {label:'Habit Completion',value:score.habitPct+'%',max:30,earned:Math.round(score.habitPct*0.3),color:'#f59e0b'},
-      {label:'Anvil Streak',value:score.anvilLogs+' / '+score.anvilTarget+' this week',max:25,earned:score.anvilScore,color:'#f97316'},
-      {label:'Wheel Average',value:score.wheelAvg,max:20,earned:Math.round((parseFloat(score.wheelAvg)/10)*20),color:'#6366f1'},
-      {label:'Weekly Ritual',value:score.ritualDone?'Done':'Not done',max:15,earned:score.ritualDone?15:0,color:'#10b981'},
-      {label:'Goal Progress',value:score.goalAvg+'%',max:10,earned:Math.round(score.goalAvg*0.1),color:'#3b82f6'},
+      {label:'⭐ Your #1 today', value:_pHero ? (_pHero.done?'Done':'Not yet') : '—', max:SCORE_WEIGHTS.hero, earned:Math.round(_pHero?_pHero.earned:0), color:'#8b5cf6'},
+      {label:'🔨 Anvil today',   value:_pAnvil ? (_pAnvil.done?'Logged':(_pAnvil.owed?'Not yet':'Target already hit')) : '—', max:SCORE_WEIGHTS.anvil, earned:Math.round(_pAnvil?_pAnvil.earned:0), color:'#f97316'},
+      {label:'💪 Habits today',  value:_pHabits ? (_pHabits.owed ? _pHabits.doneCount+' / '+_pHabits.owedCount+' owed' : 'All hit for the week') : '—', max:SCORE_WEIGHTS.habits, earned:Math.round(_pHabits?_pHabits.earned:0), color:'#f59e0b'},
+      {label:'📋 Weekly ritual bonus', value:score.ritualDone?'Done':'Not done', max:RITUAL_BONUS, earned:score.ritualBonus, color:'#10b981'},
     ];
 
     const [shareCopied, setShareCopied] = useState(false);
@@ -4168,13 +4360,38 @@ Never output the ${RITUAL_SENTINEL} block until you have their one priority. Ins
             </div>
             <button onClick={onPrint} className="p-2 rounded-xl bg-white/10 hover:bg-white/20 text-white/60 hover:text-white transition-all" title="Print Score"><PrintIcon/></button>
           </div>
-          <p className="text-slate-400 text-sm mb-2">S.E.A. Score — Week {weekNum}</p>
-          <StarRating score={score.total} size={36}/>
-          <div className="flex items-center justify-center gap-2 mt-3 mb-1">
-            <div className="text-6xl font-black text-white">{score.total}</div>
-            <button onClick={()=>setShowScoreInfo(true)} title="How is this calculated?" style={{background:'rgba(99,102,241,0.15)',border:'1px solid rgba(99,102,241,0.3)',borderRadius:'50%',width:'28px',height:'28px',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',color:'#a5b4fc',fontSize:'14px',fontWeight:'700',flexShrink:0,alignSelf:'flex-end',marginBottom:'8px'}}>ⓘ</button>
+          <p className="text-slate-400 text-sm mb-3">S.E.A. Score — Week {weekNum}</p>
+          {score.today && (
+            <div className="mb-4">
+              <ScoreRing value={score.today.total} size={148} stroke={12} label="TODAY" rank={rankFor(score.today.total)}/>
+              <div className="mt-3"><DayPartChips dayScore={score.today}/></div>
+            </div>
+          )}
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full mb-2" style={{background:score.rank.color+'22',border:'1px solid '+score.rank.color+'55'}}>
+            <span>{score.rank.icon}</span>
+            <span className="text-xs font-black tracking-wide" style={{color:score.rank.color}}>{score.rank.name.toUpperCase()}</span>
           </div>
-          <p className="text-slate-400 text-sm">out of 100</p>
+          <div className="flex items-center justify-center gap-2 mb-1">
+            <div className="text-5xl font-black text-white">{score.total}</div>
+            <button onClick={()=>setShowScoreInfo(true)} title="How is this calculated?" style={{background:'rgba(99,102,241,0.15)',border:'1px solid rgba(99,102,241,0.3)',borderRadius:'50%',width:'28px',height:'28px',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',color:'#a5b4fc',fontSize:'14px',fontWeight:'700',flexShrink:0,alignSelf:'flex-end',marginBottom:'6px'}}>ⓘ</button>
+          </div>
+          <p className="text-slate-400 text-sm">week average{score.ritualBonus ? ' · +5 ritual' : ''}</p>
+          {/* The week as 7 days — where it was won or lost, at a glance */}
+          <div className="flex items-end justify-center gap-1.5 mt-4">
+            {['M','T','W','T','F','S','S'].map((lbl,i)=>{
+              const ds = score.dayScores[i];
+              const has = !!ds;
+              const h = has ? Math.max(6, Math.round(ds.total*0.34)) : 6;
+              const col = has ? rankFor(ds.total).color : '#334155';
+              return (
+                <div key={i} className="flex flex-col items-center gap-1" style={{width:'26px'}}>
+                  <div className="text-[9px] font-bold" style={{color: has ? '#cbd5e1' : '#475569'}}>{has ? ds.total : '–'}</div>
+                  <div style={{width:'14px',height:h+'px',background:col,borderRadius:'4px',opacity: has?1:0.45,transition:'height 0.4s ease'}} title={has ? ds.total+' pts' : 'not yet'}/>
+                  <div className="text-[10px]" style={{color:'#64748b'}}>{lbl}{ds&&ds.perfect?'🔥':''}</div>
+                </div>
+              );
+            })}
+          </div>
           {showScoreInfo && <ScoreInfoModal onClose={()=>setShowScoreInfo(false)}/>}
           <button onClick={()=>openCoach({section:'score',score})} className="no-print mt-4 flex items-center gap-2 mx-auto px-4 py-2 rounded-xl text-sm text-purple-300 border border-purple-500/30" style={{background:'rgba(139,92,246,0.1)'}}>
             <BotIcon/> Talk to coach about this
