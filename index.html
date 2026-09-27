@@ -1052,6 +1052,158 @@
     };
   };
 
+  // ── GOALS ──────────────────────────────────────────────────────────────────
+  // Rebuilt 2026-09-27. A goal can now carry real numbers — start, current,
+  // target — so the progress bar is CALCULATED instead of guessed on a slider.
+  // Every update is appended to g.history, which gives us a trend line and a
+  // "nothing has moved in two weeks" nudge. Goals without numbers keep the old
+  // slider, so nothing that already exists breaks.
+  //   g.startValue / g.currentValue / g.targetValue : numbers (strings ok)
+  //   g.unit      : '$', 'lbs', 'calls'… ('$' and '%' render tight, others spaced)
+  //   g.history   : [{ date: ISO, value: number, note: string }] newest first
+  //   g.completion: kept in sync so the coach, trophies and share card still work
+  const goalHasNumbers = g => !!g
+    && g.targetValue !== '' && g.targetValue != null && !isNaN(parseFloat(g.targetValue))
+    && g.startValue  !== '' && g.startValue  != null && !isNaN(parseFloat(g.startValue));
+
+  const goalCurrentValue = g => {
+    const c = parseFloat(g && g.currentValue);
+    if (!isNaN(c)) return c;
+    const s = parseFloat(g && g.startValue);
+    return isNaN(s) ? 0 : s;
+  };
+
+  // Works in both directions: a weight-loss goal (target below start) fills up
+  // exactly the same way as a revenue goal.
+  const goalPct = g => {
+    if (!goalHasNumbers(g)) return Math.max(0, Math.min(100, parseInt(g && g.completion) || 0));
+    const s = parseFloat(g.startValue), t = parseFloat(g.targetValue), c = goalCurrentValue(g);
+    if (t === s) return c >= t ? 100 : 0;
+    return Math.max(0, Math.min(100, Math.round(((c - s) / (t - s)) * 100)));
+  };
+
+  const fmtGoalNum = (g, v) => {
+    const n = parseFloat(v);
+    if (isNaN(n)) return '—';
+    const unit = ((g && g.unit) || '').trim();
+    const pretty = Math.abs(n) >= 1000 ? n.toLocaleString('en-US', { maximumFractionDigits: 2 }) : String(Math.round(n * 100) / 100);
+    if (!unit) return pretty;
+    if (unit === '$' || unit === '£' || unit === '€') return unit + pretty;
+    if (unit === '%') return pretty + '%';
+    return pretty + ' ' + unit;
+  };
+
+  const goalDaysSinceUpdate = g => {
+    const h = (g && g.history) || [];
+    if (!h.length) return null;
+    const d = new Date(h[0].date);
+    if (isNaN(d)) return null;
+    return Math.floor((Date.now() - d.getTime()) / 86400000);
+  };
+
+  // Record a new value against goal `i`. Returns { goals, pct, prevPct } so the
+  // caller can fire the existing milestone celebration.
+  const applyGoalUpdate = (goals, i, value, note) => {
+    const gs = JSON.parse(JSON.stringify(goals || []));
+    const g = gs[i]; if (!g) return { goals: gs, pct: 0, prevPct: 0 };
+    const prevPct = goalPct(g);
+    const v = parseFloat(value);
+    if (!isNaN(v)) g.currentValue = v;
+    g.history = [{ date: new Date().toISOString(), value: isNaN(v) ? null : v, note: (note || '').trim() }, ...(g.history || [])].slice(0, 60);
+    g.completion = goalPct(g);            // keep the old field in sync
+    return { goals: gs, pct: g.completion, prevPct };
+  };
+
+  // Tiny trend line for a goal's history (oldest → newest, left → right).
+  const GoalSparkline = ({ goal, color = '#3b82f6', width = 96, height = 26 }) => {
+    const pts = ((goal && goal.history) || []).filter(h => h && typeof h.value === 'number').slice(0, 12).reverse();
+    if (pts.length < 2) return null;
+    const vals = pts.map(p => p.value);
+    const lo = Math.min(...vals), hi = Math.max(...vals);
+    const span = hi - lo || 1;
+    const step = width / (pts.length - 1);
+    const d = vals.map((v, i) => `${i === 0 ? 'M' : 'L'}${(i * step).toFixed(1)},${(height - 3 - ((v - lo) / span) * (height - 6)).toFixed(1)}`).join(' ');
+    return (
+      <svg width={width} height={height} style={{overflow:'visible'}}>
+        <path d={d} fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" opacity="0.9"/>
+        <circle cx={(pts.length - 1) * step} cy={height - 3 - ((vals[vals.length - 1] - lo) / span) * (height - 6)} r="2.5" fill={color}/>
+      </svg>
+    );
+  };
+
+  // One goal, with the update flow built in. Numeric goals get "current → target"
+  // and a Log-progress box; goals without numbers keep the slider they had.
+  const GoalProgressCard = ({ goal, index, goals, updateField, onMilestone, color, compact = false }) => {
+    const [open, setOpen] = useState(false);
+    const [val, setVal] = useState('');
+    const [note, setNote] = useState('');
+    const numeric = goalHasNumbers(goal);
+    const pct = goalPct(goal);
+    const stale = goalDaysSinceUpdate(goal);
+    const save = () => {
+      const { goals: gs, pct: newPct, prevPct } = applyGoalUpdate(goals, index, val === '' ? goalCurrentValue(goal) : val, note);
+      updateField('goals', gs);
+      setOpen(false); setVal(''); setNote('');
+      const milestones = [25, 50, 75, 100];
+      const crossed = milestones.filter(m => newPct >= m && prevPct < m).pop();
+      if (crossed && onMilestone) onMilestone({ title: goal.title, pct: crossed });
+    };
+    return (
+      <div className={compact ? '' : 'bg-slate-800/40 rounded-2xl p-4 border border-slate-700/60'}>
+        <div className="flex justify-between items-start gap-3 mb-1">
+          <span className="text-sm text-slate-200 font-semibold">{goal.title}</span>
+          <span className="text-sm font-black flex-shrink-0" style={{color}}>{pct}%</span>
+        </div>
+        <div className="h-3 bg-slate-700 rounded-full overflow-hidden mb-2">
+          <div className="h-full rounded-full" style={{width:pct+'%',backgroundColor:color,transition:'width 0.5s ease'}}/>
+        </div>
+        {numeric ? (
+          <>
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-xs text-slate-400">
+                <span className="text-white font-bold">{fmtGoalNum(goal, goalCurrentValue(goal))}</span>
+                <span className="mx-1">→</span>
+                {fmtGoalNum(goal, goal.targetValue)}
+              </span>
+              <GoalSparkline goal={goal} color={color}/>
+            </div>
+            <div className="flex items-center justify-between gap-2 mt-2">
+              <span className="text-[11px]" style={{color: stale == null ? '#64748b' : stale >= 14 ? '#fbbf24' : '#64748b'}}>
+                {stale == null ? 'No updates logged yet' : stale === 0 ? 'Updated today' : stale === 1 ? 'Updated yesterday' : `Updated ${stale} days ago`}
+                {stale != null && stale >= 14 ? ' — worth a look' : ''}
+              </span>
+              {!open && (
+                <button onClick={()=>{ setVal(String(goalCurrentValue(goal))); setOpen(true); }}
+                  className="px-3 py-1.5 rounded-xl text-xs font-bold border transition-all active:scale-95"
+                  style={{color,borderColor:color+'66',background:color+'1a'}}>Log progress</button>
+              )}
+            </div>
+            {open && (
+              <div className="mt-3 pt-3 border-t border-slate-700 space-y-2">
+                <label className="text-xs text-slate-400 block">Where is it now?{goal.unit ? ` (${goal.unit})` : ''}</label>
+                <input type="number" inputMode="decimal" value={val} onChange={e=>setVal(e.target.value)} autoFocus
+                  className="w-full bg-slate-700/50 border border-slate-600/50 rounded-xl p-3 text-white text-base focus:border-blue-500 focus:outline-none"/>
+                <input value={note} onChange={e=>setNote(e.target.value)} placeholder="What moved it? (optional)"
+                  className="w-full bg-slate-700/50 border border-slate-600/50 rounded-xl p-3 text-white placeholder-slate-500 text-sm focus:border-blue-500 focus:outline-none"/>
+                <div className="flex gap-2">
+                  <button onClick={()=>{setOpen(false);setVal('');setNote('');}} className="flex-1 py-2.5 rounded-xl text-sm font-bold text-slate-300 border border-slate-600">Cancel</button>
+                  <button onClick={save} className="flex-1 py-2.5 rounded-xl text-sm font-bold text-white" style={{background:color}}>Save</button>
+                </div>
+              </div>
+            )}
+          </>
+        ) : (
+          <>
+            <input type="range" min="0" max="100" step="5" value={pct}
+              onChange={e=>{const newPct=parseInt(e.target.value);const gs=JSON.parse(JSON.stringify(goals));gs[index]={...gs[index],completion:newPct};updateField('goals',gs);const ms=[25,50,75,100];if(ms.includes(newPct)&&newPct>pct&&onMilestone)onMilestone({title:goal.title,pct:newPct});}}
+              className="w-full h-1 rounded appearance-none cursor-pointer" style={{accentColor:color}}/>
+            <p className="text-[11px] text-slate-500 mt-1">Add a start and target number in Vision &amp; Goals to track this with real numbers instead of a slider.</p>
+          </>
+        )}
+      </div>
+    );
+  };
+
   // ── AI COACH ──────────────────────────────────────────────────────────────
   // Helper: get current session JWT for authenticated Supabase REST calls
   const getSessionToken = async () => {
@@ -1256,7 +1408,7 @@
       const habitSummary = (()=>{
         return formatHabits(T.currentWeek);
       })();
-      const goalSummary = (plannerData.goals||[]).filter(g=>g.title?.trim()).map((g,i)=>`${i+1}. ${g.title} (${g.completion||0}%)`).join(', ') || 'No goals set';
+      const goalSummary = (plannerData.goals||[]).filter(g=>g.title?.trim()).map((g,i)=>`${i+1}. ${g.title} (${goalPct(g)}%${goalHasNumbers(g)?`, ${fmtGoalNum(g,goalCurrentValue(g))} of ${fmtGoalNum(g,g.targetValue)}`:''})`).join(', ') || 'No goals set';
       const latestWheel = (()=>{
         const w=[...(plannerData.weeks||[])].reverse().find(wk=>wk.wheelOfJohn&&Object.values(wk.wheelOfJohn).some(v=>v!==5));
         return w?Object.entries(w.wheelOfJohn).map(([k,v])=>`${k}:${v}`).join(', '):'Not scored';
@@ -1338,9 +1490,14 @@
       })();
       const goalTrends = (()=>{
         return (plannerData.goals||[]).filter(g=>g.title?.trim()).map((g,i)=>{
-          const pct = g.completion||0;
+          const pct = goalPct(g);
           const trend = pct===0?'not started':pct<25?'just beginning':pct<50?'early progress':pct<75?'halfway':pct<100?'near finish':'complete';
-          return `${i+1}. "${g.title}" — ${pct}% (${trend})`;
+          // Numeric goals carry their real figures + how long since they last moved.
+          const nums = goalHasNumbers(g) ? ` [now ${fmtGoalNum(g,goalCurrentValue(g))} of ${fmtGoalNum(g,g.targetValue)}, started at ${fmtGoalNum(g,g.startValue)}]` : '';
+          const stale = goalDaysSinceUpdate(g);
+          const staleStr = goalHasNumbers(g) ? (stale==null ? ' (never updated)' : stale>=14 ? ` (not updated in ${stale} days — worth asking about)` : ` (updated ${stale}d ago)`) : '';
+          const last = ((g.history||[]).find(h=>h&&h.note&&h.note.trim())||{}).note;
+          return `${i+1}. "${g.title}" — ${pct}% (${trend})${nums}${staleStr}${last?` last note: "${last}"`:''}`;
         }).join(', ') || 'No goals set';
       })();
       const journalNotes = (()=>{
@@ -3875,7 +4032,7 @@ Never output the ${RITUAL_SENTINEL} block until you have their one priority. Ins
       return `${s.toLocaleDateString('en-US',{month:'short',day:'numeric'})} – ${e.toLocaleDateString('en-US',{month:'short',day:'numeric'})}`;
     };
 
-    const RITUAL_STEPS = ['Wins','Focus','Habits','Priorities'];
+    const RITUAL_STEPS = ['Wins','Focus','Habits','Goals','Priorities'];
     const isRitualComplete = (week.wins||[]).some(x=>x&&x.trim()) && week.focus?.trim() && (week.goalPriorities||[]).some(x=>x&&x.trim());
 
     const completeRitual = () => {
@@ -4021,7 +4178,30 @@ Never output the ${RITUAL_SENTINEL} block until you have their one priority. Ins
         )}
 
         {/* Step 3: Priorities */}
+        {/* Step 3: Goals — "what actually moved?" Keeps goal numbers honest and
+            builds the history the trend line and the stale-goal nudge read from. */}
         {ritualStep===3 && (
+          <div className="bg-slate-800/60 rounded-2xl p-5 border border-slate-700 slide-up">
+            <h3 className="text-sm font-bold text-orange-400 uppercase tracking-wide mb-1">What Moved This Week?</h3>
+            <p className="text-xs text-slate-400 mb-4">Log where each goal actually stands. Nothing moved? Just hit Next.</p>
+            <div className="space-y-4">
+              {(data.goals||[]).slice(0,3).map((g,i)=>{
+                if(!g.title||!g.title.trim()) return null;
+                const colors=['#f97316','#3b82f6','#10b981','#a855f7'];
+                return <GoalProgressCard key={i} goal={g} index={i} goals={data.goals} updateField={updateField} onMilestone={onMilestone} color={colors[i]}/>;
+              }).filter(Boolean)}
+              {!(data.goals||[]).some(g=>g.title&&g.title.trim()) && (
+                <p className="text-center text-slate-500 text-sm py-2">No goals set yet — add them in Vision &amp; Goals.</p>
+              )}
+            </div>
+            <div className="flex gap-3 mt-4">
+              <button onClick={()=>setRitualStep(2)} className="px-4 py-3 bg-slate-700 rounded-xl text-white text-sm">← Back</button>
+              <button onClick={()=>setRitualStep(4)} className="flex-1 py-3 rounded-xl font-bold text-white text-sm" style={{background:'linear-gradient(135deg,#3b82f6,#8b5cf6)'}}>Next →</button>
+            </div>
+          </div>
+        )}
+
+        {ritualStep===4 && (
           <div className="bg-slate-800/60 rounded-2xl p-5 border border-slate-700 slide-up">
             <h3 className="text-sm font-bold text-blue-400 uppercase tracking-wide mb-3">This Week's Priorities</h3>
             {[0,1,2,3].map(i=>(
@@ -4031,7 +4211,7 @@ Never output the ${RITUAL_SENTINEL} block until you have their one priority. Ins
               </div>
             ))}
             <div className="flex gap-3 mt-4">
-              <button onClick={()=>setRitualStep(2)} className="px-4 py-3 bg-slate-700 rounded-xl text-white text-sm">← Back</button>
+              <button onClick={()=>setRitualStep(3)} className="px-4 py-3 bg-slate-700 rounded-xl text-white text-sm">← Back</button>
               <button onClick={()=>{if(!isRitualComplete){const missing=[];if(!(week.wins||[]).some(x=>x&&x.trim()))missing.push('a Win (Wins step)');if(!week.focus?.trim())missing.push('your Focus (Focus step)');if(!(week.goalPriorities||[]).some(x=>x&&x.trim()))missing.push('at least one Priority (Priorities step)');alert('Almost there — still need: '+missing.join('; ')+'.');}else{completeRitual();}}} className="flex-1 py-3 rounded-xl font-bold text-white text-sm" style={{background:'linear-gradient(135deg,#10b981,#059669)'}}>
                 {isRitualComplete?'Week Planned ✓':'Complete Ritual'}
               </button>
@@ -4461,21 +4641,8 @@ Never output the ${RITUAL_SENTINEL} block until you have their one priority. Ins
           <div className="space-y-4">
             {data.goals.slice(0,3).map((g,i)=>{
               if(!g.title?.trim()) return null;
-              const pct=g.completion||0;
               const colors=['#f97316','#3b82f6','#10b981','#a855f7'];
-              const col=colors[i];
-              return(
-                <div key={i}>
-                  <div className="flex justify-between text-sm mb-1">
-                    <span className="text-slate-200 font-medium truncate mr-4">{g.title}</span>
-                    <span className="font-bold" style={{color:col}}>{pct}%</span>
-                  </div>
-                  <div className="h-3 bg-slate-700 rounded-full overflow-hidden mb-1">
-                    <div className="h-full rounded-full transition-all" style={{width:`${pct}%`,backgroundColor:col}}/>
-                  </div>
-                  <input type="range" min="0" max="100" step="5" value={pct} onChange={e=>{const newPct=parseInt(e.target.value);const gs=JSON.parse(JSON.stringify(data.goals));gs[i]={...gs[i],completion:newPct};updateField&&updateField('goals',gs);const milestones=[25,50,75,100];if(milestones.includes(newPct)&&newPct>pct&&onMilestone)onMilestone({title:g.title,pct:newPct});}} className="w-full h-1 rounded appearance-none cursor-pointer" style={{accentColor:col}}/>
-                </div>
-              );
+              return <GoalProgressCard key={i} goal={g} index={i} goals={data.goals} updateField={updateField} onMilestone={onMilestone} color={colors[i]} compact={true}/>;
             }).filter(Boolean)}
           </div>
         </div>
@@ -4868,21 +5035,36 @@ Never output the ${RITUAL_SENTINEL} block until you have their one priority. Ins
                   <input value={g.measurement||''} onChange={e=>{const gs=JSON.parse(JSON.stringify(data.goals));gs[i]={...gs[i],measurement:e.target.value};updateField('goals',gs);}} placeholder="How will you measure success?" className="w-full bg-slate-700/50 border border-slate-600/50 rounded-xl p-3 text-white placeholder-slate-500 text-sm focus:outline-none mb-2"/>
                   <textarea value={g.impact||''} onChange={e=>{const gs=JSON.parse(JSON.stringify(data.goals));gs[i]={...gs[i],impact:e.target.value};updateField('goals',gs);}} placeholder="Why does this matter?" rows={2} className="w-full bg-slate-700/50 border border-slate-600/50 rounded-xl p-3 text-white placeholder-slate-500 text-sm resize-none focus:outline-none"/>
                   {g.title?.trim() && (()=>{
-                    const pct=g.completion||0;
                     const colors=['#f97316','#3b82f6','#10b981','#a855f7'];
                     const col=colors[i];
+                    const setNum=(f,v)=>{const gs=JSON.parse(JSON.stringify(data.goals));gs[i]={...gs[i],[f]:v};gs[i].completion=goalPct(gs[i]);updateField('goals',gs);};
                     return(
                       <div className="mt-3 pt-3 border-t border-slate-700">
-                        <div className="flex justify-between items-center mb-2">
-                          <span className="text-xs text-slate-400 font-semibold uppercase tracking-wide">Progress</span>
-                          <span className="text-sm font-black" style={{color:col}}>{pct}%</span>
+                        {/* Numbers turn the bar from a guess into a calculation */}
+                        <span className="text-xs text-slate-400 font-semibold uppercase tracking-wide block mb-2">Track it by the numbers</span>
+                        <div className="grid grid-cols-4 gap-2 mb-3">
+                          {[{f:'startValue',ph:'Start'},{f:'currentValue',ph:'Now'},{f:'targetValue',ph:'Target'}].map(({f,ph})=>(
+                            <input key={f} type="number" inputMode="decimal" value={g[f]==null?'':g[f]} onChange={e=>setNum(f,e.target.value)} placeholder={ph}
+                              className="bg-slate-700/50 border border-slate-600/50 rounded-xl p-2 text-white placeholder-slate-500 text-sm text-center focus:border-blue-500 focus:outline-none"/>
+                          ))}
+                          <input value={g.unit||''} onChange={e=>setNum('unit',e.target.value)} placeholder="$ / lbs"
+                            className="bg-slate-700/50 border border-slate-600/50 rounded-xl p-2 text-white placeholder-slate-500 text-sm text-center focus:border-blue-500 focus:outline-none"/>
                         </div>
-                        <div className="h-2 bg-slate-700 rounded-full overflow-hidden mb-2">
-                          <div className="h-full rounded-full transition-all" style={{width:`${pct}%`,backgroundColor:col}}/>
-                        </div>
-                        <input type="range" min="0" max="100" step="5" value={pct}
-                          onChange={e=>{const newPct=parseInt(e.target.value);const gs=JSON.parse(JSON.stringify(data.goals));gs[i]={...gs[i],completion:newPct};updateField('goals',gs);const milestones=[25,50,75,100];if(milestones.includes(newPct)&&newPct>pct&&onMilestone)onMilestone({title:g.title,pct:newPct});}}
-                          className="w-full h-2 rounded-full appearance-none cursor-pointer" style={{accentColor:col}}/>
+                        <GoalProgressCard goal={g} index={i} goals={data.goals} updateField={updateField} onMilestone={onMilestone} color={col} compact={true}/>
+                        {(g.history||[]).length > 0 && (
+                          <details className="mt-3">
+                            <summary className="text-xs text-slate-500 cursor-pointer">History ({(g.history||[]).length})</summary>
+                            <div className="mt-2 space-y-1.5">
+                              {(g.history||[]).slice(0,8).map((h,hi)=>(
+                                <div key={hi} className="flex justify-between gap-3 text-xs">
+                                  <span className="text-slate-500 flex-shrink-0">{new Date(h.date).toLocaleDateString('en-US',{month:'short',day:'numeric'})}</span>
+                                  <span className="text-slate-300 font-bold flex-shrink-0">{h.value==null?'—':fmtGoalNum(g,h.value)}</span>
+                                  <span className="text-slate-500 truncate flex-1 text-right">{h.note||''}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </details>
+                        )}
                       </div>
                     );
                   })()}
