@@ -1021,7 +1021,7 @@
   };
 
   const calcSEAScore = (data, weekIdx) => {
-    const week = (data.weeks && data.weeks[weekIdx]) || {wins:['','',''],improvements:'',focus:'',goalPriorities:['','','',''],aActivities:[],messes:[],wheelOfJohn:{family:5,fun:5,fitness:5,finance:5,faith:5}};
+    const week = (data.weeks && data.weeks[weekIdx]) || {wins:['','',''],improvements:'',focus:'',goalPriorities:['','','',''],aActivities:[],wheelOfJohn:{family:5,fun:5,fitness:5,finance:5,faith:5}};
 
     // ── The score itself: average of the days that have happened ──────────────
     const elapsed = daysElapsedInWeek(data, weekIdx);
@@ -2000,6 +2000,15 @@ Label should clearly describe what is being coached (e.g. "Anvil Streak", "Medit
     const targetWeek = weeks[weekNum-1] || null;
     const lastWins = lastWeek ? (lastWeek.wins||[]).filter(x=>x&&x.trim()).join('; ') : '';
     const lastFocus = lastWeek ? (lastWeek.focus||'').trim() : '';
+    // The commitments they made last week, with whatever they ticked off in the
+    // review step — so Edge can actually hold them to it instead of starting blind.
+    const lastPriorities = lastWeek
+      ? (lastWeek.goalPriorities||[]).map((p,i)=>({p:(p||'').trim(), done:!!(lastWeek.priorityDone||[])[i]})).filter(x=>x.p)
+      : [];
+    const lastPrioritiesStr = lastPriorities.length
+      ? lastPriorities.map(x=>`"${x.p}" — ${x.done?'DONE':'not ticked off'}`).join('; ')
+      : '';
+    const openCommitments = lastPriorities.filter(x=>!x.done).map(x=>x.p);
     const carryHabits = (((targetWeek&&targetWeek.aActivities)||(lastWeek&&lastWeek.aActivities)||[]).map(a=>a&&a.name).filter(Boolean));
     const goals = (plannerData.goals||[]).filter(g=>g.title&&g.title.trim()).map(g=>g.title.trim());
     return `You are Edge, the AI coach inside the S.E.A. Dashboard, running the WEEKLY PLANNING RITUAL for a financial advisor. Voice: warm, punchy, results-focused. Force specificity, never lecture, keep each turn to 1-3 sentences.
@@ -2009,14 +2018,18 @@ You are helping them plan ${weekLabel}. The app has ALREADY greeted them and ask
 CONTEXT (reference naturally, do not dump it back):
 - Last week's focus: ${lastFocus||'(none set)'}
 - Last week's wins on record: ${lastWins||'(none)'}
+- WHAT THEY COMMITTED TO LAST WEEK: ${lastPrioritiesStr||'(nothing recorded)'}
+- Still open from last week: ${openCommitments.length?openCommitments.join('; '):'(nothing outstanding)'}
 - Habits they have been tracking: ${carryHabits.length?carryHabits.join(', '):'(none yet)'}
 - Active goals: ${goals.length?goals.join(', '):'(none)'}
 
 RUN EXACTLY THESE FOUR STEPS, ONE QUESTION PER TURN, IN ORDER:
-1. WINS — last week's wins (their first message). Acknowledge warmly, then move on.
+1. WINS — last week's wins (their first message). Acknowledge warmly. If they committed to priorities last week, ALSO close that loop here in the same turn: name the ones still open and ask directly whether they happened. Never skip this — an unmentioned commitment is how accountability dies. Then move on.
 2. FOCUS — the ONE main focus/theme for this week. If they give several, make them pick one.
 3. PRIORITIES — the 2-4 priorities that actually move the needle this week.
 4. HABITS — confirm the habits above carry over, or adjust (add/drop). If none are tracked yet, ask which 1-3 they will commit to.
+
+When they set PRIORITIES for the new week, offer any still-open commitment from last week as a candidate — in their own words — before asking for brand new ones.
 
 Keep them on track — if they wander, acknowledge in a few words and steer back to the current step. Never invent answers; use their own words.
 
@@ -3621,7 +3634,7 @@ Never output the ${RITUAL_SENTINEL} block until you have their one priority. Ins
     const wheelDue = (()=>{ const ts=data.wheelUpdatedAt; if(!ts) return true; return (Date.now()-Date.parse(ts)) >= 28*864e5; })();
     const saveWheel = (wheel) => {
       const ws = JSON.parse(JSON.stringify(data.weeks));
-      if(!ws[weekNum-1]) ws[weekNum-1] = {wins:['','',''],improvements:'',focus:'',goalPriorities:['','','',''],aActivities:[],messes:[],wheelOfJohn:{family:5,fun:5,fitness:5,finance:5,faith:5}};
+      if(!ws[weekNum-1]) ws[weekNum-1] = {wins:['','',''],improvements:'',focus:'',goalPriorities:['','','',''],aActivities:[],wheelOfJohn:{family:5,fun:5,fitness:5,finance:5,faith:5}};
       ws[weekNum-1].wheelOfJohn = wheel;
       updateField('weeks', ws);
       updateField('wheelUpdatedAt', new Date().toISOString());
@@ -4095,13 +4108,140 @@ Never output the ${RITUAL_SENTINEL} block until you have their one priority. Ins
     );
   };
 
+  // ── LAST WEEK REVIEW ───────────────────────────────────────────────────────
+  // Added 2026-09-29 from user feedback: "at the weekly ritual the next week...
+  // I can't hold myself accountable to it anywhere." Commitments used to vanish —
+  // you set a focus and four priorities on Sunday and never saw them again. This
+  // opens the ritual with them: tick off what happened, carry forward what didn't,
+  // and see what your habits, Anvil and goals actually did over those seven days.
+  // Ticks are stored on the PREVIOUS week as priorityDone[].
+  const LastWeekReview = ({ data, weekNum, updateField }) => {
+    const prevIdx = weekNum - 2;
+    const prev = prevIdx >= 0 ? (data.weeks || [])[prevIdx] : null;
+    const [carried, setCarried] = useState(false);
+    if (!prev) {
+      return (
+        <div className="rounded-2xl p-4 border border-slate-700/60" style={{background:'rgba(15,23,42,0.5)'}}>
+          <p className="text-sm text-slate-400">This is your first week — nothing to review yet. Next week this is where you'll see what you committed to.</p>
+        </div>
+      );
+    }
+
+    const priorities = (prev.goalPriorities || []).map(p => (p||'').trim());
+    const doneFlags = prev.priorityDone || [];
+    const hasPriorities = priorities.some(Boolean);
+
+    const toggleDone = (i) => {
+      const ws = JSON.parse(JSON.stringify(data.weeks));
+      const flags = [...(ws[prevIdx].priorityDone || [])];
+      while (flags.length < priorities.length) flags.push(false);
+      flags[i] = !flags[i];
+      ws[prevIdx].priorityDone = flags;
+      updateField('weeks', ws);
+    };
+
+    // Move anything unfinished into this week's empty priority slots.
+    const unfinished = priorities.map((p,i) => ({p,i})).filter(({p,i}) => p && !doneFlags[i]);
+    const carryForward = () => {
+      const ws = JSON.parse(JSON.stringify(data.weeks));
+      const cur = ws[weekNum-1] || (ws[weekNum-1] = {wins:['','',''],improvements:'',focus:'',goalPriorities:['','','',''],aActivities:[],wheelOfJohn:{family:5,fun:5,fitness:5,finance:5,faith:5}});
+      const slots = [...(cur.goalPriorities || ['','','',''])];
+      const already = slots.map(x => (x||'').trim().toLowerCase());
+      unfinished.forEach(({p}) => {
+        if (already.indexOf(p.toLowerCase()) !== -1) return;       // don't duplicate
+        const free = slots.findIndex(x => !(x||'').trim());
+        if (free !== -1) { slots[free] = p; already[free] = p.toLowerCase(); }
+      });
+      cur.goalPriorities = slots;
+      updateField('weeks', ws);
+      setCarried(true);
+    };
+
+    // What actually happened over those seven days.
+    const monday = weekMondayDate(data, prevIdx);
+    const sunday = monday ? new Date(monday.getFullYear(), monday.getMonth(), monday.getDate()+6, 23, 59, 59) : null;
+    const inRange = iso => { if (!monday || !sunday) return false; const d = new Date(iso); return d >= monday && d <= sunday; };
+
+    const habits = (prev.aActivities || []).filter(a => a && a.name && a.name.trim()).map(a => ({
+      name: a.name.trim(), done: (a.days||[]).filter(Boolean).length, target: habitTarget(a),
+    }));
+    const anvilCount = ((data.anvilProject && data.anvilProject.log) || []).filter(e => e && inRange(e.date)).length;
+    const goalMoves = (data.goals || []).filter(g => g && g.title && g.title.trim()).map(g => {
+      const entries = (g.history || []).filter(h => h && inRange(h.date) && typeof h.value === 'number');
+      if (!entries.length) return null;
+      const newest = entries[0], oldest = entries[entries.length - 1];
+      return { title: g.title.trim(), from: oldest.value, to: newest.value, goal: g, note: (newest.note||'').trim() };
+    }).filter(Boolean);
+
+    return (
+      <div className="space-y-4">
+        {/* What you said you'd do */}
+        <div className="rounded-2xl p-4 border" style={{background:'rgba(15,23,42,0.5)',borderColor:'rgba(99,102,241,0.3)'}}>
+          <p className="text-xs font-bold uppercase tracking-wide mb-2" style={{color:'#a5b4fc'}}>Last week you said</p>
+          {prev.focus && prev.focus.trim() ? (
+            <p className="text-sm text-white mb-3"><span className="text-slate-500">Focus:</span> {prev.focus.trim()}</p>
+          ) : (
+            <p className="text-sm text-slate-500 mb-3">No focus was set.</p>
+          )}
+          {hasPriorities ? (
+            <>
+              <p className="text-xs text-slate-400 mb-2">Which of these actually happened?</p>
+              <div className="space-y-2">
+                {priorities.map((p,i) => p ? (
+                  <button key={i} onClick={()=>toggleDone(i)} className="w-full flex items-center gap-3 text-left active:scale-[0.99] transition-transform">
+                    <span className="w-6 h-6 rounded-lg flex items-center justify-center text-xs font-bold flex-shrink-0 border"
+                      style={doneFlags[i]?{background:'rgba(16,185,129,0.25)',borderColor:'rgba(16,185,129,0.6)',color:'#34d399'}:{borderColor:'#475569',color:'transparent'}}>✓</span>
+                    <span className="text-sm flex-1" style={doneFlags[i]?{color:'#94a3b8',textDecoration:'line-through'}:{color:'#e2e8f0'}}>{p}</span>
+                  </button>
+                ) : null)}
+              </div>
+              {unfinished.length > 0 && (
+                <button onClick={carryForward} disabled={carried}
+                  className="mt-3 w-full py-2.5 rounded-xl text-xs font-bold border transition-all active:scale-95 disabled:opacity-50"
+                  style={{color:'#fbbf24',borderColor:'rgba(245,158,11,0.4)',background:'rgba(245,158,11,0.1)'}}>
+                  {carried ? '✓ Carried into this week' : `↪ Carry ${unfinished.length} unfinished into this week`}
+                </button>
+              )}
+            </>
+          ) : (
+            <p className="text-sm text-slate-500">No priorities were set last week.</p>
+          )}
+        </div>
+
+        {/* What actually moved */}
+        <div className="rounded-2xl p-4 border border-slate-700/60" style={{background:'rgba(15,23,42,0.5)'}}>
+          <p className="text-xs font-bold uppercase tracking-wide mb-2" style={{color:'#94a3b8'}}>What actually moved</p>
+          <div className="space-y-1.5">
+            {habits.length > 0 ? habits.map((h,i) => (
+              <div key={i} className="flex justify-between text-sm">
+                <span className="text-slate-300 truncate mr-3">{h.name}</span>
+                <span className="font-bold flex-shrink-0" style={{color: h.done >= h.target ? '#34d399' : '#fbbf24'}}>{h.done}/{h.target}{h.done>=h.target?' ✓':''}</span>
+              </div>
+            )) : <p className="text-sm text-slate-500">No habits tracked last week.</p>}
+            <div className="flex justify-between text-sm">
+              <span className="text-slate-300">🔨 Anvil sessions</span>
+              <span className="font-bold flex-shrink-0" style={{color: anvilCount > 0 ? '#fb923c' : '#64748b'}}>{anvilCount}</span>
+            </div>
+            {goalMoves.map((m,i) => (
+              <div key={'g'+i} className="flex justify-between text-sm">
+                <span className="text-slate-300 truncate mr-3">🎯 {m.title}</span>
+                <span className="font-bold flex-shrink-0 text-blue-400">{fmtGoalNum(m.goal, m.from)} → {fmtGoalNum(m.goal, m.to)}</span>
+              </div>
+            ))}
+            {goalMoves.length === 0 && <p className="text-xs text-slate-500">No goal updates logged last week.</p>}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   // ── WEEK VIEW ──────────────────────────────────────────────────────────────
   const WeekView = ({ data, updateField, weekNum, setWeekNum, openCoach, onPrint, onMilestone, onBack, onStartFresh }) => {
     const [ritualStep, setRitualStep] = useState(0);
     const [showConfetti, setShowConfetti] = useState(false);
     const [showRitualCoach, setShowRitualCoach] = useState(false);
     // Defense-in-depth: never let a missing week slot crash the ritual (falls back to an empty week).
-    const week = data.weeks[weekNum-1] || {wins:['','',''],improvements:'',focus:'',goalPriorities:['','','',''],aActivities:[],messes:[],wheelOfJohn:{family:5,fun:5,fitness:5,finance:5,faith:5}};
+    const week = data.weeks[weekNum-1] || {wins:['','',''],improvements:'',focus:'',goalPriorities:['','','',''],aActivities:[],wheelOfJohn:{family:5,fun:5,fitness:5,finance:5,faith:5}};
     const updateWeek = (f,v) => { const ws=JSON.parse(JSON.stringify(data.weeks)); ws[weekNum-1][f]=v; updateField('weeks',ws); };
 
     const getWeekDates = () => {
@@ -4113,7 +4253,7 @@ Never output the ${RITUAL_SENTINEL} block until you have their one priority. Ins
       return `${s.toLocaleDateString('en-US',{month:'short',day:'numeric'})} – ${e.toLocaleDateString('en-US',{month:'short',day:'numeric'})}`;
     };
 
-    const RITUAL_STEPS = ['Wins','Focus','Habits','Goals','Priorities'];
+    const RITUAL_STEPS = ['Review','Focus','Habits','Goals','Priorities'];
     const isRitualComplete = (week.wins||[]).some(x=>x&&x.trim()) && week.focus?.trim() && (week.goalPriorities||[]).some(x=>x&&x.trim());
 
     const completeRitual = () => {
@@ -4126,7 +4266,7 @@ Never output the ${RITUAL_SENTINEL} block until you have their one priority. Ins
     // insensitive); new names start fresh. This mirrors what the manual form saves.
     const saveRitualPlan = (plan) => {
       const ws = JSON.parse(JSON.stringify(data.weeks));
-      if (!ws[weekNum-1]) ws[weekNum-1] = {wins:['','',''],improvements:'',focus:'',goalPriorities:['','','',''],aActivities:[],messes:[],wheelOfJohn:{family:5,fun:5,fitness:5,finance:5,faith:5}};
+      if (!ws[weekNum-1]) ws[weekNum-1] = {wins:['','',''],improvements:'',focus:'',goalPriorities:['','','',''],aActivities:[],wheelOfJohn:{family:5,fun:5,fitness:5,finance:5,faith:5}};
       const wk = ws[weekNum-1];
       const existing = wk.aActivities || [];
       wk.wins = [0,1,2].map(i => (plan.wins[i]||'').trim());
@@ -4207,10 +4347,12 @@ Never output the ${RITUAL_SENTINEL} block until you have their one priority. Ins
           <p className="text-xs text-slate-400 text-center">{RITUAL_STEPS[ritualStep]}</p>
         </div>
 
-        {/* Step 0: Wins */}
+        {/* Step 0: Review last week, then capture the wins */}
         {ritualStep===0 && (
           <div className="bg-slate-800/60 rounded-2xl p-5 border border-slate-700 slide-up">
-            <h3 className="text-sm font-bold text-green-400 uppercase tracking-wide mb-3">Last Week's Wins</h3>
+            <h3 className="text-sm font-bold text-indigo-400 uppercase tracking-wide mb-3">Review Last Week</h3>
+            <LastWeekReview data={data} weekNum={weekNum} updateField={updateField}/>
+            <h3 className="text-sm font-bold text-green-400 uppercase tracking-wide mt-5 mb-3">Last Week's Wins</h3>
             {[0,1,2].map(i=>(
               <div key={i} className="flex items-center gap-3 mb-2">
                 <span className="text-green-400">★</span>
@@ -5824,7 +5966,7 @@ Never output the ${RITUAL_SENTINEL} block until you have their one priority. Ins
     };
 
     const createDay = () => ({aActivities:['','','',''],grateful:['','',''],wins:['','',''],tomorrowPriorities:['','',''],tasks:[{text:'',done:false,reminder:''},{text:'',done:false,reminder:''},{text:'',done:false,reminder:''}],notes:'',reflection:'',hardThings:'',hardThingsCompleted:false,stillness:'',stillnessCompleted:false,study:'',studyCompleted:false,todaysWins:['','',''],topPriorityDone:false});
-    const createWeek = () => ({wins:['','',''],improvements:'',focus:'',goalPriorities:['','','',''],aActivities:Array(3).fill(null).map(()=>({name:'',days:[false,false,false,false,false,false,false]})),messes:[],wheelOfJohn:{family:5,fun:5,fitness:5,finance:5,faith:5}});
+    const createWeek = () => ({wins:['','',''],improvements:'',focus:'',goalPriorities:['','','',''],aActivities:Array(3).fill(null).map(()=>({name:'',days:[false,false,false,false,false,false,false]})),wheelOfJohn:{family:5,fun:5,fitness:5,finance:5,faith:5}});
 
     const [data, setData] = useState({
       slightEdge:'',yearTheme:'',vision3Year:'',vision1Year:'',vision120Day:'',
