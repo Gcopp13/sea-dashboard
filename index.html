@@ -835,11 +835,19 @@
       setLocalTarget(String(final));
       onUpdate({ ...act, targetDays: final });
     };
+    // Optional day schedule. A habit pinned to Thu/Fri/Sat is only owed on those
+    // days — the score and the coach both stop asking for it on a Tuesday.
+    const sched = habitSchedule(act);
+    const [showSched, setShowSched] = React.useState(sched.length > 0);
+    const toggleSched = (di) => {
+      const next = sched.indexOf(di) !== -1 ? sched.filter(x => x !== di) : [...sched, di].sort((a,b)=>a-b);
+      onUpdate({ ...act, scheduleDays: next, targetDays: next.length ? next.length : (parseInt(localTarget)||7) });
+    };
     return (
       <div className="space-y-2">
         <div className="flex items-center gap-2">
           <input value={act.name||''} onChange={e=>onUpdate({...act,name:e.target.value})} placeholder={`Habit ${ai+1}`} className="flex-1 bg-slate-700/50 border border-slate-600/50 rounded-xl p-3 text-white placeholder-slate-500 text-sm focus:border-yellow-500 focus:outline-none"/>
-          <div className="flex items-center gap-1 flex-shrink-0">
+          <div className="flex items-center gap-1 flex-shrink-0" style={{display: sched.length ? 'none' : undefined}}>
             <span className="text-slate-500 text-xs">Target:</span>
             <input
               type="text" inputMode="numeric" maxLength={1}
@@ -854,15 +862,45 @@
           <button onClick={onRemove} className="flex-shrink-0 w-8 h-8 rounded-lg text-slate-600 hover:text-red-400 hover:bg-red-500/10 transition-all flex items-center justify-center text-lg">✕</button>
         </div>
         {act.name && (
-          <div className="flex justify-around">
-            {['M','T','W','T','F','S','S'].map((d,di)=>(
-              <button key={di} onClick={()=>{ const days=[...(act.days||[false,false,false,false,false,false,false])]; days[di]=!days[di]; onUpdate({...act,days}); }}
-                className={`w-9 h-9 rounded-full text-xs font-bold transition-all ${(act.days||[])[di]?'text-white scale-110':'bg-slate-700/50 text-slate-500'}`}
-                style={(act.days||[])[di]?{background:'linear-gradient(135deg,#f59e0b,#f97316)'}:{}}>
-                {d}
+          <>
+            <div className="flex justify-around">
+              {DAY_LETTERS.map((d,di)=>{
+                const done = (act.days||[])[di];
+                const onSchedule = sched.indexOf(di) !== -1;
+                const offDay = sched.length > 0 && !onSchedule;
+                return (
+                  <button key={di} onClick={()=>{ const days=[...(act.days||[false,false,false,false,false,false,false])]; days[di]=!days[di]; onUpdate({...act,days}); }}
+                    title={offDay ? 'Not a scheduled day' : undefined}
+                    className={`w-9 h-9 rounded-full text-xs font-bold transition-all ${done?'text-white scale-110':'bg-slate-700/50 text-slate-500'}`}
+                    style={done?{background:'linear-gradient(135deg,#f59e0b,#f97316)'}:(onSchedule?{border:'1px solid rgba(245,158,11,0.55)',color:'#fbbf24'}:(offDay?{opacity:0.35}:{}))}>
+                    {d}
+                  </button>
+                );
+              })}
+            </div>
+            <div className="flex items-center justify-between">
+              <button onClick={()=>setShowSched(v=>!v)} className="text-[11px] text-slate-500 hover:text-slate-300 transition-colors">
+                {sched.length ? `📅 On ${sched.map(i=>DAY_SHORT[i]).join(', ')} — change` : '📅 Set specific days'}
               </button>
-            ))}
-          </div>
+              {sched.length > 0 && (
+                <button onClick={()=>onUpdate({...act, scheduleDays: []})} className="text-[11px] text-slate-600 hover:text-red-400 transition-colors">clear</button>
+              )}
+            </div>
+            {showSched && (
+              <div className="rounded-xl p-2.5" style={{background:'rgba(15,23,42,0.6)',border:'1px solid rgba(51,65,85,0.8)'}}>
+                <p className="text-[11px] text-slate-400 mb-2">Which days does this belong on? Leave empty for "any {habitTarget(act)} days a week".</p>
+                <div className="flex justify-around">
+                  {DAY_LETTERS.map((d,di)=>(
+                    <button key={di} onClick={()=>toggleSched(di)}
+                      className="w-8 h-8 rounded-lg text-[11px] font-bold transition-all"
+                      style={sched.indexOf(di)!==-1?{background:'rgba(245,158,11,0.25)',border:'1px solid rgba(245,158,11,0.6)',color:'#fbbf24'}:{background:'rgba(51,65,85,0.5)',color:'#64748b'}}>
+                      {d}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </>
         )}
       </div>
     );
@@ -949,9 +987,14 @@
     acts.forEach(a => {
       const target = habitTarget(a);
       const days = a.days || [];
-      let before = 0;
-      for (let i = 0; i < dayIdx; i++) if (days[i]) before++;
-      if (before >= target) return;                        // hit its weekly target already
+      const scheduled = habitSchedule(a).length > 0;
+      // A habit pinned to Thu/Fri/Sat is simply not owed on a Tuesday.
+      if (scheduled && !habitOwedOnDay(a, dayIdx)) return;
+      if (!scheduled) {
+        let before = 0;
+        for (let i = 0; i < dayIdx; i++) if (days[i]) before++;
+        if (before >= target) return;                      // hit its weekly target already
+      }
       owedCount++;
       if (days[dayIdx]) doneCount++;
     });
@@ -1281,8 +1324,23 @@
     const list = [...(weeks||[])].reverse();
     return list.find(weekHasHabitLogs) || list.find(weekHasHabitNames) || fallback;
   };
-  // Habits have a per-habit weekly target (e.g. 3), not always 7.
-  const habitTarget = a => Math.min(Math.max(parseInt(a?.targetDays,10)||7,1),7);
+  // Habits have a per-habit weekly target (e.g. 3), not always 7. A habit can also
+  // name the exact days it belongs on (scheduleDays: 0=Mon…6=Sun) — then the target
+  // IS the number of scheduled days, and the habit is only owed on those days.
+  const habitSchedule = a => Array.isArray(a && a.scheduleDays) ? a.scheduleDays.filter(d => d >= 0 && d <= 6) : [];
+  const habitTarget = a => {
+    const sched = habitSchedule(a);
+    if (sched.length) return sched.length;
+    return Math.min(Math.max(parseInt(a?.targetDays,10)||7,1),7);
+  };
+  // Is this habit owed on this day of the week (0=Mon…6=Sun)? Unscheduled habits are
+  // owed any day until their weekly target is met; scheduled ones only on their days.
+  const habitOwedOnDay = (a, dayIdx) => {
+    const sched = habitSchedule(a);
+    return sched.length ? sched.indexOf(dayIdx) !== -1 : true;
+  };
+  const DAY_LETTERS = ['M','T','W','T','F','S','S'];
+  const DAY_SHORT = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
 
   // Anchor the coach to the REAL calendar. Previously "what week is it" was inferred
   // from which weeks happened to contain data, so every Monday (before anything is
@@ -1374,7 +1432,10 @@
     if (!acts.length) return 'No habits tracked';
     return acts.map(a=>{
       const done=(a.days||[]).filter(Boolean).length, tgt=habitTarget(a);
-      return `${a.name.trim()} ${done}/${tgt}${done>=tgt?' HIT':''}`;
+      const sched=habitSchedule(a);
+      // Spell the schedule out so the coach can see WHEN a habit is actually due.
+      const when = sched.length ? ` [scheduled ${sched.map(i=>DAY_ABBR[i]).join('/')} only]` : '';
+      return `${a.name.trim()} ${done}/${tgt}${when}${done>=tgt?' HIT':''}`;
     }).join(', ');
   };
 
@@ -1508,7 +1569,7 @@
       const lastWeekBlock = T.lastWeek
         ? `LAST WEEK (Week ${T.weekNum-1}, COMPLETED — background only, NEVER describe as current):\n- Wins they recorded for last week (written during this week's planning ritual): ${lastWeekWinsRecorded}\n- Focus they had set for last week: ${lastWeekFocus}\n- Habit results: ${lastWeekHabits}`
         : `LAST WEEK: none yet — this is their first week.`;
-      const sessionMemory = `\nSESSION MEMORY — use this to coach specifically, never generically. Reference their actual words back to them:\n\nTODAY: ${T.dateStr} — day ${T.dayIndex} of 7 of the current week (weeks run Monday to Sunday). ${T.daysLeft===0?'This is the FINAL day of the week.':`${T.daysLeft} day${T.daysLeft===1?'':'s'} remain in this week.`}\n\nFOUNDATION:\n- Slight Edge habits: ${plannerData.slightEdge||'Not defined'}\n- Year Theme: ${plannerData.yearTheme||'Not set'}\n- 120-Day Vision: ${plannerData.vision120Day||'Not defined'}\n- Week ${T.weekNum}${plannerData.cycleContinued ? ' (continuing past the 120-day cycle)' : ' of 17'} of their 120-day cycle\n\nGOALS & PROGRESS:\n${goalTrends}\n\n${thisWeekBlock}\n\n${lastWeekBlock}\n\nPERFORMANCE DATA:\n- Anvil project: ${plannerData.anvilProject?.project||'Not set'} | Streak: ${anvilStreak} days\n- Anvil session notes (UNDATED — most recent entries, may be weeks old): ${recentAnvilNotes}\n- Habits struggling (below their weekly target for 2+ logged weeks): ${stuckHabits}\n- Wheel of Life scores (UNDATED — last week they scored it, possibly long ago): ${latestWheel}\n\nTHEIR ACTUAL WORDS — quote these back, reference them directly:\n- Reflections (UNDATED — could be from any earlier week, never assume recent): ${recentReflections}\n- Gratitude entries (UNDATED): ${recentGratitude}\n- Reviews recorded in EARLIER weeks (each covers the week before it, older background): ${weeklyWinsAll}\n- Hard things (UNDATED): ${hardThingsLog}\n- What they want to improve (UNDATED — from earlier weeks): ${weeklyImprovements}\n- Journal notes (UNDATED): ${journalNotes}\n\nACCOUNTABILITY:\n${commitmentContext}\n- Current context: ${currentContext?JSON.stringify(currentContext):'General'}`;
+      const sessionMemory = `\nSESSION MEMORY — use this to coach specifically, never generically. Reference their actual words back to them:\n\nTODAY: ${T.dateStr} — day ${T.dayIndex} of 7 of the current week (weeks run Monday to Sunday). ${T.daysLeft===0?'This is the FINAL day of the week.':`${T.daysLeft} day${T.daysLeft===1?'':'s'} remain in this week.`}\n\nFOUNDATION:\n- Slight Edge habits: ${plannerData.slightEdge||'Not defined'}\n- Year Theme: ${plannerData.yearTheme||'Not set'}\n- 120-Day Vision: ${plannerData.vision120Day||'Not defined'}\n- Week ${T.weekNum}${plannerData.cycleContinued ? ' (continuing past the 120-day cycle)' : ' of 17'} of their 120-day cycle\n\nGOALS & PROGRESS:\n${goalTrends}\n\n${thisWeekBlock}\n\n${lastWeekBlock}\n\nPERFORMANCE DATA:\n- Anvil project: ${plannerData.anvilProject?.project||'Not set'} | Streak: ${anvilStreak} days\n- Anvil session notes (UNDATED — most recent entries, may be weeks old): ${recentAnvilNotes}\n- Habits struggling (below their weekly target for 2+ logged weeks): ${stuckHabits}\n- HABIT SCHEDULES: when a habit is marked "[scheduled Thu/Fri/Sat only]", it is due ONLY on those days. Never describe it as missed, behind or slipping before those days have arrived this week.\n- Wheel of Life scores (UNDATED — last week they scored it, possibly long ago): ${latestWheel}\n\nTHEIR ACTUAL WORDS — quote these back, reference them directly:\n- Reflections (UNDATED — could be from any earlier week, never assume recent): ${recentReflections}\n- Gratitude entries (UNDATED): ${recentGratitude}\n- Reviews recorded in EARLIER weeks (each covers the week before it, older background): ${weeklyWinsAll}\n- Hard things (UNDATED): ${hardThingsLog}\n- What they want to improve (UNDATED — from earlier weeks): ${weeklyImprovements}\n- Journal notes (UNDATED): ${journalNotes}\n\nACCOUNTABILITY:\n${commitmentContext}\n- Current context: ${currentContext?JSON.stringify(currentContext):'General'}`;
 
       const weeksIn = weeksWithData.length;
       // Continued cycles run past week 17, so drop the "of 17" ceiling for them.
@@ -1533,7 +1594,16 @@
 
     // Consider a habit "relevant" only if it has a real weekly target (1–5 sessions).
     // Habits with target >= 6 are effectively daily and handled by streak logic elsewhere.
-    const trackable = habits.filter(h => h && typeof h.target === 'number' && h.target >= 1 && h.target <= 5);
+    // A habit pinned to specific days is only judged once those days have actually
+    // arrived — no "you're behind on Thursday's habit" while it's still Tuesday.
+    const trackable = habits.filter(h => {
+      if (!h || typeof h.target !== 'number' || h.target < 1 || h.target > 5) return false;
+      if (Array.isArray(h.schedule) && h.schedule.length) {
+        const elapsed = typeof h.scheduledElapsed === 'number' ? h.scheduledElapsed : 0;
+        return elapsed > 0 && (h.days || 0) < elapsed;   // only when a scheduled day has passed unticked
+      }
+      return true;
+    });
     if (trackable.length === 0) return null;
 
     // Format a natural list: "A", "A and B", "A, B, and C"
@@ -1609,7 +1679,13 @@
     // Calendar-anchored current week (same source of truth as the chat coach)
     const _T = getTimeContext(plannerData);
     const latestHabitWeek = _T.currentWeek || pickHabitWeek(plannerData.weeks, latestWeek);
-    const habits = (latestHabitWeek?.aActivities||[]).filter(a=>a.name?.trim()).map(a=>({name:a.name,days:(a.days||[]).filter(Boolean).length,target:a.targetDays||7}));
+    const habits = (latestHabitWeek?.aActivities||[]).filter(a=>a.name?.trim()).map(a=>({
+      name:a.name, days:(a.days||[]).filter(Boolean).length, target:habitTarget(a),
+      schedule:habitSchedule(a),                                  // [] = any day
+      scheduleLabel:habitSchedule(a).map(i=>DAY_SHORT[i]).join('/') || null,
+      // Of its scheduled days, how many have already passed this week (today included)?
+      scheduledElapsed: habitSchedule(a).filter(i => i <= (new Date().getDay()+6)%7).length,
+    }));
     const goals = (plannerData.goals||[]).filter(g=>g.title?.trim()).map(g=>({title:g.title,pct:g.completion||0}));
 
     // Stuck habits (under half target for 2+ weeks)
@@ -1683,6 +1759,7 @@ WEEKLY PACING (CRITICAL — read before generating any "Habit Gap" style message
 - On Tuesday, still avoid "behind" language. Use soft "getting going" copy.
 - Only Wednesday–Friday may use "off pace" or "behind" language, and only if the user is truly behind expected Mon–Fri pace (actual completions < target * (workdaysElapsed / 5) by at least 1 full session).
 - On Saturday/Sunday, treat weekend as bonus/recovery. Do NOT apply Mon–Fri pacing pressure. Framing should be optional/bonus, not corrective.
+- SCHEDULED HABITS (scheduleLabel is set, e.g. "Thu/Fri/Sat"): that habit is ONLY due on those days. Never call it missed, behind, or at risk before those days have arrived this week — on Tuesday a Thu/Fri/Sat habit is simply not due yet, and must not be mentioned as a gap at all. Judge it only against scheduledElapsed (its scheduled days that have already passed, today included).
 - If snapshot.habitGapGuidance is a non-empty string, use it as the exact tone/wording for any Habit Gap coach message — you may lightly adapt phrasing but do NOT contradict its framing (e.g. do not add "behind" when guidance says "getting underway").
 - If snapshot.habitGapGuidance is null and the only signal is low current-week habit counts, do NOT trigger a Habit Gap message.
 
@@ -6251,6 +6328,35 @@ Never output the ${RITUAL_SENTINEL} block until you have their one priority. Ins
         localStorage.setItem('sunday-modal-shown', new Date().toDateString());
       }
     }, [loading, score.ritualDone]);
+
+    // ── Carry habits into a new week automatically ───────────────────────────
+    // A new week used to start with an empty Habit Tracker unless you ran the
+    // Sunday ritual, so habits had to be retyped. Now the current week seeds
+    // itself from the last week that had habits — names, targets and day
+    // schedules carried over, ticks reset. habitsSeeded marks the week as
+    // handled, so deliberately clearing your habits doesn't bring them back.
+    useEffect(() => {
+      if (loading || !data || !Array.isArray(data.weeks)) return;
+      const idx = weekNum - 1;
+      const wk = data.weeks[idx];
+      if (!wk || wk.habitsSeeded) return;
+      const named = a => a && a.name && a.name.trim();
+      if ((wk.aActivities || []).some(named)) return;            // already has habits
+      let source = null;
+      for (let i = idx - 1; i >= 0; i--) {
+        if ((data.weeks[i]?.aActivities || []).some(named)) { source = data.weeks[i]; break; }
+      }
+      if (!source) return;                                       // nothing to carry yet
+      const ws = JSON.parse(JSON.stringify(data.weeks));
+      ws[idx].aActivities = source.aActivities.filter(named).map(a => ({
+        name: a.name,
+        targetDays: a.targetDays || 7,
+        ...(habitSchedule(a).length ? { scheduleDays: habitSchedule(a) } : {}),
+        days: [false,false,false,false,false,false,false],
+      }));
+      ws[idx].habitsSeeded = true;
+      updateField('weeks', ws);
+    }, [loading, weekNum, data.weeks]);
 
     const [myCoachId, setMyCoachId] = useState(()=>localStorage.getItem('sea_coach_id')||'');
     const [userRole, setUserRole] = useState('advisor');
