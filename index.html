@@ -1339,6 +1339,10 @@
     const sched = habitSchedule(a);
     return sched.length ? sched.indexOf(dayIdx) !== -1 : true;
   };
+  // Which day closes the week for this user (0=Mon…6=Sun, default Sunday). Weeks
+  // themselves still run Mon–Sun everywhere; this only moves the planning ritual,
+  // its banner and its reminders to the day the user actually plans.
+  const ritualDayIdx = d => { const v = parseInt(d && d.ritualDay); return (v >= 0 && v <= 6) ? v : 6; };
   const DAY_LETTERS = ['M','T','W','T','F','S','S'];
   const DAY_SHORT = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
 
@@ -2890,7 +2894,7 @@ Never output the ${RITUAL_SENTINEL} block until you have their one priority. Ins
                 <h2 className="text-3xl font-bold text-white mb-3">Foundation Set.</h2>
                 <p className="text-slate-400 mb-6">Here is what to do next:</p>
                 <div className="bg-slate-800/60 rounded-2xl p-5 border border-slate-700 mb-6 text-left space-y-3">
-                  {[['📅','Plan your week every Sunday in the Week tab'],['☀️','Open Today every morning to set your #1 priority'],['🔥','Log your Anvil daily — protect the streak'],['⚡','Edge knows your goals — ask it anything'],['⭐','Check your S.E.A. Score in the Score tab']].map(([icon,text],i)=>(
+                  {[['📅','Plan your week on your ritual day in the Week tab'],['☀️','Open Today every morning to set your #1 priority'],['🔥','Log your Anvil daily — protect the streak'],['⚡','Edge knows your goals — ask it anything'],['⭐','Check your S.E.A. Score in the Score tab']].map(([icon,text],i)=>(
                     <div key={i} className="flex items-start gap-3"><span className="text-xl">{icon}</span><p className="text-sm text-slate-300">{text}</p></div>
                   ))}
                 </div>
@@ -5338,6 +5342,23 @@ Never output the ${RITUAL_SENTINEL} block until you have their one priority. Ins
         {section==='setup' && (
           <div className="space-y-5">
             <h2 className="text-xl font-bold text-white">Settings</h2>
+            {/* Which day you plan the coming week — moves the prompt, banner and reminders. */}
+            <div className="bg-slate-800/60 rounded-2xl p-5 border border-slate-700">
+              <h3 className="text-sm font-bold text-blue-400 mb-1">📅 Weekly Ritual Day</h3>
+              <p className="text-xs text-slate-400 mb-3">The day you sit down and design the week ahead. Your reminder, the planning prompt and the weekly email all follow this day.</p>
+              <div className="flex justify-between gap-1.5">
+                {DAY_SHORT.map((d,di)=>{
+                  const on = ritualDayIdx(data)===di;
+                  return (
+                    <button key={di} onClick={()=>updateField('ritualDay',di)}
+                      className="flex-1 py-2 rounded-xl text-xs font-bold transition-all active:scale-95"
+                      style={on?{background:'linear-gradient(135deg,#3b82f6,#8b5cf6)',color:'#fff'}:{background:'rgba(51,65,85,0.6)',color:'#94a3b8'}}>
+                      {d}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
             <div className="bg-slate-800/60 rounded-2xl p-5 border border-slate-700">
               <h3 className="text-sm font-bold text-purple-400 mb-1">🎛️ Coach Personality</h3>
               {(()=>{
@@ -5538,7 +5559,7 @@ Never output the ${RITUAL_SENTINEL} block until you have their one priority. Ins
                       <h3 className="text-sm font-bold text-green-400">🔔 Push Notifications</h3>
                       {subscribed && <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-green-500/20 text-green-400">ON</span>}
                     </div>
-                    <p className="text-xs text-slate-400 mb-4">Get nudged on your phone — morning kickoff, evening check-in, Sunday planning, and coach alerts when you've been away.</p>
+                    <p className="text-xs text-slate-400 mb-4">Get nudged on your phone — morning kickoff, evening check-in, weekly planning, and coach alerts when you've been away.</p>
 
                     {needsHomeScreen ? (
                       <div className="rounded-xl border border-blue-500/40 bg-blue-500/10 p-4 space-y-3">
@@ -5575,7 +5596,7 @@ Never output the ${RITUAL_SENTINEL} block until you have their one priority. Ins
                           {[
                             { key: 'morningReminder', label: 'Morning Kickoff', desc: '7 AM daily — lock in today\'s #1' },
                             { key: 'eveningReminder', label: 'Evening Review', desc: '7 PM daily — close out your day' },
-                            { key: 'weeklyRitual', label: 'Weekly Ritual', desc: 'Sunday 8 AM — design your week' },
+                            { key: 'weeklyRitual', label: 'Weekly Ritual', desc: `${DAY_SHORT[ritualDayIdx(data)]} 8 AM — design your week` },
                             { key: 'coachNudge', label: 'Coach Nudges', desc: 'Only when you\'ve been away 6+ hours' },
                           ].map(({ key, label, desc }) => (
                             <button key={key} onClick={() => updatePref(key, !(prefs[key] ?? true))}
@@ -5638,7 +5659,7 @@ Never output the ${RITUAL_SENTINEL} block until you have their one priority. Ins
                 return (
                   <div className="bg-slate-800/60 rounded-2xl p-5 border border-slate-700">
                     <h3 className="text-sm font-bold text-blue-400 mb-1">📧 Weekly Email Summary</h3>
-                    <p className="text-xs text-slate-400 mb-4">Get your S.E.A. Score, Anvil streak, wins, and goals emailed to you automatically every Sunday.</p>
+                    <p className="text-xs text-slate-400 mb-4">Get your S.E.A. Score, Anvil streak, wins, and goals emailed to you automatically every week on your ritual day.</p>
                     <div className="space-y-3">
                       <div>
                         <label className="text-xs text-slate-400 block mb-1">Your name</label>
@@ -5652,7 +5673,7 @@ Never output the ${RITUAL_SENTINEL} block until you have their one priority. Ins
                       </div>
                       <button onClick={()=>{const v=!optIn;setOptIn(v);localStorage.setItem('summary-optin',v?'true':'false');}}
                         className={`w-full py-3 rounded-xl font-semibold text-sm border transition-all ${optIn?'border-blue-500/50 text-blue-400 bg-blue-500/10':'border-slate-600 text-slate-400'}`}>
-                        {optIn ? '✓ Auto-send every Sunday — ON' : 'Auto-send every Sunday — OFF'}
+                        {optIn ? `✓ Auto-send every ${DAY_SHORT[ritualDayIdx(data)]} — ON` : `Auto-send every ${DAY_SHORT[ritualDayIdx(data)]} — OFF`}
                       </button>
                       <div className="flex gap-2">
                         <button onClick={save} className="flex-1 py-3 rounded-xl font-bold text-sm text-white" style={{background:'linear-gradient(135deg,#3b82f6,#8b5cf6)'}}>
@@ -5764,12 +5785,9 @@ Never output the ${RITUAL_SENTINEL} block until you have their one priority. Ins
     const [finishSetupDismissed, setFinishSetupDismissed] = useState(()=>localStorage.getItem('sea-finishsetup-dismissed'));
     const [resetStep, setResetStep] = useState(1); // 1=reflection, 2=confirm
     const [resetReflection, setResetReflection] = useState({wins:'',lessons:'',proud:'',nextTheme:'',nextVision:'',nextAnvil:''}); // {title, pct}
-    const [showSundayModal, setShowSundayModal] = useState(()=>{
-      const today = new Date();
-      const isSunday = today.getDay() === 0;
-      const lastShown = localStorage.getItem('sunday-modal-shown');
-      return isSunday && lastShown !== today.toDateString();
-    });
+    // Shown on the user's chosen ritual day (default Sunday). Set by an effect
+    // once planner data has loaded, since the chosen day lives in that data.
+    const [showSundayModal, setShowSundayModal] = useState(false);
     // On Sunday, planning ritual should target next week's slot (week starts Monday)
     const [planningNextWeek, setPlanningNextWeek] = useState(false);
     const [coachPersonality, setCoachPersonality] = useState(()=>{try{const s=localStorage.getItem('coach-personality');return s?JSON.parse(s):{style:2,tone:2,approach:2,energy:2};}catch(e){return{style:2,tone:2,approach:2,energy:2};}});
@@ -6323,6 +6341,15 @@ Never output the ${RITUAL_SENTINEL} block until you have their one priority. Ins
 
     // Auto-dismiss Sunday ritual modal if ritual is already complete
     useEffect(()=>{
+      if (loading) return;
+      const today = new Date();
+      const todayIdx = (today.getDay() + 6) % 7;
+      if (todayIdx !== ritualDayIdx(data)) return;
+      if (localStorage.getItem('sunday-modal-shown') === today.toDateString()) return;
+      setShowSundayModal(true);
+    }, [loading, data.ritualDay]);
+
+    useEffect(()=>{
       if (!loading && score.ritualDone && showSundayModal) {
         setShowSundayModal(false);
         localStorage.setItem('sunday-modal-shown', new Date().toDateString());
@@ -6454,7 +6481,7 @@ Never output the ${RITUAL_SENTINEL} block until you have their one priority. Ins
           <div className="fixed inset-0 z-50 flex items-center justify-center px-5 no-print" style={{backgroundColor:'rgba(0,0,0,0.85)',backdropFilter:'blur(6px)'}}>
             <div className="bg-slate-900 rounded-3xl p-8 max-w-sm w-full text-center border border-blue-500/40 pop-in">
               <span className="text-5xl">📋</span>
-              <h2 className="text-2xl font-black text-white mt-4 mb-2">It's Sunday!</h2>
+              <h2 className="text-2xl font-black text-white mt-4 mb-2">It's {['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'][ritualDayIdx(data)]}!</h2>
               <p className="text-slate-300 text-sm mb-6 leading-relaxed">Time for your Weekly Planning Ritual — design next week so Monday starts with clarity and momentum.</p>
               <button onClick={()=>{setShowSundayModal(false);localStorage.setItem('sunday-modal-shown',new Date().toDateString());setPlanningNextWeek(true);setActiveTab('more');}} className="w-full py-4 rounded-2xl font-black text-white text-base mb-3" style={{background:'linear-gradient(135deg,#3b82f6,#8b5cf6)'}}>
                 Start Weekly Ritual →

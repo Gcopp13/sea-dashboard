@@ -211,6 +211,7 @@ exports.handler = async (event) => {
     let errors = 0;
     const results = [];
 
+    let skippedDay = 0;
     for (const profile of profiles) {
       if (!profile.email) continue;
 
@@ -222,6 +223,13 @@ exports.handler = async (event) => {
         );
         const plannerRows = await plannerRes.json();
         const plannerData = plannerRows?.[0]?.data || {};
+
+        // 2b. Only send on the day this user actually closes their week. The cron
+        // fires Sat and Sun; ritualDay is 0=Mon…6=Sun and defaults to Sunday.
+        const todayIdx = (new Date().getUTCDay() + 6) % 7;
+        const rd = parseInt(plannerData.ritualDay);
+        const ritualDay = (rd >= 0 && rd <= 6) ? rd : 6;
+        if (ritualDay !== todayIdx) { skippedDay++; continue; }
 
         // 3. Build and send email
         const html = buildEmailHtml(profile.full_name || profile.email, plannerData);
@@ -260,11 +268,11 @@ exports.handler = async (event) => {
       }
     }
 
-    console.log(`[weekly-summary] Done — sent: ${sent}, errors: ${errors}`);
+    console.log(`[weekly-summary] Done — sent: ${sent}, errors: ${errors}, not-their-ritual-day: ${skippedDay}`);
     return {
       statusCode: 200,
       headers: CORS_HEADERS,
-      body: JSON.stringify({ sent, errors, total: profiles.length, results }),
+      body: JSON.stringify({ sent, errors, skippedDay, total: profiles.length, results }),
     };
 
   } catch (e) {

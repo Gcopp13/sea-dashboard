@@ -35,10 +35,12 @@
   schedule = "17 * * * *"    # hourly at :17 - coach nudge push
 
 [functions."weekly-ritual-reminder"]
-  schedule = "0 12 * * 0"    # Sundays 12:00 UTC (8 AM EDT) - weekly ritual push
+  schedule = "0 12 * * 6,0"  # Sat + Sun 12:00 UTC (8 AM EDT) - weekly ritual push;
+                             # the function only messages users whose chosen ritual day is that day
 
 [functions."weekly-summary"]
-  schedule = "0 12 * * 0"    # Sundays 12:00 UTC (8 AM EDT) - weekly summary email
+  schedule = "0 12 * * 6,0"  # Sat + Sun 12:00 UTC (8 AM EDT) - weekly summary email;
+                             # filtered per user by their chosen ritual day
 
 [functions."cycle-heads-up"]
   schedule = "0 13 * * 1"    # Mondays 13:00 UTC (9 AM EDT) - 120-day final-week heads-up email
