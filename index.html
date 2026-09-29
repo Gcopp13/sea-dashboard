@@ -1021,7 +1021,7 @@
   };
 
   const calcSEAScore = (data, weekIdx) => {
-    const week = (data.weeks && data.weeks[weekIdx]) || {wins:['','',''],improvements:'',focus:'',goalPriorities:['','','',''],aActivities:[],wheelOfJohn:{family:5,fun:5,fitness:5,finance:5,faith:5}};
+    const week = (data.weeks && data.weeks[weekIdx]) || {wins:['','',''],focus:'',goalPriorities:['','','',''],aActivities:[],wheelOfJohn:{family:5,fun:5,fitness:5,finance:5,faith:5}};
 
     // ── The score itself: average of the days that have happened ──────────────
     const elapsed = daysElapsedInWeek(data, weekIdx);
@@ -1458,7 +1458,7 @@
       // NOTE ON THE DATA MODEL: the weekly ritual's step 0 is labelled "Last Week's Wins",
       // and the Sunday ritual points the form at the week being planned. So weeks[N].wins
       // holds the retrospective for week N-1, recorded during week N's planning session.
-      // Everything else on weeks[N] (focus, improvements, goalPriorities, aActivities) is
+      // Everything else on weeks[N] (focus, goalPriorities, aActivities) is
       // forward-looking and does belong to week N.
       const lastWeekWinsRecorded = (T.currentWeek?.wins||[]).filter(x=>x?.trim()).join(', ') || 'None recorded';
       const thisWeekFocus = T.currentWeek?.focus?.trim() || 'Not set yet for this week';
@@ -1530,9 +1530,6 @@
         const hard = allDays.filter(d=>d?.hardThings?.trim()).slice(-3).map(d=>`"${d.hardThings.trim()}" (${d.hardThingsCompleted?'done':'not done'})`);
         return hard.join(' | ') || 'None logged';
       })();
-      const weeklyImprovements = (()=>{
-        return (plannerData.weeks||[]).filter(w=>w.improvements?.trim()).slice(-3).map(w=>w.improvements.trim()).join(' | ') || 'None written';
-      })();
       const recentAnvilNotes = (()=>{
         const log = plannerData.anvilProject?.log||[];
         return log.slice(0,3).map(e=>e.note?.trim()).filter(Boolean).join(' | ') || 'No sessions logged';
@@ -1573,7 +1570,7 @@
       const lastWeekBlock = T.lastWeek
         ? `LAST WEEK (Week ${T.weekNum-1}, COMPLETED — background only, NEVER describe as current):\n- Wins they recorded for last week (written during this week's planning ritual): ${lastWeekWinsRecorded}\n- Focus they had set for last week: ${lastWeekFocus}\n- Habit results: ${lastWeekHabits}`
         : `LAST WEEK: none yet — this is their first week.`;
-      const sessionMemory = `\nSESSION MEMORY — use this to coach specifically, never generically. Reference their actual words back to them:\n\nTODAY: ${T.dateStr} — day ${T.dayIndex} of 7 of the current week (weeks run Monday to Sunday). ${T.daysLeft===0?'This is the FINAL day of the week.':`${T.daysLeft} day${T.daysLeft===1?'':'s'} remain in this week.`}\n\nFOUNDATION:\n- Slight Edge habits: ${plannerData.slightEdge||'Not defined'}\n- Year Theme: ${plannerData.yearTheme||'Not set'}\n- 120-Day Vision: ${plannerData.vision120Day||'Not defined'}\n- Week ${T.weekNum}${plannerData.cycleContinued ? ' (continuing past the 120-day cycle)' : ' of 17'} of their 120-day cycle\n\nGOALS & PROGRESS:\n${goalTrends}\n\n${thisWeekBlock}\n\n${lastWeekBlock}\n\nPERFORMANCE DATA:\n- Anvil project: ${plannerData.anvilProject?.project||'Not set'} | Streak: ${anvilStreak} days\n- Anvil session notes (UNDATED — most recent entries, may be weeks old): ${recentAnvilNotes}\n- Habits struggling (below their weekly target for 2+ logged weeks): ${stuckHabits}\n- HABIT SCHEDULES: when a habit is marked "[scheduled Thu/Fri/Sat only]", it is due ONLY on those days. Never describe it as missed, behind or slipping before those days have arrived this week.\n- Wheel of Life scores (UNDATED — last week they scored it, possibly long ago): ${latestWheel}\n\nTHEIR ACTUAL WORDS — quote these back, reference them directly:\n- Reflections (UNDATED — could be from any earlier week, never assume recent): ${recentReflections}\n- Gratitude entries (UNDATED): ${recentGratitude}\n- Reviews recorded in EARLIER weeks (each covers the week before it, older background): ${weeklyWinsAll}\n- Hard things (UNDATED): ${hardThingsLog}\n- What they want to improve (UNDATED — from earlier weeks): ${weeklyImprovements}\n- Journal notes (UNDATED): ${journalNotes}\n\nACCOUNTABILITY:\n${commitmentContext}\n- Current context: ${currentContext?JSON.stringify(currentContext):'General'}`;
+      const sessionMemory = `\nSESSION MEMORY — use this to coach specifically, never generically. Reference their actual words back to them:\n\nTODAY: ${T.dateStr} — day ${T.dayIndex} of 7 of the current week (weeks run Monday to Sunday). ${T.daysLeft===0?'This is the FINAL day of the week.':`${T.daysLeft} day${T.daysLeft===1?'':'s'} remain in this week.`}\n\nFOUNDATION:\n- Slight Edge habits: ${plannerData.slightEdge||'Not defined'}\n- Year Theme: ${plannerData.yearTheme||'Not set'}\n- 120-Day Vision: ${plannerData.vision120Day||'Not defined'}\n- Week ${T.weekNum}${plannerData.cycleContinued ? ' (continuing past the 120-day cycle)' : ' of 17'} of their 120-day cycle\n\nGOALS & PROGRESS:\n${goalTrends}\n\n${thisWeekBlock}\n\n${lastWeekBlock}\n\nPERFORMANCE DATA:\n- Anvil project: ${plannerData.anvilProject?.project||'Not set'} | Streak: ${anvilStreak} days\n- Anvil session notes (UNDATED — most recent entries, may be weeks old): ${recentAnvilNotes}\n- Habits struggling (below their weekly target for 2+ logged weeks): ${stuckHabits}\n- HABIT SCHEDULES: when a habit is marked "[scheduled Thu/Fri/Sat only]", it is due ONLY on those days. Never describe it as missed, behind or slipping before those days have arrived this week.\n- Wheel of Life scores (UNDATED — last week they scored it, possibly long ago): ${latestWheel}\n\nTHEIR ACTUAL WORDS — quote these back, reference them directly:\n- Reflections (UNDATED — could be from any earlier week, never assume recent): ${recentReflections}\n- Gratitude entries (UNDATED): ${recentGratitude}\n- Reviews recorded in EARLIER weeks (each covers the week before it, older background): ${weeklyWinsAll}\n- Hard things (UNDATED): ${hardThingsLog}\n- Journal notes (UNDATED): ${journalNotes}\n\nACCOUNTABILITY:\n${commitmentContext}\n- Current context: ${currentContext?JSON.stringify(currentContext):'General'}`;
 
       const weeksIn = weeksWithData.length;
       // Continued cycles run past week 17, so drop the "of 17" ceiling for them.
@@ -3634,7 +3631,7 @@ Never output the ${RITUAL_SENTINEL} block until you have their one priority. Ins
     const wheelDue = (()=>{ const ts=data.wheelUpdatedAt; if(!ts) return true; return (Date.now()-Date.parse(ts)) >= 28*864e5; })();
     const saveWheel = (wheel) => {
       const ws = JSON.parse(JSON.stringify(data.weeks));
-      if(!ws[weekNum-1]) ws[weekNum-1] = {wins:['','',''],improvements:'',focus:'',goalPriorities:['','','',''],aActivities:[],wheelOfJohn:{family:5,fun:5,fitness:5,finance:5,faith:5}};
+      if(!ws[weekNum-1]) ws[weekNum-1] = {wins:['','',''],focus:'',goalPriorities:['','','',''],aActivities:[],wheelOfJohn:{family:5,fun:5,fitness:5,finance:5,faith:5}};
       ws[weekNum-1].wheelOfJohn = wheel;
       updateField('weeks', ws);
       updateField('wheelUpdatedAt', new Date().toISOString());
@@ -4144,7 +4141,7 @@ Never output the ${RITUAL_SENTINEL} block until you have their one priority. Ins
     const unfinished = priorities.map((p,i) => ({p,i})).filter(({p,i}) => p && !doneFlags[i]);
     const carryForward = () => {
       const ws = JSON.parse(JSON.stringify(data.weeks));
-      const cur = ws[weekNum-1] || (ws[weekNum-1] = {wins:['','',''],improvements:'',focus:'',goalPriorities:['','','',''],aActivities:[],wheelOfJohn:{family:5,fun:5,fitness:5,finance:5,faith:5}});
+      const cur = ws[weekNum-1] || (ws[weekNum-1] = {wins:['','',''],focus:'',goalPriorities:['','','',''],aActivities:[],wheelOfJohn:{family:5,fun:5,fitness:5,finance:5,faith:5}});
       const slots = [...(cur.goalPriorities || ['','','',''])];
       const already = slots.map(x => (x||'').trim().toLowerCase());
       unfinished.forEach(({p}) => {
@@ -4241,7 +4238,7 @@ Never output the ${RITUAL_SENTINEL} block until you have their one priority. Ins
     const [showConfetti, setShowConfetti] = useState(false);
     const [showRitualCoach, setShowRitualCoach] = useState(false);
     // Defense-in-depth: never let a missing week slot crash the ritual (falls back to an empty week).
-    const week = data.weeks[weekNum-1] || {wins:['','',''],improvements:'',focus:'',goalPriorities:['','','',''],aActivities:[],wheelOfJohn:{family:5,fun:5,fitness:5,finance:5,faith:5}};
+    const week = data.weeks[weekNum-1] || {wins:['','',''],focus:'',goalPriorities:['','','',''],aActivities:[],wheelOfJohn:{family:5,fun:5,fitness:5,finance:5,faith:5}};
     const updateWeek = (f,v) => { const ws=JSON.parse(JSON.stringify(data.weeks)); ws[weekNum-1][f]=v; updateField('weeks',ws); };
 
     const getWeekDates = () => {
@@ -4266,7 +4263,7 @@ Never output the ${RITUAL_SENTINEL} block until you have their one priority. Ins
     // insensitive); new names start fresh. This mirrors what the manual form saves.
     const saveRitualPlan = (plan) => {
       const ws = JSON.parse(JSON.stringify(data.weeks));
-      if (!ws[weekNum-1]) ws[weekNum-1] = {wins:['','',''],improvements:'',focus:'',goalPriorities:['','','',''],aActivities:[],wheelOfJohn:{family:5,fun:5,fitness:5,finance:5,faith:5}};
+      if (!ws[weekNum-1]) ws[weekNum-1] = {wins:['','',''],focus:'',goalPriorities:['','','',''],aActivities:[],wheelOfJohn:{family:5,fun:5,fitness:5,finance:5,faith:5}};
       const wk = ws[weekNum-1];
       const existing = wk.aActivities || [];
       wk.wins = [0,1,2].map(i => (plan.wins[i]||'').trim());
@@ -5966,7 +5963,7 @@ Never output the ${RITUAL_SENTINEL} block until you have their one priority. Ins
     };
 
     const createDay = () => ({aActivities:['','','',''],grateful:['','',''],wins:['','',''],tomorrowPriorities:['','',''],tasks:[{text:'',done:false,reminder:''},{text:'',done:false,reminder:''},{text:'',done:false,reminder:''}],notes:'',reflection:'',hardThings:'',hardThingsCompleted:false,stillness:'',stillnessCompleted:false,study:'',studyCompleted:false,todaysWins:['','',''],topPriorityDone:false});
-    const createWeek = () => ({wins:['','',''],improvements:'',focus:'',goalPriorities:['','','',''],aActivities:Array(3).fill(null).map(()=>({name:'',days:[false,false,false,false,false,false,false]})),wheelOfJohn:{family:5,fun:5,fitness:5,finance:5,faith:5}});
+    const createWeek = () => ({wins:['','',''],focus:'',goalPriorities:['','','',''],aActivities:Array(3).fill(null).map(()=>({name:'',days:[false,false,false,false,false,false,false]})),wheelOfJohn:{family:5,fun:5,fitness:5,finance:5,faith:5}});
 
     const [data, setData] = useState({
       slightEdge:'',yearTheme:'',vision3Year:'',vision1Year:'',vision120Day:'',
