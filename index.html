@@ -5568,7 +5568,7 @@ Never output the ${RITUAL_SENTINEL} block until you have their one priority. Ins
             {/* Push Notifications */}
             {(()=>{
               const PushNotifications = () => {
-                const [permission, setPermission] = React.useState(()=> typeof Notification !== 'undefined' ? Notification.permission : 'unsupported');
+                const [permission, setPermission] = React.useState(()=> (typeof Notification !== 'undefined' && 'serviceWorker' in navigator) ? Notification.permission : 'unsupported');
                 const [subscribed, setSubscribed] = React.useState(false);
                 const [loading, setLoading] = React.useState(false);
                 const [status, setStatus] = React.useState('');
@@ -5585,14 +5585,16 @@ Never output the ${RITUAL_SENTINEL} block until you have their one priority. Ins
                   return Uint8Array.from([...rawData].map(char => char.charCodeAt(0)));
                 };
 
+                // A service worker can be ready on a browser that has no Push at all —
+                // Safari in a normal tab is the common one (push only exists once the app
+                // is installed to the Home Screen / Dock). reg.pushManager is undefined
+                // there, so every call below has to be guarded, not just this one.
                 React.useEffect(() => {
-                  if ('serviceWorker' in navigator) {
-                    navigator.serviceWorker.ready.then(reg => {
-                      reg.pushManager.getSubscription().then(sub => {
-                        setSubscribed(!!sub);
-                      });
-                    });
-                  }
+                  if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
+                  navigator.serviceWorker.ready.then(reg => {
+                    if (!reg || !reg.pushManager) return;
+                    return reg.pushManager.getSubscription().then(sub => setSubscribed(!!sub));
+                  }).catch(e => console.warn('push: could not read subscription', e));
                 }, []);
 
                 // Safe btoa for large ArrayBuffers (avoids spread operator stack overflow on iOS)
@@ -5622,6 +5624,10 @@ Never output the ${RITUAL_SENTINEL} block until you have their one priority. Ins
                     setPermission(perm);
                     if (perm !== 'granted') { setStatus('Permission denied — go to iPhone Settings → Notifications and allow this app.'); setLoading(false); return; }
 
+                    if (!reg || !reg.pushManager) {
+                      setStatus('This browser can\'t do notifications yet. Add S.E.A. Dashboard to your home screen (iPhone) or Dock (Mac), open it from there, and try again.');
+                      setLoading(false); return;
+                    }
                     const sub = await reg.pushManager.subscribe({
                       userVisibleOnly: true,
                       applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
@@ -5658,7 +5664,7 @@ Never output the ${RITUAL_SENTINEL} block until you have their one priority. Ins
                   setLoading(true);
                   try {
                     const reg = await navigator.serviceWorker.ready;
-                    const sub = await reg.pushManager.getSubscription();
+                    const sub = reg && reg.pushManager ? await reg.pushManager.getSubscription() : null;
                     if (sub) await sub.unsubscribe();
                     setSubscribed(false);
                     setStatus('Notifications disabled.');
@@ -5673,7 +5679,7 @@ Never output the ${RITUAL_SENTINEL} block until you have their one priority. Ins
                   // prefs stored in React state only
                   if (subscribed && authUser?.id) {
                     const reg = await navigator.serviceWorker.ready;
-                    const sub = await reg.pushManager.getSubscription();
+                    const sub = reg && reg.pushManager ? await reg.pushManager.getSubscription() : null;
                     if (sub) {
                       const p256dh = btoa(String.fromCharCode(...new Uint8Array(sub.getKey('p256dh'))));
                       const auth = btoa(String.fromCharCode(...new Uint8Array(sub.getKey('auth'))));
