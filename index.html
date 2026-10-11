@@ -2767,6 +2767,12 @@ Never output the ${RITUAL_SENTINEL} block until you have their one priority. Ins
     const [goalMeasure, setGoalMeasure] = useState((initialData?.goals && initialData.goals[0]?.measurement) || '');
     const ANVIL_SUGGESTIONS = ['Meditation','Daily workout','Reading','Prospecting calls','Journaling','Gratitude'];
     const primary = {background:'linear-gradient(135deg,#3b82f6,#8b5cf6)'};
+    // Straight into the app with nothing set up. startDate is still set so the
+    // week/score math has a calendar anchor; they can change it in Settings.
+    const skipForNow = () => onComplete({
+      onboardingSkipped: true,
+      startDate: new Date().toISOString().split('T')[0],
+    });
     const finish = () => {
       const today = new Date().toISOString().split('T')[0];
       onComplete({
@@ -2788,6 +2794,12 @@ Never output the ${RITUAL_SENTINEL} block until you have their one priority. Ins
           <p className="text-slate-400 text-xs mt-4">You can add your vision, coach setup, and the rest anytime — no rush.</p>
         </div>
         <button onClick={()=>setStep(1)} className="w-full py-4 rounded-2xl font-black text-white text-base" style={primary}>Let's go →</button>
+        {/* Nobody should be walled out of their own dashboard. Skipping records
+            onboardingSkipped so the wall doesn't come back on the next load. */}
+        <button onClick={skipForNow} className="w-full py-3 mt-3 rounded-2xl text-sm font-semibold text-slate-400 hover:text-slate-200 transition-colors">
+          I'll set this up later →
+        </button>
+        <p className="text-slate-500 text-xs mt-2">You can start your Anvil and goal any time from the Today screen.</p>
       </div>
     );
     else if (step === 1) content = (
@@ -6128,7 +6140,7 @@ Never output the ${RITUAL_SENTINEL} block until you have their one priority. Ins
         setData(prev=>{
           const nw=JSON.parse(JSON.stringify(prev.weeks));
           if(onboardingData.wheelOfJohn)nw[0].wheelOfJohn=onboardingData.wheelOfJohn;
-          return{...prev,slightEdge:onboardingData.slightEdge||prev.slightEdge,yearTheme:onboardingData.yearTheme||prev.yearTheme,vision120Day:onboardingData.vision120Day||prev.vision120Day,goals:onboardingData.goals?.some(g=>g.title)?onboardingData.goals:prev.goals,weeks:nw,anvilProject:onboardingData.anvil?.project?{...prev.anvilProject,...onboardingData.anvil,log:prev.anvilProject?.log||[]}:prev.anvilProject,startDate:onboardingData.startDate||prev.startDate};
+          return{...prev,onboardingSkipped:onboardingData.onboardingSkipped||prev.onboardingSkipped,slightEdge:onboardingData.slightEdge||prev.slightEdge,yearTheme:onboardingData.yearTheme||prev.yearTheme,vision120Day:onboardingData.vision120Day||prev.vision120Day,goals:onboardingData.goals?.some(g=>g.title)?onboardingData.goals:prev.goals,weeks:nw,anvilProject:onboardingData.anvil?.project?{...prev.anvilProject,...onboardingData.anvil,log:prev.anvilProject?.log||[]}:prev.anvilProject,startDate:onboardingData.startDate||prev.startDate};
         });
         if (onboardingData.personality) {
           setCoachPersonality(onboardingData.personality);
@@ -6796,16 +6808,20 @@ Never output the ${RITUAL_SENTINEL} block until you have their one priority. Ins
               const logs = data.anvilProject?.log || [];
               const deepDone = data.slightEdge?.trim() && data.vision120Day?.trim();
               const todayKey = new Date().toDateString();
-              if (logs.length === 0 || deepDone || finishSetupDismissed === todayKey) return null;
+              // Someone who skipped onboarding has no Anvil at all — they used to be the
+              // one group this banner never reached, which left no way back into setup.
+              const needsBasics = !(data.anvilProject && data.anvilProject.project && data.anvilProject.project.trim())
+                                  && !(data.goals||[]).some(g=>g && g.title && g.title.trim());
+              if ((logs.length === 0 && !needsBasics) || deepDone || finishSetupDismissed === todayKey) return null;
               return (
                 <div className="px-4 pt-3">
                   <div style={{background:'rgba(99,102,241,0.1)',border:'1px solid rgba(99,102,241,0.3)',borderRadius:'14px',padding:'12px 14px',display:'flex',alignItems:'center',gap:'10px'}}>
                     <span style={{fontSize:'22px'}}>🧭</span>
                     <div style={{flex:1}}>
-                      <p style={{margin:0,color:'#fff',fontSize:'13px',fontWeight:700}}>Finish your setup</p>
-                      <p style={{margin:'2px 0 0',color:'#c4b5fd',fontSize:'12px',lineHeight:1.4}}>Add your Slight Edge, 120-day vision, and coach — so Edge can coach you personally. ~2 min.</p>
+                      <p style={{margin:0,color:'#fff',fontSize:'13px',fontWeight:700}}>{needsBasics ? 'Set up your Anvil & goal' : 'Finish your setup'}</p>
+                      <p style={{margin:'2px 0 0',color:'#c4b5fd',fontSize:'12px',lineHeight:1.4}}>{needsBasics ? 'Two things and you\'re tracking: your daily Anvil and one 120-day goal. ~2 min.' : 'Add your Slight Edge, 120-day vision, and coach — so Edge can coach you personally. ~2 min.'}</p>
                     </div>
-                    <button onClick={onReopenOnboarding} style={{background:'linear-gradient(135deg,#6366f1,#8b5cf6)',border:'none',color:'#fff',fontSize:'12px',fontWeight:700,borderRadius:'10px',padding:'8px 12px',cursor:'pointer',whiteSpace:'nowrap'}}>Finish →</button>
+                    <button onClick={()=>onReopenOnboarding(needsBasics ? 'quick' : 'full')} style={{background:'linear-gradient(135deg,#6366f1,#8b5cf6)',border:'none',color:'#fff',fontSize:'12px',fontWeight:700,borderRadius:'10px',padding:'8px 12px',cursor:'pointer',whiteSpace:'nowrap'}}>{needsBasics ? 'Set up →' : 'Finish →'}</button>
                     <button onClick={()=>{ localStorage.setItem('sea-finishsetup-dismissed', todayKey); setFinishSetupDismissed(todayKey); }} aria-label="Dismiss" style={{background:'none',border:'none',color:'#94a3b8',fontSize:'18px',cursor:'pointer',padding:'0 4px',lineHeight:1}}>×</button>
                   </div>
                 </div>
@@ -7447,7 +7463,7 @@ Never output the ${RITUAL_SENTINEL} block until you have their one priority. Ins
         setSubStatus('active'); // fail open — never lock out on network error
       }
     };
-    const hasData = ()=>{try{const s=localStorage.getItem('sea-planner-data');if(!s)return false;const p=JSON.parse(s);return!!(p.slightEdge||p.goals?.some(g=>g.title));}catch(e){return false;}};
+    const hasData = ()=>{try{const s=localStorage.getItem('sea-planner-data');if(!s)return false;const p=JSON.parse(s);return!!(p.slightEdge||p.onboardingSkipped||p.goals?.some(g=>g.title));}catch(e){return false;}};
     const [showOnboarding] = useState(()=>!hasData());
     const getExistingData = () => {
       try {
@@ -7466,7 +7482,10 @@ Never output the ${RITUAL_SENTINEL} block until you have their one priority. Ins
       } catch(e) { return {slightEdge:'',yearTheme:'',vision120Day:'',startDate:'',goals:[{title:'',impact:'',measurement:''},{title:'',impact:'',measurement:''},{title:'',impact:'',measurement:''}],anvil:{project:'',cadence:'',why:''},personality:{style:2,tone:2,approach:2,energy:2}}; }
     };
     const handleOnboardingComplete = (d) => { setOnboardingData(d); setOnboardingDone(true); setShowingOnboarding(false); };
-    const handleReopenOnboarding = () => setShowingOnboarding(true);
+    // 'quick' reopens the 2-minute Anvil+goal flow (for someone who skipped it);
+    // anything else reopens the full setup. Defaults to full for existing callers.
+    const [setupMode, setSetupMode] = useState('full');
+    const handleReopenOnboarding = (mode) => { setSetupMode(mode === 'quick' ? 'quick' : 'full'); setShowingOnboarding(true); };
 
     // Subscription gate — if check fails, default to showing app (fail open) so blank screens never happen
     if (subStatus === null) return React.createElement('div', { style: { display:'flex', alignItems:'center', justifyContent:'center', height:'100vh', background:'#0f1229', color:'white', fontSize:'1.2rem' } }, 'Loading...');
@@ -7474,7 +7493,9 @@ Never output the ${RITUAL_SENTINEL} block until you have their one priority. Ins
 
     // "Finish your setup" (reopened from inside the app) → the full, deep onboarding.
     if (showingOnboarding) {
-      return <OnboardingFlow onComplete={handleOnboardingComplete} initialData={getExistingData()}/>;
+      return setupMode === 'quick'
+        ? <QuickStartFlow onComplete={handleOnboardingComplete} initialData={getExistingData()}/>
+        : <OnboardingFlow onComplete={handleOnboardingComplete} initialData={getExistingData()}/>;
     }
     // Brand-new user → the fast 2-minute activation (Anvil + one goal), not the full wall.
     if (showOnboarding && !onboardingDone) {
