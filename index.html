@@ -2008,7 +2008,14 @@ Label should clearly describe what is being coached (e.g. "Anvil Streak", "Medit
       ? lastPriorities.map(x=>`"${x.p}" — ${x.done?'DONE':'not ticked off'}`).join('; ')
       : '';
     const openCommitments = lastPriorities.filter(x=>!x.done).map(x=>x.p);
-    const carryHabits = (((targetWeek&&targetWeek.aActivities)||(lastWeek&&lastWeek.aActivities)||[]).map(a=>a&&a.name).filter(Boolean));
+    // Names alone made Edge ask "which habits?" from scratch. Carry the targets and
+    // day schedules too, so it can offer the exact same set back for a yes/no.
+    const _carrySrc = ((targetWeek&&(targetWeek.aActivities||[]).some(a=>a&&a.name&&a.name.trim())) ? targetWeek.aActivities : (lastWeek&&lastWeek.aActivities)||[]);
+    const carryHabitsDetailed = _carrySrc.filter(a=>a&&a.name&&a.name.trim()).map(a=>{
+      const sched = habitSchedule(a);
+      return `${a.name.trim()} (${sched.length ? sched.map(i=>DAY_ABBR[i]).join('/') : habitTarget(a)+'x/wk'})`;
+    });
+    const carryHabits = carryHabitsDetailed;
     const goals = (plannerData.goals||[]).filter(g=>g.title&&g.title.trim()).map(g=>g.title.trim());
     return `You are Edge, the AI coach inside the S.E.A. Dashboard, running the WEEKLY PLANNING RITUAL for a financial advisor. Voice: warm, punchy, results-focused. Force specificity, never lecture, keep each turn to 1-3 sentences.
 
@@ -2026,7 +2033,7 @@ RUN EXACTLY THESE FOUR STEPS, ONE QUESTION PER TURN, IN ORDER:
 1. WINS — last week's wins (their first message). Acknowledge warmly. If they committed to priorities last week, ALSO close that loop here in the same turn: name the ones still open and ask directly whether they happened. Never skip this — an unmentioned commitment is how accountability dies. Then move on.
 2. FOCUS — the ONE main focus/theme for this week. If they give several, make them pick one.
 3. PRIORITIES — the 2-4 priorities that actually move the needle this week.
-4. HABITS — confirm the habits above carry over, or adjust (add/drop). If none are tracked yet, ask which 1-3 they will commit to.
+4. HABITS — if they tracked habits before, the DEFAULT is that the same set carries over: read the list back with its targets and ask them to confirm, drop or change one, phrased so "yes" is a complete answer. Never make them re-list habits they already have. If none are tracked yet, ask which 1-3 they will commit to.
 
 When they set PRIORITIES for the new week, offer any still-open commitment from last week as a candidate — in their own words — before asking for brand new ones.
 
@@ -4264,6 +4271,34 @@ Never output the ${RITUAL_SENTINEL} block until you have their one priority. Ins
       return `${s.toLocaleDateString('en-US',{month:'short',day:'numeric'})} – ${e.toLocaleDateString('en-US',{month:'short',day:'numeric'})}`;
     };
 
+    // The ritual usually plans NEXT week, and the auto-seed only fills the CURRENT
+    // one — so the Habits step would open blank and habits had to be retyped every
+    // week. Offer last week's set instead of making them start from scratch.
+    const namedHabit = a => a && a.name && a.name.trim();
+    const prevHabitWeek = (() => {
+      for (let i = weekNum - 2; i >= 0; i--) {
+        const w = (data.weeks || [])[i];
+        if ((w && w.aActivities || []).some(namedHabit)) return w;
+      }
+      return null;
+    })();
+    const plannedHabits = ((week && week.aActivities) || []).filter(namedHabit);
+    const keepLastWeeksHabits = () => {
+      if (!prevHabitWeek) return;
+      const ws = JSON.parse(JSON.stringify(data.weeks || []));
+      // The planned week may not exist yet (planning ahead on a Sunday) — create it
+      // rather than letting the button do nothing.
+      while (ws.length < weekNum) ws.push({wins:['','',''],focus:'',goalPriorities:['','','',''],aActivities:[],wheelOfJohn:{family:5,fun:5,fitness:5,finance:5,faith:5}});
+      ws[weekNum-1].aActivities = prevHabitWeek.aActivities.filter(namedHabit).map(a => ({
+        name: a.name,
+        targetDays: a.targetDays || 7,
+        ...(habitSchedule(a).length ? { scheduleDays: habitSchedule(a) } : {}),
+        days: [false,false,false,false,false,false,false],
+      }));
+      ws[weekNum-1].habitsSeeded = true;
+      updateField('weeks', ws);
+    };
+
     const RITUAL_STEPS = ['Review','Focus','Habits','Goals','Priorities'];
     const isRitualComplete = (week.wins||[]).some(x=>x&&x.trim()) && week.focus?.trim() && (week.goalPriorities||[]).some(x=>x&&x.trim());
 
@@ -4284,9 +4319,19 @@ Never output the ${RITUAL_SENTINEL} block until you have their one priority. Ins
       wk.focus = plan.focus || wk.focus || '';
       wk.goalPriorities = [0,1,2,3].map(i => (plan.priorities[i]||'').trim());
       if (plan.habits && plan.habits.length) {
-        wk.aActivities = plan.habits.map(name => {
-          const m = existing.find(a => (a && a.name||'').trim().toLowerCase() === name.trim().toLowerCase());
-          return m ? m : { name, days:[false,false,false,false,false,false,false] };
+        // Match the target week first, then any earlier week, so a habit's target
+        // and day schedule survive a carry-over instead of silently resetting to 7x.
+        const earlier = [];
+        for (let i = weekNum-2; i >= 0; i--) (( (data.weeks||[])[i] || {}).aActivities || []).forEach(a => earlier.push(a));
+        wk.aActivities = plan.habits.map(rawName => {
+          const name = (rawName||'').trim();
+          const key = name.toLowerCase();
+          const m = existing.find(a => (a && a.name||'').trim().toLowerCase() === key);
+          if (m) return m;
+          const old = earlier.find(a => (a && a.name||'').trim().toLowerCase() === key);
+          return old
+            ? { name, targetDays: old.targetDays || 7, ...(habitSchedule(old).length ? { scheduleDays: habitSchedule(old) } : {}), days:[false,false,false,false,false,false,false] }
+            : { name, days:[false,false,false,false,false,false,false] };
         });
       }
       updateField('weeks', ws);
@@ -4395,6 +4440,30 @@ Never output the ${RITUAL_SENTINEL} block until you have their one priority. Ins
               <h3 className="text-sm font-bold text-yellow-400 uppercase tracking-wide">Habit Tracker</h3>
               <button onClick={()=>{const a=JSON.parse(JSON.stringify(week.aActivities||[]));a.push({name:'',days:[false,false,false,false,false,false,false]});updateWeek('aActivities',a);}} className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-yellow-400 border border-yellow-500/30 hover:bg-yellow-500/10 transition-all">+ Add</button>
             </div>
+            {plannedHabits.length === 0 && prevHabitWeek && (
+              <div className="rounded-2xl p-4 mb-4 border" style={{background:'rgba(245,158,11,0.08)',borderColor:'rgba(245,158,11,0.35)'}}>
+                <p className="text-sm font-bold text-white mb-1">Keep the same habits?</p>
+                <p className="text-xs text-slate-400 mb-3">Last week you tracked:</p>
+                <div className="space-y-1 mb-3">
+                  {prevHabitWeek.aActivities.filter(namedHabit).map((a,i)=>{
+                    const sched = habitSchedule(a);
+                    return (
+                      <div key={i} className="flex justify-between text-sm">
+                        <span className="text-slate-200 truncate mr-3">{a.name.trim()}</span>
+                        <span className="text-slate-400 text-xs flex-shrink-0">{sched.length ? sched.map(d=>DAY_SHORT[d]).join('/') : habitTarget(a)+'x/wk'}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+                <button onClick={keepLastWeeksHabits} className="w-full py-2.5 rounded-xl text-sm font-bold text-white" style={{background:'linear-gradient(135deg,#f59e0b,#f97316)'}}>
+                  Keep these {prevHabitWeek.aActivities.filter(namedHabit).length} habits →
+                </button>
+                <p className="text-xs text-slate-500 mt-2 text-center">You can still change targets or drop any after.</p>
+              </div>
+            )}
+            {plannedHabits.length > 0 && week.habitsSeeded && (
+              <p className="text-xs text-slate-500 mb-3">↪ Carried over from last week — adjust the targets or remove any you're dropping.</p>
+            )}
             <div className="space-y-4 mb-4">
               {(week.aActivities||[]).map((act,ai)=>(
                 <HabitRow key={ai} act={act} ai={ai}
