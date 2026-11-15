@@ -16,80 +16,148 @@ function escapeHtml(str) {
   return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
 }
 
-// ── Score calculation — scores the LAST COMPLETED week (not current in-progress week) ──
-function calcSEAScore(data) {
+// ── Which week are we summarising, and what did it score? ────────────────────
+// Rewritten 2026-11-15. This used to pick "the second-most-recent week that has
+// any data", never looking at the calendar — so because the weekly ritual
+// pre-creates NEXT week, the email reported a week that was already over, and
+// drifted further back the more someone planned ahead. It also still used the
+// retired scoring model (habits 30 / Anvil 25 / Wheel 20 / ritual 15 / goals 10)
+// so its number never matched the app's.
+// Now: the week is chosen BY DATE (the Mon–Sun week that today falls in, i.e. the
+// one the ritual is about to close), and the score mirrors index.html's engine —
+// #1 = 40, Anvil = 30, habits = 30, scored per day, averaged over the days that
+// have happened, +5 for the ritual. Keep the two in step when either changes.
+const SCORE_WEIGHTS = { hero: 40, anvil: 30, habits: 30 };
+const RITUAL_BONUS = 5;
+
+function habitSchedule(a) {
+  return Array.isArray(a && a.scheduleDays) ? a.scheduleDays.filter(d => d >= 0 && d <= 6) : [];
+}
+function habitTarget(a) {
+  const sched = habitSchedule(a);
+  if (sched.length) return sched.length;
+  return Math.min(Math.max(parseInt(a && a.targetDays, 10) || 7, 1), 7);
+}
+function sameCalDay(a, b) {
+  return !!a && !!b && a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+}
+// Local-midnight Monday starting week `weekIdx` (0-based), anchored to the first
+// Monday on/after startDate — the same anchor the app uses.
+function weekMondayDate(data, weekIdx) {
+  if (!data || !data.startDate) return null;
+  const parts = String(data.startDate).split('-').map(Number);
+  if (parts.length < 3 || !parts[0]) return null;
+  const start = new Date(parts[0], parts[1] - 1, parts[2]);
+  const sd = start.getDay();
+  if (sd !== 1) start.setDate(start.getDate() + (sd === 0 ? 1 : 8 - sd));
+  start.setHours(0, 0, 0, 0);
+  start.setDate(start.getDate() + weekIdx * 7);
+  return start;
+}
+// The week today sits in: the one the user is closing out.
+function currentWeekIdx(data, now) {
+  const first = weekMondayDate(data, 0);
+  if (!first) return null;
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const idx = Math.floor((today - first) / 86400000 / 7);
+  return idx >= 0 ? idx : null;
+}
+
+function calcDayScore(data, weekIdx, dayIdx) {
+  const week = (data.weeks || [])[weekIdx] || null;
+  const day = ((data.dailyPlans || [])[weekIdx] || [])[dayIdx] || null;
+  const monday = weekMondayDate(data, weekIdx);
+  const dayDate = monday ? new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + dayIdx) : null;
+
+  const heroDone = !!(day && day.topPriorityDone);
+  const parts = [{ key: 'hero', pts: SCORE_WEIGHTS.hero, earned: heroDone ? SCORE_WEIGHTS.hero : 0, owed: true }];
+
+  const anvil = data.anvilProject || {};
+  const log = Array.isArray(anvil.log) ? anvil.log : [];
+  const loggedOn = dt => !!dt && log.some(e => e && sameCalDay(new Date(e.date), dt));
+  const useSpecific = !!(anvil.useSpecificDays && (anvil.specificDays || []).length > 0);
+  const freqCount = Math.max(1, parseInt(anvil.freqCount, 10) || 1);
+  const anvilDone = loggedOn(dayDate);
+  let anvilOwed;
+  if (!anvil.project) anvilOwed = false;
+  else if (useSpecific) anvilOwed = anvil.specificDays.indexOf(dayIdx) !== -1;
+  else {
+    let before = 0;
+    if (monday) for (let i = 0; i < dayIdx; i++) {
+      if (loggedOn(new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + i))) before++;
+    }
+    anvilOwed = before < freqCount;
+  }
+  parts.push({ key: 'anvil', pts: SCORE_WEIGHTS.anvil, earned: anvilDone ? SCORE_WEIGHTS.anvil : 0, owed: anvilOwed || anvilDone });
+
+  const acts = ((week && week.aActivities) || []).filter(a => a && a.name && a.name.trim());
+  let owedCount = 0, doneCount = 0;
+  acts.forEach(a => {
+    const days = a.days || [];
+    const scheduled = habitSchedule(a).length > 0;
+    if (scheduled && habitSchedule(a).indexOf(dayIdx) === -1) return;
+    if (!scheduled) {
+      let before = 0;
+      for (let i = 0; i < dayIdx; i++) if (days[i]) before++;
+      if (before >= habitTarget(a)) return;
+    }
+    owedCount++;
+    if (days[dayIdx]) doneCount++;
+  });
+  parts.push({ key: 'habits', pts: SCORE_WEIGHTS.habits, earned: owedCount > 0 ? (doneCount / owedCount) * SCORE_WEIGHTS.habits : 0, owed: owedCount > 0 });
+
+  const live = parts.filter(p => p.owed);
+  const maxPts = live.reduce((s, p) => s + p.pts, 0);
+  const earned = live.reduce((s, p) => s + p.earned, 0);
+  return maxPts > 0 ? Math.round((earned / maxPts) * 100) : 0;
+}
+
+// Returns { idx, week, score, label } for the week being summarised, or null.
+function pickWeek(data, now) {
   const weeks = Array.isArray(data.weeks) ? data.weeks : [];
+  if (!weeks.length) return null;
+  let idx = currentWeekIdx(data, now);
+  // No start date (older accounts): fall back to the last week holding real data.
+  if (idx === null) {
+    for (let i = weeks.length - 1; i >= 0; i--) {
+      const w = weeks[i];
+      if (w && ((w.wins || []).some(x => x && x.trim()) || (w.focus || '').trim())) { idx = i; break; }
+    }
+    if (idx === null) return null;
+  }
+  if (idx >= weeks.length) idx = weeks.length - 1;
+  const week = weeks[idx] || null;
+  const monday = weekMondayDate(data, idx);
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  let elapsed = 7;
+  if (monday) elapsed = Math.max(1, Math.min(7, Math.floor((today - monday) / 86400000) + 1));
 
-  // Weekly summary fires Sunday — score the week that just ENDED (Mon-Sat).
-  // The user may have already filled in the Sunday ritual for the NEW week this morning,
-  // so we use the second-most-recent week with wins/focus data (= last completed week).
-  const weeksWithData = weeks.map((w, i) => ({ w, i })).filter(({ w }) =>
-    w && (w.wins?.some(x => x?.trim()) || w.focus?.trim())
-  );
-  if (weeksWithData.length === 0) return null;
-  // Second-to-last = last completed week; if only one exists, use it
-  const completedEntry = weeksWithData.length >= 2
-    ? weeksWithData[weeksWithData.length - 2]
-    : weeksWithData[weeksWithData.length - 1];
-  const recentWeek = completedEntry.w;
+  let score = null;
+  if (week) {
+    let sum = 0;
+    for (let d = 0; d < elapsed; d++) sum += calcDayScore(data, idx, d);
+    const ritualDone = !!((week.wins || []).some(x => x && x.trim()) && (week.focus || '').trim()
+      && (week.goalPriorities || []).some(x => x && x.trim()));
+    score = Math.min(100, Math.round(sum / elapsed + (ritualDone ? RITUAL_BONUS : 0)));
+  }
 
-  // 1. Habit completion (30pts) — use the same completed week's habit data
-  const acts = (recentWeek.aActivities || []).filter(a => a?.name?.trim());
-  const habitPct = acts.length > 0
-    ? acts.reduce((s, a) => {
-        const target = Math.min(Math.max(parseInt(a.targetDays) || 7, 1), 7);
-        const done = (a.days || []).filter(Boolean).length;
-        return s + Math.min(done / target, 1);
-      }, 0) / acts.length
-    : 0;
-  const habitScore = habitPct * 30;
-
-  // 2. Anvil (25pts) — score LAST completed week's logs (Mon-Sun of last week)
-  const anvilLog = Array.isArray(data.anvilProject?.log) ? data.anvilProject.log : [];
-  const freqCount = Math.max(1, parseInt(data.anvilProject?.freqCount) || 1);
-  const now = new Date(); now.setHours(0, 0, 0, 0);
-  const dow = (now.getDay() + 6) % 7; // 0=Mon
-  const thisWeekStart = new Date(now); thisWeekStart.setDate(now.getDate() - dow);
-  const lastWeekStart = new Date(thisWeekStart); lastWeekStart.setDate(thisWeekStart.getDate() - 7);
-  const lastWeekEnd = new Date(thisWeekStart); lastWeekEnd.setDate(thisWeekStart.getDate() - 1); lastWeekEnd.setHours(23, 59, 59, 999);
-  const logsLastWeek = anvilLog.filter(e => {
-    const d = new Date(e.date); d.setHours(0, 0, 0, 0);
-    return d >= lastWeekStart && d <= lastWeekEnd;
-  }).length;
-  const anvilScore = Math.min(logsLastWeek / freqCount, 1) * 25;
-
-  // 3. Wheel (20pts)
-  const w = recentWeek.wheelOfJohn || { family: 5, fun: 5, fitness: 5, finance: 5, faith: 5 };
-  const wheelAvg = Object.values(w).reduce((a, b) => a + (b || 5), 0) / Object.values(w).length;
-  const wheelScore = (wheelAvg / 10) * 20;
-
-  // 4. Weekly ritual (15pts)
-  const ritualDone = recentWeek.wins?.some(x => x?.trim()) &&
-    recentWeek.focus?.trim() &&
-    recentWeek.goalPriorities?.some(x => x?.trim());
-  const ritualScore = ritualDone ? 15 : 0;
-
-  // 5. Goals (10pts)
-  const goals = (data.goals || []).filter(g => g?.title?.trim());
-  const goalAvg = goals.length > 0 ? goals.reduce((s, g) => s + (g.completion || 0), 0) / goals.length : 0;
-  const goalScore = (goalAvg / 100) * 10;
-
-  return Math.round(habitScore + anvilScore + wheelScore + ritualScore + goalScore);
+  let label = '';
+  if (monday) {
+    const end = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + 6);
+    const fmt = d => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
+    label = `Week ${idx + 1} · ${fmt(monday)} – ${fmt(end)}`;
+  }
+  return { idx, week, score, label };
 }
 
 // ── Email HTML builder ───────────────────────────────────────────────────────
 function buildEmailHtml(name, data) {
   const firstName = name ? name.split(' ')[0] : 'there';
-  const seaScore = calcSEAScore(data);
-  const weeks = Array.isArray(data.weeks) ? data.weeks : [];
-  // Same logic as calcSEAScore — use second-most-recent week (last completed week)
-  const weeksWithDataE = weeks.map((w, i) => ({ w, i })).filter(({ w }) =>
-    w && (w.wins?.some(x => x?.trim()) || w.focus?.trim())
-  );
-  const completedEntryE = weeksWithDataE.length >= 2
-    ? weeksWithDataE[weeksWithDataE.length - 2]
-    : weeksWithDataE[weeksWithDataE.length - 1];
-  const recentWeek = completedEntryE?.w || null;
+  // One source of truth: the calendar week being closed out, its score, and its label.
+  const picked = pickWeek(data, new Date());
+  const seaScore = picked ? picked.score : null;
+  const weekLabel = picked ? picked.label : '';
+  const recentWeek = picked ? picked.week : null;
 
   const wins = recentWeek?.wins?.filter(w => w?.trim()) || [];
   const goals = (data.goals || []).filter(g => g?.title?.trim());
@@ -103,7 +171,7 @@ function buildEmailHtml(name, data) {
 
   const winsHtml = wins.length > 0
     ? wins.map(w => `<li style="margin-bottom:6px;color:#e2e8f0;">${escapeHtml(w)}</li>`).join('')
-    : '<li style="color:#94a3b8;font-style:italic;">No wins recorded last week</li>';
+    : '<li style="color:#94a3b8;font-style:italic;">No wins recorded for this week yet</li>';
 
   const goalsHtml = goals.length > 0
     ? goals.map(g => `<div style="padding:10px 14px;background:#1e293b;border-radius:8px;margin-bottom:8px;border-left:3px solid #6366f1;"><span style="color:#e2e8f0;font-size:14px;">${escapeHtml(g.title)}</span><span style="color:#64748b;font-size:12px;float:right;">${g.completion || 0}%</span></div>`).join('')
@@ -122,6 +190,7 @@ function buildEmailHtml(name, data) {
         <div style="font-size:2rem;font-weight:900;letter-spacing:-1px;color:white;">S.E.A.</div>
         <div style="color:#a78bfa;font-size:0.8rem;letter-spacing:3px;text-transform:uppercase;margin-top:4px;">Slight Edge Accelerator</div>
         <div style="color:#94a3b8;font-size:0.8rem;margin-top:4px;">Weekly Summary</div>
+        ${weekLabel ? `<div style="color:#c7d2fe;font-size:0.8rem;margin-top:10px;font-weight:600;">${escapeHtml(weekLabel)}</div>` : ''}
       </td></tr>
       <tr><td style="background:#1e293b;padding:32px;border-radius:0 0 16px 16px;">
         <p style="font-size:20px;font-weight:700;color:#f1f5f9;margin:0 0 8px;">Hey ${escapeHtml(firstName)},</p>
@@ -133,17 +202,17 @@ function buildEmailHtml(name, data) {
         </div>` : ''}
 
         <div style="background:#0f172a;border-radius:12px;padding:24px;margin-bottom:20px;border:1px solid #334155;text-align:center;">
-          <div style="font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#94a3b8;margin-bottom:8px;">Last Week's S.E.A. Score</div>
+          <div style="font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#94a3b8;margin-bottom:8px;">${weekLabel ? 'This Week\'s S.E.A. Score' : "Last Week's S.E.A. Score"}</div>
           <div style="font-size:48px;font-weight:800;color:${scoreColor};">${scoreDisplay}</div>
         </div>
 
         <div style="margin-bottom:20px;">
-          <div style="font-size:13px;text-transform:uppercase;letter-spacing:1px;color:#94a3b8;font-weight:600;margin-bottom:12px;">Top Wins Last Week</div>
+          <div style="font-size:13px;text-transform:uppercase;letter-spacing:1px;color:#94a3b8;font-weight:600;margin-bottom:12px;">Top Wins This Week</div>
           <ul style="margin:0;padding:0 0 0 18px;list-style:disc;">${winsHtml}</ul>
         </div>
 
         ${weekFocus ? `<div style="background:#0f172a;border-radius:12px;padding:16px 20px;margin-bottom:20px;border:1px solid #334155;">
-          <div style="font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#94a3b8;margin-bottom:6px;">Last Week's Focus</div>
+          <div style="font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#94a3b8;margin-bottom:6px;">This Week's Focus</div>
           <div style="font-size:14px;color:#e2e8f0;line-height:1.5;">${escapeHtml(weekFocus)}</div>
         </div>` : ''}
 
